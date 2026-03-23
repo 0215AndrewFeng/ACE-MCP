@@ -1,7 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { URL } from "node:url";
 
-import type { Settings } from "../core/common/types.js";
+import {
+  DEFAULT_INCLUDE_CONTEXT_LINES,
+  MAX_INCLUDE_CONTEXT_LINES,
+  type Settings,
+  type SupportedLanguage,
+} from "../core/common/types.js";
 import type { Logger } from "../core/common/logger.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
@@ -15,6 +20,8 @@ interface WebAppDependencies {
   settings: Settings;
   store: SQLiteStore;
 }
+
+const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
 
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
@@ -34,6 +41,37 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
 
   const raw = Buffer.concat(chunks).toString("utf8").trim();
   return raw.length > 0 ? (JSON.parse(raw) as Record<string, unknown>) : {};
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.trunc(numericValue)));
+}
+
+function normalizePathPrefix(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeSupportedLanguages(value: unknown): SupportedLanguage[] | undefined {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(",")
+      : [];
+  const languages = [...new Set(rawValues
+    .map((item) => (typeof item === "string" ? item.trim().toLowerCase() : ""))
+    .filter((item): item is SupportedLanguage => SUPPORTED_SEARCH_LANGUAGES.has(item as SupportedLanguage)))];
+
+  return languages.length > 0 ? languages : undefined;
 }
 
 function getHomePageHtml(): string {
@@ -106,6 +144,12 @@ function getHomePageHtml(): string {
         </select>
         <label for="top-k">Top K</label>
         <input id="top-k" type="number" min="1" max="50" value="8" />
+        <label for="include-context-lines">Context lines</label>
+        <input id="include-context-lines" type="number" min="0" max="50" value="0" />
+        <label for="search-languages">Languages (comma-separated)</label>
+        <input id="search-languages" class="mono" placeholder="javascript,java" />
+        <label for="search-path-prefix">Path prefix</label>
+        <input id="search-path-prefix" class="mono" placeholder="src/web" />
         <button id="run-search" type="button">Run search_context</button>
       </div>
       <div class="card">
@@ -129,6 +173,9 @@ function getHomePageHtml(): string {
       const searchQueryInput = document.getElementById("search-query");
       const searchModeInput = document.getElementById("search-mode");
       const topKInput = document.getElementById("top-k");
+      const includeContextLinesInput = document.getElementById("include-context-lines");
+      const searchLanguagesInput = document.getElementById("search-languages");
+      const searchPathPrefixInput = document.getElementById("search-path-prefix");
       const snippetPathInput = document.getElementById("snippet-path");
       const snippetStartInput = document.getElementById("snippet-start");
       const snippetEndInput = document.getElementById("snippet-end");
@@ -145,6 +192,16 @@ function getHomePageHtml(): string {
           throw new Error(JSON.stringify(data, null, 2));
         }
         return data;
+      }
+
+      function parseSearchLanguages(value) {
+        const allowed = new Set(["java", "javascript", "dotnet", "python"]);
+        return [...new Set(
+          value
+            .split(",")
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => allowed.has(item))
+        )];
       }
 
       function render(data) {
@@ -177,7 +234,10 @@ function getHomePageHtml(): string {
       )));
 
       document.getElementById("run-search").addEventListener("click", () => run(() => request("POST", "/api/search-context", {
+        includeContextLines: Number(includeContextLinesInput.value || 0),
+        languages: parseSearchLanguages(searchLanguagesInput.value),
         mode: searchModeInput.value,
+        pathPrefix: searchPathPrefixInput.value.trim() || undefined,
         projectRootPath: projectRootInput.value,
         query: searchQueryInput.value,
         topK: Number(topKInput.value || 8)
@@ -198,7 +258,8 @@ function toolCatalog(): Array<{ description: string; name: string }> {
   return [
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
     {
-      description: "Incrementally index the project and return code snippets relevant to a natural language, symbol, or path query.",
+      description:
+        "Incrementally index the project and return code snippets relevant to a natural language, symbol, or path query, with optional context lines, language filters, and path-prefix filtering.",
       name: "search_context",
     },
     { description: "Read a range of lines from a project file.", name: "get_file_snippet" },
@@ -286,9 +347,39 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         const mode = ["auto", "lexical", "symbol", "hybrid"].includes(String(body.mode ?? "auto"))
           ? (body.mode as "auto" | "lexical" | "symbol" | "hybrid")
           : "auto";
-        const topK = Number(body.topK ?? dependencies.settings.defaultTopK);
-        await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
-        const result = dependencies.searchService.search(projectRootPath, query, mode, topK);
+        const topK = clampInteger(body.topK, 1, 50, dependencies.settings.defaultTopK);
+        const includeContextLines = clampInteger(
+          body.includeContextLines,
+          DEFAULT_INCLUDE_CONTEXT_LINES,
+          MAX_INCLUDE_CONTEXT_LINES,
+          DEFAULT_INCLUDE_CONTEXT_LINES,
+        );
+        const languages = normalizeSupportedLanguages(body.languages);
+        const pathPrefix = normalizePathPrefix(body.pathPrefix);
+        const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+        const result = await dependencies.searchService.search(
+          indexResult.projectRootPath,
+          query,
+          mode,
+          topK,
+          includeContextLines,
+          {
+            languages,
+            pathPrefix,
+          },
+        );
+        result.indexing = {
+          changedFiles: indexResult.changedFiles,
+          chunkCount: indexResult.chunkCount,
+          createdAt: indexResult.createdAt,
+          deletedFiles: indexResult.deletedFiles,
+          failedFileCount: indexResult.failedFileCount,
+          failedFiles: indexResult.failedFiles,
+          indexedFiles: indexResult.indexedFiles,
+          scannedFiles: indexResult.scannedFiles,
+        };
+        result.stats.indexedFiles = indexResult.indexedFiles;
+        result.stats.scannedFiles = indexResult.scannedFiles;
         sendJson(response, 200, result);
         return;
       }

@@ -5,6 +5,7 @@ import iconv from "iconv-lite";
 import type { Logger } from "../common/logger.js";
 import type {
   CollectedFile,
+  IndexFailure,
   IndexProjectResult,
   IndexedFileRecord,
   ProjectInfo,
@@ -83,6 +84,7 @@ export class IndexCoordinator {
 
     let changedFiles = 0;
     let chunkCount = 0;
+    const failedFiles: IndexFailure[] = [];
     let indexedFiles = 0;
 
     for (const file of sourceFiles) {
@@ -92,25 +94,38 @@ export class IndexCoordinator {
       }
 
       changedFiles += 1;
-      const buffer = await readFile(file.absolutePath);
-      const { content, encoding } = decodeSourceBuffer(buffer);
-      const fileId = buildStableId([projectId, file.relativePath]);
-      const symbols = extractSymbols(fileId, file.language, content);
-      const chunks = buildChunks(fileId, file.relativePath, content, symbols, this.settings.maxLinesPerChunk);
-      const indexedFile: IndexedFileRecord = {
-        encoding,
-        fileId,
-        language: file.language,
-        lineCount: content.split(/\r?\n/).length,
-        mtimeMs: file.mtimeMs,
-        relativePath: file.relativePath,
-        sha256: computeSha256(buffer),
-        size: file.size,
-      };
+      try {
+        const buffer = await readFile(file.absolutePath);
+        const { content, encoding } = decodeSourceBuffer(buffer);
+        const fileId = buildStableId([projectId, file.relativePath]);
+        const symbols = extractSymbols(fileId, file.language, content);
+        const chunks = buildChunks(fileId, file.relativePath, content, symbols, this.settings.maxLinesPerChunk);
+        const indexedFile: IndexedFileRecord = {
+          encoding,
+          fileId,
+          language: file.language,
+          lineCount: content.split(/\r?\n/).length,
+          mtimeMs: file.mtimeMs,
+          relativePath: file.relativePath,
+          sha256: computeSha256(buffer),
+          size: file.size,
+        };
 
-      this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
-      indexedFiles += 1;
-      chunkCount += chunks.length;
+        this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
+        indexedFiles += 1;
+        chunkCount += chunks.length;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        failedFiles.push({
+          filePath: file.relativePath,
+          message,
+        });
+        this.logger.warn("file indexing failed", {
+          error: message,
+          filePath: file.relativePath,
+          projectRootPath: normalizedRoot,
+        });
+      }
     }
 
     this.store.updateProjectAfterIndex(projectId, timestamp, "ready");
@@ -119,6 +134,7 @@ export class IndexCoordinator {
       chunkCount,
       createdAt: timestamp,
       deletedFiles: deletedFiles.length,
+      failedFiles,
       indexedFiles,
       scannedFiles: sourceFiles.length,
     });
@@ -127,6 +143,7 @@ export class IndexCoordinator {
       changedFiles,
       chunkCount,
       deletedFiles: deletedFiles.length,
+      failedFileCount: failedFiles.length,
       indexedFiles,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
@@ -135,7 +152,10 @@ export class IndexCoordinator {
     return {
       changedFiles,
       chunkCount,
+      createdAt: timestamp,
       deletedFiles: deletedFiles.length,
+      failedFileCount: failedFiles.length,
+      failedFiles,
       indexedFiles,
       project,
       projectId,

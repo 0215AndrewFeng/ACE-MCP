@@ -2,6 +2,10 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
+当前版本：`v2.0.0`
+
+更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
+
 当前版本已具备：
 
 - 本地项目扫描与 `.gitignore` 过滤
@@ -87,6 +91,8 @@ npm start -- --web-port 8787
 
 扫描并建立项目索引。
 
+索引过程现在对单文件失败具备容错能力：若某些文件读取或处理失败，其余文件仍会继续索引，并在结果中返回 `failedFileCount` 与 `failedFiles` 诊断信息。
+
 输入示例：
 
 ```json
@@ -100,6 +106,13 @@ npm start -- --web-port 8787
 
 自动执行增量索引后返回相关代码片段。
 
+若增量索引过程中出现文件级失败，返回结果还会包含 `indexing` 摘要，便于排查“为什么这次搜索没有覆盖到某些新改动”。
+
+也支持可选过滤条件：
+
+- `languages`: 仅在指定语言范围内搜索，例如 `["java", "javascript"]`
+- `pathPrefix`: 仅在指定相对路径前缀下搜索，例如 `src/web`
+
 输入示例：
 
 ```json
@@ -107,9 +120,20 @@ npm start -- --web-port 8787
   "projectRootPath": "/path/to/project",
   "query": "find refund service implementation",
   "mode": "auto",
-  "topK": 8
+  "topK": 8,
+  "includeContextLines": 8,
+  "languages": ["javascript"],
+  "pathPrefix": "src/web"
 }
 ```
+
+其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages` 与 `pathPrefix` 均为可选；未传时保持当前全局搜索行为。
+
+搜索结果中的每个条目现在还会附带紧凑的 `explanation` 摘要，用于解释该结果为何靠前，例如：
+
+- 命中的来源类型 `matchedSources`（`lexical` / `symbol` / `path`）
+- 命中的查询 token 与覆盖率 `matchedTokens` / `tokenCoverage`
+- 是否存在精确路径、文件名、符号或 snippet 查询命中
 
 ### `get_file_snippet`
 
@@ -118,6 +142,8 @@ npm start -- --web-port 8787
 ### `project_stats`
 
 返回项目索引统计信息。
+
+当项目已有索引记录时，结果会包含最近一次索引事件摘要 `latestIndexEvent`，其中包括失败文件数量和部分失败明细。
 
 ## 配置文件
 
@@ -162,7 +188,7 @@ excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "ob
 - 已索引项目列表
 - 项目统计查看
 - 交互式调试表单页面
-- 直接通过 HTTP 调试 `index_project` 与 `search_context`
+- 直接通过 HTTP 调试 `index_project` 与 `search_context`（含上下文行、语言与路径前缀过滤）
 - 直接通过 HTTP 调试 `get_file_snippet`
 
 主要接口：
