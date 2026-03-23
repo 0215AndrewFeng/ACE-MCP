@@ -3,13 +3,17 @@ import Database from "better-sqlite3";
 import { buildStableId } from "../indexing/fileFingerprint.js";
 import type {
   ChunkRecord,
+  IndexEventSummary,
+  IndexFailure,
   IndexedFileRecord,
   Language,
   ProjectListItem,
   ProjectInfo,
   ProjectStats,
   ProjectStatus,
+  SearchFilters,
   SearchResult,
+  SupportedLanguage,
   SymbolInfo,
 } from "../common/types.js";
 import type { Logger } from "../common/logger.js";
@@ -40,8 +44,46 @@ interface IndexEventPayload {
   chunkCount: number;
   createdAt: string;
   deletedFiles: number;
+  failedFiles: IndexFailure[];
   indexedFiles: number;
   scannedFiles: number;
+}
+
+interface IndexEventRow {
+  changed_files: number;
+  chunk_count: number;
+  created_at: string;
+  deleted_files: number;
+  event_id: string;
+  indexed_files: number;
+  scanned_files: number;
+}
+
+function buildSearchFilterClause(filters: SearchFilters | undefined): {
+  parameters: Array<string>;
+  sql: string;
+} {
+  if (!filters) {
+    return { parameters: [], sql: "" };
+  }
+
+  const clauses: string[] = [];
+  const parameters: string[] = [];
+
+  if (filters.languages && filters.languages.length > 0) {
+    clauses.push(`f.language IN (${filters.languages.map(() => "?").join(", ")})`);
+    parameters.push(...filters.languages);
+  }
+
+  if (filters.pathPrefix) {
+    clauses.push("LOWER(f.relative_path) LIKE ?");
+    parameters.push(`${filters.pathPrefix.toLowerCase()}%`);
+  }
+
+  return {
+    parameters,
+    sql: clauses.length > 0 ? ` AND ${clauses.join(" AND ")}` : "",
+  };
 }
 
 export class SQLiteStore {
@@ -128,6 +170,7 @@ export class SQLiteStore {
       fileCount,
       languages: JSON.parse(project.languages) as Language[],
       lastIndexAt: project.last_index_at,
+      latestIndexEvent: this.getLatestIndexEvent(project.project_id),
       lastScanAt: project.last_scan_at,
       projectRootPath: project.project_root_path,
       status: project.status,
@@ -223,8 +266,18 @@ export class SQLiteStore {
         FOREIGN KEY(project_id) REFERENCES project(project_id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS index_event_failure (
+        failure_id TEXT PRIMARY KEY,
+        event_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        message TEXT NOT NULL,
+        FOREIGN KEY(event_id) REFERENCES index_event(event_id) ON DELETE CASCADE
+      );
+
       CREATE INDEX IF NOT EXISTS idx_file_project_id ON file(project_id);
       CREATE INDEX IF NOT EXISTS idx_file_relative_path ON file(relative_path);
+      CREATE INDEX IF NOT EXISTS idx_index_event_project_created_at ON index_event(project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_index_event_failure_event_id ON index_event_failure(event_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbol(name);
       CREATE INDEX IF NOT EXISTS idx_symbol_full_name ON symbol(full_name);
 
@@ -271,30 +324,104 @@ export class SQLiteStore {
   }
 
   public recordIndexEvent(projectId: string, payload: IndexEventPayload): void {
-    const statement = this.db.prepare(
-      `INSERT INTO index_event (
-        event_id, project_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    statement.run(
-      buildStableId([projectId, payload.createdAt, String(payload.indexedFiles), String(payload.scannedFiles)]),
+    const eventId = buildStableId([
       projectId,
-      payload.indexedFiles,
-      payload.changedFiles,
-      payload.deletedFiles,
-      payload.chunkCount,
-      payload.scannedFiles,
       payload.createdAt,
+      String(payload.indexedFiles),
+      String(payload.scannedFiles),
+      String(payload.failedFiles.length),
+    ]);
+    const insertEvent = this.db.prepare(
+      `INSERT INTO index_event (
+         event_id, project_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
+    const insertFailure = this.db.prepare(
+      `INSERT INTO index_event_failure (
+         failure_id, event_id, file_path, message
+       ) VALUES (?, ?, ?, ?)`,
+    );
+    const tx = this.db.transaction(() => {
+      insertEvent.run(
+        eventId,
+        projectId,
+        payload.indexedFiles,
+        payload.changedFiles,
+        payload.deletedFiles,
+        payload.chunkCount,
+        payload.scannedFiles,
+        payload.createdAt,
+      );
+
+      for (const failure of payload.failedFiles) {
+        insertFailure.run(
+          buildStableId([eventId, failure.filePath, failure.message]),
+          eventId,
+          failure.filePath,
+          failure.message,
+        );
+      }
+    });
+
+    tx();
   }
 
-  public searchByPath(projectId: string, tokens: string[], limit: number): SearchResult[] {
+  public getLatestIndexEvent(projectId: string, failureLimit = 20): IndexEventSummary | null {
+    const event = this.db
+      .prepare(
+        `SELECT event_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, created_at
+         FROM index_event
+         WHERE project_id = ?
+         ORDER BY created_at DESC, event_id DESC
+         LIMIT 1`,
+      )
+      .get(projectId) as IndexEventRow | undefined;
+    if (!event) {
+      return null;
+    }
+
+    const failedFileCount = (
+      this.db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM index_event_failure
+           WHERE event_id = ?`,
+        )
+        .get(event.event_id) as { count: number }
+    ).count;
+    const failedFiles = this.db
+      .prepare(
+        `SELECT file_path, message
+         FROM index_event_failure
+         WHERE event_id = ?
+         ORDER BY file_path ASC
+         LIMIT ?`,
+      )
+      .all(event.event_id, failureLimit) as Array<{ file_path: string; message: string }>;
+
+    return {
+      changedFiles: event.changed_files,
+      chunkCount: event.chunk_count,
+      createdAt: event.created_at,
+      deletedFiles: event.deleted_files,
+      failedFileCount,
+      failedFiles: failedFiles.map((failure) => ({
+        filePath: failure.file_path,
+        message: failure.message,
+      })),
+      indexedFiles: event.indexed_files,
+      scannedFiles: event.scanned_files,
+    };
+  }
+
+  public searchByPath(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
     if (tokens.length === 0) {
       return [];
     }
 
     const likePatterns = tokens.map((token) => `%${token}%`);
     const whereClause = likePatterns.map(() => "LOWER(f.relative_path) LIKE ?").join(" OR ");
+    const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
         `SELECT
@@ -303,13 +430,14 @@ export class SQLiteStore {
            COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS start_line,
            COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS end_line,
            COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), '') AS content
-         FROM file f
-         WHERE f.project_id = ?
-           AND (${whereClause})
-         ORDER BY LENGTH(f.relative_path) ASC
-         LIMIT ?`,
+          FROM file f
+          WHERE f.project_id = ?
+            AND (${whereClause})
+            ${filterClause.sql}
+          ORDER BY LENGTH(f.relative_path) ASC
+          LIMIT ?`,
       )
-      .all(projectId, ...likePatterns, limit) as Array<{
+      .all(projectId, ...likePatterns, ...filterClause.parameters, limit) as Array<{
       content: string;
       end_line: number;
       language: Language;
@@ -328,7 +456,7 @@ export class SQLiteStore {
     }));
   }
 
-  public searchBySymbols(projectId: string, tokens: string[], limit: number): SearchResult[] {
+  public searchBySymbols(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
     if (tokens.length === 0) {
       return [];
     }
@@ -336,6 +464,7 @@ export class SQLiteStore {
     const likePatterns = tokens.map((token) => `%${token}%`);
     const whereClause = likePatterns.map(() => "LOWER(s.name) LIKE ? OR LOWER(s.full_name) LIKE ?").join(" OR ");
     const parameters = likePatterns.flatMap((pattern) => [pattern, pattern]);
+    const filterClause = buildSearchFilterClause(filters);
 
     const rows = this.db
       .prepare(
@@ -346,14 +475,15 @@ export class SQLiteStore {
            s.line AS start_line,
            COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
            COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content
-         FROM symbol s
-         JOIN file f ON f.file_id = s.file_id
-         WHERE f.project_id = ?
-           AND (${whereClause})
-         ORDER BY s.line ASC
-         LIMIT ?`,
+          FROM symbol s
+          JOIN file f ON f.file_id = s.file_id
+          WHERE f.project_id = ?
+            AND (${whereClause})
+            ${filterClause.sql}
+          ORDER BY s.line ASC
+          LIMIT ?`,
       )
-      .all(projectId, ...parameters, limit) as Array<{
+      .all(projectId, ...parameters, ...filterClause.parameters, limit) as Array<{
       content: string;
       end_line: number;
       language: Language;
@@ -374,7 +504,8 @@ export class SQLiteStore {
     }));
   }
 
-  public searchByText(projectId: string, ftsQuery: string, limit: number): SearchResult[] {
+  public searchByText(projectId: string, ftsQuery: string, limit: number, filters?: SearchFilters): SearchResult[] {
+    const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
         `SELECT
@@ -386,13 +517,14 @@ export class SQLiteStore {
            bm25(chunk_fts) AS raw_score
          FROM chunk_fts
          JOIN chunk c ON c.chunk_id = chunk_fts.chunk_id
-         JOIN file f ON f.file_id = c.file_id
-         WHERE f.project_id = ?
-           AND chunk_fts MATCH ?
-         ORDER BY raw_score
-         LIMIT ?`,
+          JOIN file f ON f.file_id = c.file_id
+          WHERE f.project_id = ?
+            AND chunk_fts MATCH ?
+            ${filterClause.sql}
+          ORDER BY raw_score
+          LIMIT ?`,
       )
-      .all(projectId, ftsQuery, limit) as SearchRow[];
+      .all(projectId, ftsQuery, ...filterClause.parameters, limit) as SearchRow[];
 
     return rows.map((row) => ({
       endLine: row.end_line,

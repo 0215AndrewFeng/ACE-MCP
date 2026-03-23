@@ -2,6 +2,8 @@ export type Language = "java" | "javascript" | "dotnet" | "python" | "unknown";
 export type SupportedLanguage = Exclude<Language, "unknown">;
 export type SearchMode = "auto" | "lexical" | "symbol" | "hybrid";
 export type ProjectStatus = "ready" | "indexing" | "error";
+export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
+export const MAX_INCLUDE_CONTEXT_LINES = 50;
 
 export interface Settings {
   batchSize: number;
@@ -78,11 +80,30 @@ export interface SymbolInfo {
 export interface IndexProjectResult {
   changedFiles: number;
   chunkCount: number;
+  createdAt: string;
   deletedFiles: number;
+  failedFileCount: number;
+  failedFiles: IndexFailure[];
   indexedFiles: number;
   project: ProjectInfo;
   projectId: string;
   projectRootPath: string;
+  scannedFiles: number;
+}
+
+export interface IndexFailure {
+  filePath: string;
+  message: string;
+}
+
+export interface IndexEventSummary {
+  changedFiles: number;
+  chunkCount: number;
+  createdAt: string;
+  deletedFiles: number;
+  failedFileCount: number;
+  failedFiles: IndexFailure[];
+  indexedFiles: number;
   scannedFiles: number;
 }
 
@@ -94,8 +115,24 @@ export interface QueryAnalysis {
   tokens: string[];
 }
 
+export type SearchMatchSource = "lexical" | "path" | "symbol";
+
+export interface SearchResultExplanation {
+  matchedSources: SearchMatchSource[];
+  matchedTokens: string[];
+  multiSource?: boolean;
+  pathMatch?: "basename" | "boundary" | "exact" | "prefix" | "suffix";
+  snippetMatch?: "query";
+  symbolMatch?: "boundary" | "exact" | "qualified-suffix";
+  tokenCoverage?: {
+    matched: number;
+    total: number;
+  };
+}
+
 export interface SearchResult {
   endLine: number;
+  explanation?: SearchResultExplanation;
   filePath: string;
   language: Language;
   reason: string;
@@ -105,7 +142,13 @@ export interface SearchResult {
   symbol?: string;
 }
 
+export interface SearchFilters {
+  languages?: SupportedLanguage[];
+  pathPrefix?: string;
+}
+
 export interface SearchResponse {
+  indexing?: IndexEventSummary;
   projectRootPath: string;
   query: string;
   results: SearchResult[];
@@ -121,6 +164,7 @@ export interface ProjectStats {
   fileCount: number;
   languages: Language[];
   lastIndexAt: string | null;
+  latestIndexEvent: IndexEventSummary | null;
   lastScanAt: string | null;
   projectRootPath: string;
   status: ProjectStatus;
@@ -137,7 +181,9 @@ export interface ProjectListItem {
 
 export interface SearchContextInput {
   includeContextLines?: number;
+  languages?: SupportedLanguage[];
   mode?: SearchMode;
+  pathPrefix?: string;
   projectRootPath: string;
   query: string;
   topK?: number;

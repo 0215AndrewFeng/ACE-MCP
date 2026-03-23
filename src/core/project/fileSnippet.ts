@@ -19,8 +19,11 @@ export async function readFileSnippet(
   const absolutePath = resolveProjectPath(projectRootPath, filePath);
   const content = await readFile(absolutePath, "utf8");
   const lines = content.split(/\r?\n/);
-  const safeStart = Math.min(startLine, endLine);
-  const safeEnd = Math.max(startLine, endLine);
+  const lineCount = lines.length;
+  const normalizedStart = Math.min(startLine, endLine);
+  const normalizedEnd = Math.max(startLine, endLine);
+  const safeStart = Math.min(Math.max(normalizedStart, 1), lineCount);
+  const safeEnd = Math.min(Math.max(normalizedEnd, safeStart), lineCount);
 
   return {
     endLine: safeEnd,
