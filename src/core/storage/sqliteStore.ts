@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 
 import { buildStableId } from "../indexing/fileFingerprint.js";
+import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import type {
   ChunkRecord,
   IndexEventSummary,
@@ -80,6 +81,16 @@ function buildSearchFilterClause(filters: SearchFilters | undefined): {
     parameters.push(`${filters.pathPrefix.toLowerCase()}%`);
   }
 
+  if (filters.pathContains) {
+    clauses.push("LOWER(f.relative_path) LIKE ?");
+    parameters.push(`%${filters.pathContains.toLowerCase()}%`);
+  }
+
+  if (filters.excludePathPrefix) {
+    clauses.push("LOWER(f.relative_path) NOT LIKE ?");
+    parameters.push(`${filters.excludePathPrefix.toLowerCase()}%`);
+  }
+
   return {
     parameters,
     sql: clauses.length > 0 ? ` AND ${clauses.join(" AND ")}` : "",
@@ -130,13 +141,14 @@ export class SQLiteStore {
   }
 
   public getProjectByRoot(projectRootPath: string): ProjectRow | undefined {
+    const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
     return this.db
       .prepare(
         `SELECT project_id, project_root_path, project_type, languages, last_scan_at, last_index_at, status, index_version
-         FROM project
-         WHERE project_root_path = ?`,
+          FROM project
+          WHERE project_root_path = ?`,
       )
-      .get(projectRootPath) as ProjectRow | undefined;
+      .get(normalizedProjectRootPath) as ProjectRow | undefined;
   }
 
   public getProjectStats(projectRootPath: string): ProjectStats | null {
@@ -452,6 +464,50 @@ export class SQLiteStore {
       reason: "path",
       score: 0.65 - index * 0.05,
       snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+    }));
+  }
+
+  public searchByTextSubstrings(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const whereClause = tokens.map(() => "instr(c.content, ?) > 0").join(" OR ");
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           c.start_line,
+           c.end_line,
+           c.content
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         WHERE f.project_id = ?
+           AND (${whereClause})
+           ${filterClause.sql}
+         ORDER BY c.start_line ASC, LENGTH(f.relative_path) ASC
+         LIMIT ?`,
+      )
+      .all(projectId, ...tokens, ...filterClause.parameters, limit) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      relative_path: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row, index) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      reason: "lexical",
+      score: 0.72 - index * 0.04,
+      snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
     }));
   }
@@ -499,6 +555,7 @@ export class SQLiteStore {
       reason: "symbol",
       score: 0.8 - index * 0.05,
       snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
       symbol: row.name,
     }));
@@ -533,6 +590,7 @@ export class SQLiteStore {
       reason: "lexical",
       score: 1 / (1 + Math.abs(row.raw_score)),
       snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
     }));
   }

@@ -116,6 +116,7 @@ export interface QueryAnalysis {
 }
 
 export type SearchMatchSource = "lexical" | "path" | "symbol";
+export type SearchResultMode = "full" | "metadata";
 
 export interface SearchResultExplanation {
   matchedSources: SearchMatchSource[];
@@ -138,12 +139,15 @@ export interface SearchResult {
   reason: string;
   score: number;
   snippet: string;
+  snippetIncluded: boolean;
   startLine: number;
   symbol?: string;
 }
 
 export interface SearchFilters {
+  excludePathPrefix?: string;
   languages?: SupportedLanguage[];
+  pathContains?: string;
   pathPrefix?: string;
 }
 
@@ -151,6 +155,7 @@ export interface SearchResponse {
   indexing?: IndexEventSummary;
   projectRootPath: string;
   query: string;
+  resultMode: SearchResultMode;
   results: SearchResult[];
   stats: {
     indexedFiles: number;
@@ -180,12 +185,15 @@ export interface ProjectListItem {
 }
 
 export interface SearchContextInput {
+  excludePathPrefix?: string;
   includeContextLines?: number;
   languages?: SupportedLanguage[];
   mode?: SearchMode;
+  pathContains?: string;
   pathPrefix?: string;
   projectRootPath: string;
   query: string;
+  resultMode?: SearchResultMode;
   topK?: number;
 }
 
