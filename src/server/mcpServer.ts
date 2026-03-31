@@ -5,7 +5,7 @@ import { registerTools, type ToolDependencies } from "./toolRegistry.js";
 export function createMcpServer(dependencies: ToolDependencies): McpServer {
   const server = new McpServer({
     name: "ace-mcp",
-    version: "2.0.0",
+    version: "3.0.0",
   });
 
   registerTools(server, dependencies);

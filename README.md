@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v2.0.0`
+当前版本：`v3.0.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -14,6 +14,11 @@
 - 轻量符号抽取
 - `search_context` / `index_project` / `get_file_snippet` / `project_stats`
 - 可选 Web 调试面板
+
+## 使用示例
+
+- Copilot 提示词模板：[`example/copilot-prompts.md`](./example/copilot-prompts.md)
+- Claude Code 提示词模板：[`example/claude-code-prompts.md`](./example/claude-code-prompts.md)
 
 ## 环境要求
 
@@ -112,6 +117,9 @@ npm start -- --web-port 8787
 
 - `languages`: 仅在指定语言范围内搜索，例如 `["java", "javascript"]`
 - `pathPrefix`: 仅在指定相对路径前缀下搜索，例如 `src/web`
+- `pathContains`: 仅在路径包含指定片段时搜索，例如 `search`
+- `excludePathPrefix`: 排除指定相对路径前缀，例如 `dist`
+- `resultMode`: 返回模式，`full` 返回 snippet，`metadata` 仅返回元数据与解释摘要
 
 输入示例：
 
@@ -123,11 +131,14 @@ npm start -- --web-port 8787
   "topK": 8,
   "includeContextLines": 8,
   "languages": ["javascript"],
-  "pathPrefix": "src/web"
+  "pathPrefix": "src/web",
+  "pathContains": "search",
+  "excludePathPrefix": "dist",
+  "resultMode": "metadata"
 }
 ```
 
-其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages` 与 `pathPrefix` 均为可选；未传时保持当前全局搜索行为。
+其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages`、`pathPrefix`、`pathContains`、`excludePathPrefix` 与 `resultMode` 均为可选；未传时保持当前全局搜索行为。`resultMode = "metadata"` 时结果仍保留位置、分数和 `explanation`，但 `snippet` 会被省略为空字符串，且 `snippetIncluded = false`。
 
 搜索结果中的每个条目现在还会附带紧凑的 `explanation` 摘要，用于解释该结果为何靠前，例如：
 

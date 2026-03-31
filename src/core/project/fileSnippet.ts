@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { resolveProjectPath } from "./pathNormalizer.js";
+import { normalizeAbsolutePath, resolveProjectPath, toProjectRelativePath } from "./pathNormalizer.js";
 
 export interface FileSnippetResult {
   endLine: number;
@@ -16,7 +16,8 @@ export async function readFileSnippet(
   startLine: number,
   endLine: number,
 ): Promise<FileSnippetResult> {
-  const absolutePath = resolveProjectPath(projectRootPath, filePath);
+  const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
+  const absolutePath = resolveProjectPath(normalizedProjectRootPath, filePath);
   const content = await readFile(absolutePath, "utf8");
   const lines = content.split(/\r?\n/);
   const lineCount = lines.length;
@@ -27,8 +28,8 @@ export async function readFileSnippet(
 
   return {
     endLine: safeEnd,
-    filePath,
-    projectRootPath,
+    filePath: toProjectRelativePath(normalizedProjectRootPath, absolutePath),
+    projectRootPath: normalizedProjectRootPath,
     snippet: lines.slice(safeStart - 1, safeEnd).join("\n"),
     startLine: safeStart,
   };

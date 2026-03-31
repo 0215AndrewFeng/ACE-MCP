@@ -11,6 +11,7 @@ import {
   type SearchMode,
   type SearchResponse,
   type SearchResultExplanation,
+  type SearchResultMode,
   type SearchResult,
   type SupportedLanguage,
 } from "../common/types.js";
@@ -23,6 +24,7 @@ const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascri
 const SEARCH_FANOUT_LIMIT = 50;
 const SEARCH_FANOUT_MULTIPLIER = 3;
 const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol"]);
+const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 
 function clampSnippet(snippet: string, maxLength = 1200): string {
   if (snippet.length <= maxLength) {
@@ -58,6 +60,10 @@ function countCoveredTokens(fields: string[], tokens: string[]): number {
 
 function countReasons(reason: string): number {
   return new Set(reason.split("+").filter(Boolean)).size;
+}
+
+function containsUnicodeToken(tokens: string[]): boolean {
+  return tokens.some((token) => NON_ASCII_PATTERN.test(token));
 }
 
 function parseMatchedSources(reason: string): SearchMatchSource[] {
@@ -190,6 +196,21 @@ function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: 
     .slice(0, limit);
 }
 
+function applyResultMode(results: SearchResult[], resultMode: SearchResultMode): SearchResult[] {
+  if (resultMode === "full") {
+    return results.map((result) => ({
+      ...result,
+      snippetIncluded: true,
+    }));
+  }
+
+  return results.map((result) => ({
+    ...result,
+    snippet: "",
+    snippetIncluded: false,
+  }));
+}
+
 function mergeResults(resultSets: SearchResult[][]): SearchResult[] {
   const byLocation = new Map<string, SearchResult>();
 
@@ -238,6 +259,10 @@ function normalizePathPrefix(pathPrefix: string | undefined): string | undefined
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizePathContains(pathContains: string | undefined): string | undefined {
+  return normalizePathPrefix(pathContains);
+}
+
 function normalizeSearchFilters(filters: SearchFilters | undefined): SearchFilters | undefined {
   if (!filters) {
     return undefined;
@@ -246,14 +271,18 @@ function normalizeSearchFilters(filters: SearchFilters | undefined): SearchFilte
   const languages = filters.languages
     ? [...new Set(filters.languages.filter((language): language is SupportedLanguage => SUPPORTED_SEARCH_LANGUAGES.has(language)))]
     : undefined;
+  const excludePathPrefix = normalizePathPrefix(filters.excludePathPrefix);
+  const pathContains = normalizePathContains(filters.pathContains);
   const pathPrefix = normalizePathPrefix(filters.pathPrefix);
 
-  if ((!languages || languages.length === 0) && !pathPrefix) {
+  if ((!languages || languages.length === 0) && !pathPrefix && !pathContains && !excludePathPrefix) {
     return undefined;
   }
 
   return {
+    excludePathPrefix,
     languages: languages && languages.length > 0 ? languages : undefined,
+    pathContains,
     pathPrefix,
   };
 }
@@ -299,6 +328,7 @@ export class SearchService {
     topK: number,
     includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
     filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
   ): Promise<SearchResponse> {
     const startedAt = performance.now();
     const project = this.store.getProjectByRoot(projectRootPath);
@@ -324,6 +354,10 @@ export class SearchService {
       }
     }
 
+    if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens)) {
+      resultSets.push(this.store.searchByTextSubstrings(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
+    }
+
     if (mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike) {
       resultSets.push(this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
     }
@@ -332,17 +366,23 @@ export class SearchService {
       resultSets.push(this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
     }
 
-    const results = await expandResultSnippets(
-      projectRootPath,
-      rerankResults(mergeResults(resultSets), analysis, topK),
-      normalizedIncludeContextLines,
-    );
+    const rerankedResults = rerankResults(mergeResults(resultSets), analysis, topK);
+    const hydratedResults =
+      resultMode === "full"
+        ? await expandResultSnippets(
+            projectRootPath,
+            rerankedResults,
+            normalizedIncludeContextLines,
+          )
+        : rerankedResults;
+    const results = applyResultMode(hydratedResults, resultMode);
     const stats = this.store.getProjectStats(projectRootPath);
     const searchMs = Math.round(performance.now() - startedAt);
 
     return {
       projectRootPath,
       query,
+      resultMode,
       results,
       stats: {
         indexedFiles: stats?.fileCount ?? 0,
