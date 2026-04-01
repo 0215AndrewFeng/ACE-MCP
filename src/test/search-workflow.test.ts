@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
+import { javascriptAdapter } from "../adapters/javascript/index.js";
 import { AppError } from "../core/common/errors.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { createTestProjectEnvironment } from "./helpers.js";
@@ -88,6 +89,101 @@ test("readFileSnippet blocks paths outside the project root", async () => {
     assert.equal(snippet.projectRootPath, environment.projectRootPath);
     assert.equal(snippet.filePath, "src/refund/service.ts");
     assert.equal(snippet.snippet, "line1\nline2");
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("AST-based JavaScript adapter extracts classes, interfaces, methods, enums, and object members", () => {
+  const content = `
+export interface RefundGateway {
+  executeRefund(input: string): Promise<string>;
+  findRefund: (id: string) => Promise<string>;
+}
+
+export enum RefundStatus {
+  Pending = "pending",
+  Done = "done"
+}
+
+export class RefundService implements RefundGateway {
+  async executeRefund(input: string): Promise<string> {
+    return input.trim();
+  }
+
+  findRefund = async (id: string): Promise<string> => id;
+}
+
+export const buildRefund = async (reason: string) => reason.trim();
+
+export const refundRegistry = {
+  createRecord(id: string) {
+    return { id };
+  },
+  findRecord: async (id: string) => id,
+  nested: {
+    normalizeCode(code: string) {
+      return code.trim();
+    }
+  }
+};
+
+export const InlineRefundService = class {
+  run() {
+    return true;
+  }
+};
+`;
+
+  const symbols = javascriptAdapter.extractSymbols("fixture-file", content);
+  const keys = new Set(symbols.map((symbol) => `${symbol.kind}:${symbol.fullName}`));
+
+  assert.equal(keys.has("interface:RefundGateway"), true);
+  assert.equal(keys.has("method:RefundGateway.executeRefund"), true);
+  assert.equal(keys.has("method:RefundGateway.findRefund"), true);
+  assert.equal(keys.has("enum:RefundStatus"), true);
+  assert.equal(keys.has("class:RefundService"), true);
+  assert.equal(keys.has("method:RefundService.executeRefund"), true);
+  assert.equal(keys.has("method:RefundService.findRefund"), true);
+  assert.equal(keys.has("function:buildRefund"), true);
+  assert.equal(keys.has("method:refundRegistry.createRecord"), true);
+  assert.equal(keys.has("method:refundRegistry.findRecord"), true);
+  assert.equal(keys.has("method:refundRegistry.nested.normalizeCode"), true);
+  assert.equal(keys.has("class:InlineRefundService"), true);
+  assert.equal(keys.has("method:InlineRefundService.run"), true);
+});
+
+test("symbol search returns AST-extracted JavaScript and TypeScript definitions", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/service.ts": `
+export interface RefundGateway {
+  executeRefund(input: string): Promise<string>;
+}
+
+export class RefundService implements RefundGateway {
+  async executeRefund(input: string): Promise<string> {
+    return input.trim();
+  }
+}
+
+export const refundRegistry = {
+  createRecord(id: string) {
+    return { id };
+  }
+};
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const interfaceResponse = await environment.searchService.search(environment.projectRootPath, "RefundGateway", "symbol", 10);
+    assert.equal(interfaceResponse.results.some((result) => result.symbol === "RefundGateway"), true);
+
+    const methodResponse = await environment.searchService.search(environment.projectRootPath, "createRecord", "symbol", 10);
+    assert.equal(methodResponse.results.some((result) => result.symbol === "createRecord"), true);
+    assert.equal(methodResponse.results.some((result) => result.filePath === "src/refund/service.ts"), true);
   } finally {
     await environment.cleanup();
   }
