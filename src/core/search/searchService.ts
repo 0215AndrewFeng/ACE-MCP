@@ -25,6 +25,7 @@ const SEARCH_FANOUT_LIMIT = 50;
 const SEARCH_FANOUT_MULTIPLIER = 3;
 const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol"]);
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
+const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 function clampSnippet(snippet: string, maxLength = 1200): string {
   if (snippet.length <= maxLength) {
@@ -64,6 +65,10 @@ function countReasons(reason: string): number {
 
 function containsUnicodeToken(tokens: string[]): boolean {
   return tokens.some((token) => NON_ASCII_PATTERN.test(token));
+}
+
+function isCjkToken(token: string): boolean {
+  return CJK_PATTERN.test(token);
 }
 
 function parseMatchedSources(reason: string): SearchMatchSource[] {
@@ -108,6 +113,11 @@ function scoreMergedResult(
   }
 
   if (normalizedQuery.length > 0) {
+    if (analysis.tokens.length > 1 && normalizedSnippet.includes(normalizedQuery)) {
+      score += 0.45;
+      explanation.snippetMatch = "query";
+    }
+
     if (normalizedPath === normalizedPathQuery) {
       score += 1.25;
       explanation.pathMatch = "exact";
@@ -160,6 +170,10 @@ function scoreMergedResult(
       score += 0.06;
       explanation.pathMatch ??= "boundary";
     }
+
+    if (isCjkToken(token) && normalizedSnippet.includes(token)) {
+      score += 0.08;
+    }
   }
 
   if (result.reason.includes("symbol") && normalizedSymbol) {
@@ -176,8 +190,85 @@ function scoreMergedResult(
   };
 }
 
+function choosePreferredResult(existing: SearchResult, incoming: SearchResult, analysis: QueryAnalysis): SearchResult {
+  const existingScored = scoreMergedResult(existing, analysis);
+  const incomingScored = scoreMergedResult(incoming, analysis);
+  if (incomingScored.score > existingScored.score) {
+    return {
+      ...incoming,
+      explanation: incomingScored.explanation,
+      score: incomingScored.score,
+    };
+  }
+
+  return {
+    ...existing,
+    explanation: existingScored.explanation,
+    score: existingScored.score,
+  };
+}
+
+function dedupeSameFileResults(results: SearchResult[], analysis: QueryAnalysis, perFileLimit = 2): SearchResult[] {
+  const grouped = new Map<string, SearchResult[]>();
+  for (const result of results) {
+    const current = grouped.get(result.filePath) ?? [];
+    current.push(result);
+    grouped.set(result.filePath, current);
+  }
+
+  const deduped: SearchResult[] = [];
+  for (const fileResults of grouped.values()) {
+    const mergedBySymbol = new Map<string, SearchResult>();
+    for (const result of fileResults) {
+      const key = result.symbol ? `symbol:${result.symbol}` : `range:${result.startLine}:${result.endLine}`;
+      const existing = mergedBySymbol.get(key);
+      if (!existing) {
+        mergedBySymbol.set(key, result);
+        continue;
+      }
+
+      const reasons = new Set([...existing.reason.split("+"), ...result.reason.split("+")]);
+      const preferred = choosePreferredResult(
+        {
+          ...existing,
+          reason: [...reasons].sort().join("+"),
+          score: existing.score + result.score,
+        },
+        {
+          ...result,
+          reason: [...reasons].sort().join("+"),
+          score: existing.score + result.score,
+        },
+        analysis,
+      );
+      mergedBySymbol.set(key, preferred);
+    }
+
+    const ranked = [...mergedBySymbol.values()]
+      .map((result) => {
+        const scored = scoreMergedResult(result, analysis);
+        return {
+          ...result,
+          explanation: scored.explanation,
+          score: scored.score,
+        };
+      })
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          countReasons(right.reason) - countReasons(left.reason) ||
+          left.startLine - right.startLine,
+      )
+      .slice(0, perFileLimit);
+
+    deduped.push(...ranked);
+  }
+
+  return deduped;
+}
+
 function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number): SearchResult[] {
-  return results
+  return dedupeSameFileResults(results, analysis)
     .map((result) => {
       const scored = scoreMergedResult(result, analysis);
       return {
@@ -194,6 +285,22 @@ function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: 
         left.filePath.localeCompare(right.filePath),
     )
     .slice(0, limit);
+}
+
+function buildExpandedUnicodeTokens(analysis: QueryAnalysis): string[] {
+  const expanded = new Set(analysis.tokens);
+  for (const token of analysis.tokens) {
+    if (isCjkToken(token) && [...token].length > 1) {
+      for (let index = 0; index < token.length - 1; index += 1) {
+        const part = token.slice(index, index + 2);
+        if (part.length >= 2) {
+          expanded.add(part);
+        }
+      }
+    }
+  }
+
+  return [...expanded];
 }
 
 function applyResultMode(results: SearchResult[], resultMode: SearchResultMode): SearchResult[] {
@@ -355,7 +462,14 @@ export class SearchService {
     }
 
     if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens)) {
-      resultSets.push(this.store.searchByTextSubstrings(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
+      resultSets.push(
+        this.store.searchByTextSubstrings(
+          project.project_id,
+          buildExpandedUnicodeTokens(analysis),
+          fanoutLimit,
+          normalizedFilters,
+        ),
+      );
     }
 
     if (mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike) {

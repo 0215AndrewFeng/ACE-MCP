@@ -188,3 +188,71 @@ export const refundRegistry = {
     await environment.cleanup();
   }
 });
+
+test("phrase matches rank exact snippets ahead of split-token matches", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/exact.ts": "export const message = 'refund create flow';\n",
+    "src/refund/scattered.ts": "export const refund = true;\nexport const createHandler = () => 'flow';\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const response = await environment.searchService.search(environment.projectRootPath, "refund create flow", "auto", 5);
+    assert.equal(response.results[0]?.filePath, "src/refund/exact.ts");
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("same-file search results are deduplicated to the strongest few matches", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/service.ts": `
+export class RefundService {
+  createRefundRecord() {
+    return "record";
+  }
+
+  createRefundReceipt() {
+    return "receipt";
+  }
+
+  createRefundReport() {
+    return "report";
+  }
+}
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const response = await environment.searchService.search(environment.projectRootPath, "createRefund", "symbol", 10);
+    const sameFileResults = response.results.filter((result) => result.filePath === "src/refund/service.ts");
+
+    assert.equal(sameFileResults.length <= 2, true);
+    assert.equal(sameFileResults.every((result) => result.symbol?.startsWith("createRefund")), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("multi-token Chinese queries can match content split across nearby text", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/chinese.ts": "export const message = '退款申请已经处理完成';\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const response = await environment.searchService.search(environment.projectRootPath, "退款 处理", "auto", 5);
+
+    assert.equal(response.results.some((result) => result.filePath === "src/refund/chinese.ts"), true);
+    assert.equal(response.results.some((result) => result.reason.includes("lexical")), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
