@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
+import { dotnetAdapter } from "../adapters/dotnet/index.js";
 import { javascriptAdapter } from "../adapters/javascript/index.js";
+import { javaAdapter } from "../adapters/java/index.js";
+import { pythonAdapter } from "../adapters/python/index.js";
 import { AppError } from "../core/common/errors.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { createTestProjectEnvironment } from "./helpers.js";
@@ -252,6 +255,140 @@ test("multi-token Chinese queries can match content split across nearby text", a
 
     assert.equal(response.results.some((result) => result.filePath === "src/refund/chinese.ts"), true);
     assert.equal(response.results.some((result) => result.reason.includes("lexical")), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("Java Python and .NET adapters extract qualified types and methods", () => {
+  const javaSymbols = javaAdapter.extractSymbols(
+    "java-file",
+    `
+package com.example.refund;
+
+public record RefundRequest(String id) {}
+
+public class RefundService {
+  public String processRefund(String id) {
+    return id;
+  }
+
+  interface InnerGateway {
+    String execute();
+  }
+}
+`,
+  );
+  const javaKeys = new Set(javaSymbols.map((symbol) => `${symbol.kind}:${symbol.fullName}`));
+  assert.equal(javaKeys.has("record:com.example.refund.RefundRequest"), true);
+  assert.equal(javaKeys.has("class:com.example.refund.RefundService"), true);
+  assert.equal(javaKeys.has("method:com.example.refund.RefundService.processRefund"), true);
+  assert.equal(javaKeys.has("interface:com.example.refund.RefundService.InnerGateway"), true);
+  assert.equal(javaKeys.has("method:com.example.refund.RefundService.InnerGateway.execute"), true);
+
+  const pythonSymbols = pythonAdapter.extractSymbols(
+    "python-file",
+    `
+class RefundService:
+    async def process_refund(self, refund_id: str) -> str:
+        return refund_id
+
+    class Gateway:
+        def execute(self):
+            return True
+
+def build_refund():
+    return "ok"
+`,
+  );
+  const pythonKeys = new Set(pythonSymbols.map((symbol) => `${symbol.kind}:${symbol.fullName}`));
+  assert.equal(pythonKeys.has("class:RefundService"), true);
+  assert.equal(pythonKeys.has("method:RefundService.process_refund"), true);
+  assert.equal(pythonKeys.has("class:RefundService.Gateway"), true);
+  assert.equal(pythonKeys.has("method:RefundService.Gateway.execute"), true);
+  assert.equal(pythonKeys.has("function:build_refund"), true);
+
+  const dotnetSymbols = dotnetAdapter.extractSymbols(
+    "dotnet-file",
+    `
+namespace Refund.App.Services;
+
+public record RefundRequest(string Id);
+
+public class RefundService
+{
+    public async Task<string> ProcessRefund(string id)
+    {
+        return id;
+    }
+
+    internal interface Gateway
+    {
+        Task<string> ExecuteAsync();
+    }
+}
+`,
+  );
+  const dotnetKeys = new Set(dotnetSymbols.map((symbol) => `${symbol.kind}:${symbol.fullName}`));
+  assert.equal(dotnetKeys.has("record:Refund.App.Services.RefundRequest"), true);
+  assert.equal(dotnetKeys.has("class:Refund.App.Services.RefundService"), true);
+  assert.equal(dotnetKeys.has("method:Refund.App.Services.RefundService.ProcessRefund"), true);
+  assert.equal(dotnetKeys.has("interface:Refund.App.Services.RefundService.Gateway"), true);
+  assert.equal(dotnetKeys.has("method:Refund.App.Services.RefundService.Gateway.ExecuteAsync"), true);
+});
+
+test("symbol search returns improved Java Python and .NET definitions", async () => {
+  const environment = await createTestProjectEnvironment({
+    "pom.xml": "<project />\n",
+    "pyproject.toml": "[project]\nname = 'fixture'\n",
+    "Refund.App.csproj": "<Project />\n",
+    "src/java/RefundService.java": `
+package com.example.refund;
+
+public class RefundService {
+  public String processRefund(String id) {
+    return id;
+  }
+}
+`,
+    "src/python/refund_service.py": `
+class RefundService:
+    def process_refund(self, refund_id: str) -> str:
+        return refund_id
+`,
+    "src/dotnet/RefundService.cs": `
+namespace Refund.App.Services;
+
+public class RefundService
+{
+    public Task<string> ProcessRefund(string id)
+    {
+        return Task.FromResult(id);
+    }
+}
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const javaResponse = await environment.searchService.search(environment.projectRootPath, "processRefund", "symbol", 10, 0, {
+      languages: ["java"],
+    });
+    assert.equal(javaResponse.results.some((result) => result.symbol === "processRefund"), true);
+    assert.equal(javaResponse.results.some((result) => result.filePath === "src/java/RefundService.java"), true);
+
+    const pythonResponse = await environment.searchService.search(environment.projectRootPath, "process_refund", "symbol", 10, 0, {
+      languages: ["python"],
+    });
+    assert.equal(pythonResponse.results.some((result) => result.symbol === "process_refund"), true);
+    assert.equal(pythonResponse.results.some((result) => result.filePath === "src/python/refund_service.py"), true);
+
+    const dotnetResponse = await environment.searchService.search(environment.projectRootPath, "ProcessRefund", "symbol", 10, 0, {
+      languages: ["dotnet"],
+    });
+    assert.equal(dotnetResponse.results.some((result) => result.symbol === "ProcessRefund"), true);
+    assert.equal(dotnetResponse.results.some((result) => result.filePath === "src/dotnet/RefundService.cs"), true);
   } finally {
     await environment.cleanup();
   }
