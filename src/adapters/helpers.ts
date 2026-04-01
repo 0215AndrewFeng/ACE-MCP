@@ -6,8 +6,40 @@ export interface PatternDefinition {
   pattern: RegExp;
 }
 
-function getLineNumber(source: string, index: number): number {
+const MAX_SIGNATURE_LENGTH = 240;
+
+export function getLineNumber(source: string, index: number): number {
   return source.slice(0, index).split(/\r?\n/).length;
+}
+
+export function buildQualifiedName(parts: string[]): string {
+  return parts.filter(Boolean).join(".");
+}
+
+export function normalizeSignature(signature: string): string {
+  const compact = signature.replace(/\s+/g, " ").trim();
+  return compact.length <= MAX_SIGNATURE_LENGTH ? compact : `${compact.slice(0, MAX_SIGNATURE_LENGTH - 3)}...`;
+}
+
+export function createSymbolInfo(params: {
+  fileId: string;
+  fullName?: string;
+  kind: SymbolInfo["kind"];
+  language: Language;
+  line: number;
+  name: string;
+  signature: string;
+}): SymbolInfo {
+  const fullName = params.fullName ?? params.name;
+  return {
+    fileId: params.fileId,
+    fullName,
+    kind: params.kind,
+    line: params.line,
+    name: params.name,
+    signature: normalizeSignature(params.signature),
+    symbolId: buildStableId([params.fileId, params.language, params.kind, fullName, String(params.line)]),
+  };
 }
 
 export function extractSymbolsWithPatterns(
@@ -25,15 +57,7 @@ export function extractSymbolsWithPatterns(
       const line = getLineNumber(content, index);
       const signature = match[0].trim();
 
-      symbols.push({
-        fileId,
-        fullName: name,
-        kind: definition.kind,
-        line,
-        name,
-        signature,
-        symbolId: buildStableId([fileId, language, definition.kind, name, String(line)]),
-      });
+      symbols.push(createSymbolInfo({ fileId, kind: definition.kind, language, line, name, signature }));
     }
   }
 

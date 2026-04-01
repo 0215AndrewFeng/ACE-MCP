@@ -11,7 +11,7 @@
 - 本地项目扫描与 `.gitignore` 过滤
 - 增量索引
 - `SQLite + FTS5` 全文检索
-- JavaScript/TypeScript AST 级定义抽取，其他语言轻量符号抽取
+- JavaScript/TypeScript AST 级定义抽取，Java / Python / .NET 增强轻量符号抽取
 - `search_context` / `index_project` / `get_file_snippet` / `project_stats`
 - 可选 Web 调试面板
 
