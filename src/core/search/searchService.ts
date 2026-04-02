@@ -23,7 +23,7 @@ import { SQLiteStore } from "../storage/sqliteStore.js";
 const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
 const SEARCH_FANOUT_LIMIT = 50;
 const SEARCH_FANOUT_MULTIPLIER = 3;
-const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol"]);
+const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol", "semantic"]);
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
@@ -182,6 +182,10 @@ function scoreMergedResult(
 
   if (result.reason.includes("path") && analysis.isPathLike) {
     score += 0.1;
+  }
+
+  if (result.reason.includes("semantic")) {
+    score += analysis.isPathLike || analysis.isSymbolLike ? 0.04 : 0.16;
   }
 
   return {
@@ -459,6 +463,16 @@ export class SearchService {
           query,
         });
       }
+    }
+
+    if (
+      (mode === "semantic" ||
+        mode === "hybrid" ||
+        (mode === "auto" && !analysis.isPathLike && !analysis.isSymbolLike)) &&
+      analysis.semanticTerms.length > 0
+    ) {
+      this.store.ensureSemanticIndex(project.project_id);
+      resultSets.push(this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters));
     }
 
     if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens)) {

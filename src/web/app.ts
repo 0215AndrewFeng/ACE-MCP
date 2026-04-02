@@ -144,6 +144,7 @@ function getHomePageHtml(): string {
           <option value="auto">auto</option>
           <option value="lexical">lexical</option>
           <option value="symbol">symbol</option>
+          <option value="semantic">semantic</option>
           <option value="hybrid">hybrid</option>
         </select>
         <label for="top-k">Top K</label>
@@ -278,7 +279,7 @@ function toolCatalog(): Array<{ description: string; name: string }> {
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
     {
       description:
-        "Incrementally index the project and return code snippets relevant to a natural language, symbol, or path query, with optional context lines and path/language filters.",
+        "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query, with optional context lines and path/language filters.",
       name: "search_context",
     },
     { description: "Read a range of lines from a project file.", name: "get_file_snippet" },

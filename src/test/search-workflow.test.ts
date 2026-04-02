@@ -260,6 +260,27 @@ test("multi-token Chinese queries can match content split across nearby text", a
   }
 });
 
+test("semantic mode matches conceptual synonyms in code identifiers", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/auth/signInHandler.ts": "export const signInHandler = async () => 'ok';\n",
+    "src/orders/OrderDao.ts": "export class OrderDao { insertOrder() { return true; } }\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const loginResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
+    assert.equal(loginResponse.results.some((result) => result.filePath === "src/auth/signInHandler.ts"), true);
+    assert.equal(loginResponse.results.some((result) => result.reason.includes("semantic")), true);
+
+    const repositoryResponse = await environment.searchService.search(environment.projectRootPath, "repository save order", "semantic", 5);
+    assert.equal(repositoryResponse.results.some((result) => result.filePath === "src/orders/OrderDao.ts"), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("Java Python and .NET adapters extract qualified types and methods", () => {
   const javaSymbols = javaAdapter.extractSymbols(
     "java-file",
