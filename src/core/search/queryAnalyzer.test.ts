@@ -20,3 +20,13 @@ test("analyzeQuery builds FTS-safe terms from path-like queries", () => {
   assert.equal(analysis.isPathLike, true);
   assert.equal(analysis.isSymbolLike, false);
 });
+
+test("analyzeQuery builds semantic terms with synonym expansion", () => {
+  const analysis = analyzeQuery("login handler");
+
+  assert.equal(analysis.semanticTerms.includes("login"), true);
+  assert.equal(analysis.semanticTerms.includes("signin"), true);
+  assert.equal(analysis.semanticTerms.includes("auth"), true);
+  assert.equal(analysis.semanticTerms.includes("handler"), true);
+  assert.equal(analysis.semanticTerms.includes("controller"), true);
+});

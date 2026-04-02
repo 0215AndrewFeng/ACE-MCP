@@ -1,6 +1,6 @@
 export type Language = "java" | "javascript" | "dotnet" | "python" | "unknown";
 export type SupportedLanguage = Exclude<Language, "unknown">;
-export type SearchMode = "auto" | "lexical" | "symbol" | "hybrid";
+export type SearchMode = "auto" | "lexical" | "symbol" | "semantic" | "hybrid";
 export type ProjectStatus = "ready" | "indexing" | "error";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
@@ -112,10 +112,11 @@ export interface QueryAnalysis {
   isPathLike: boolean;
   isSymbolLike: boolean;
   rawQuery: string;
+  semanticTerms: string[];
   tokens: string[];
 }
 
-export type SearchMatchSource = "lexical" | "path" | "symbol";
+export type SearchMatchSource = "lexical" | "path" | "symbol" | "semantic";
 export type SearchResultMode = "full" | "metadata";
 
 export interface SearchResultExplanation {

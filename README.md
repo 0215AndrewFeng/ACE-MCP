@@ -11,6 +11,7 @@
 - 本地项目扫描与 `.gitignore` 过滤
 - 增量索引
 - `SQLite + FTS5` 全文检索
+- 语义召回 `MVP`（本地语义词扩展 + 混合检索）
 - JavaScript/TypeScript AST 级定义抽取，Java / Python / .NET 增强轻量符号抽取
 - `search_context` / `index_project` / `get_file_snippet` / `project_stats`
 - 可选 Web 调试面板
@@ -120,6 +121,7 @@ npm start -- --web-port 8787
 - `pathContains`: 仅在路径包含指定片段时搜索，例如 `search`
 - `excludePathPrefix`: 排除指定相对路径前缀，例如 `dist`
 - `resultMode`: 返回模式，`full` 返回 snippet，`metadata` 仅返回元数据与解释摘要
+- `mode`: 搜索模式，支持 `auto` / `lexical` / `symbol` / `semantic` / `hybrid`
 
 输入示例：
 
@@ -138,11 +140,13 @@ npm start -- --web-port 8787
 }
 ```
 
-其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages`、`pathPrefix`、`pathContains`、`excludePathPrefix` 与 `resultMode` 均为可选；未传时保持当前全局搜索行为。`resultMode = "metadata"` 时结果仍保留位置、分数和 `explanation`，但 `snippet` 会被省略为空字符串，且 `snippetIncluded = false`。
+其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages`、`pathPrefix`、`pathContains`、`excludePathPrefix`、`resultMode` 与 `mode` 均为可选；未传时保持当前全局搜索行为。`resultMode = "metadata"` 时结果仍保留位置、分数和 `explanation`，但 `snippet` 会被省略为空字符串，且 `snippetIncluded = false`。
+
+当前 `auto` 与 `hybrid` 模式会额外启用语义召回 `MVP`：基于本地索引内容生成语义词，并结合常见代码概念同义词（如 `login/signin/auth`、`repository/dao/store`、`handler/controller/endpoint`）进行混合检索；若只想看语义候选，也可直接使用 `mode = "semantic"`。
 
 搜索结果中的每个条目现在还会附带紧凑的 `explanation` 摘要，用于解释该结果为何靠前，例如：
 
-- 命中的来源类型 `matchedSources`（`lexical` / `symbol` / `path`）
+- 命中的来源类型 `matchedSources`（`lexical` / `symbol` / `path` / `semantic`）
 - 命中的查询 token 与覆盖率 `matchedTokens` / `tokenCoverage`
 - 是否存在精确路径、文件名、符号或 snippet 查询命中
 

@@ -6,13 +6,14 @@ import type { ToolDependencies } from "../toolRegistry.js";
 
 const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python"] as const;
 const SEARCH_RESULT_MODES = ["full", "metadata"] as const;
+const SEARCH_MODES = ["auto", "lexical", "symbol", "semantic", "hybrid"] as const;
 
 export function registerSearchContextTool(server: McpServer, dependencies: ToolDependencies): void {
   server.registerTool(
     "search_context",
     {
       description:
-        "Incrementally index the project and return code snippets relevant to a natural language, symbol, or path query, with optional context lines and path/language filters.",
+        "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query, with optional context lines and path/language filters.",
       inputSchema: {
         excludePathPrefix: z.string().min(1).optional(),
         includeContextLines: z
@@ -22,7 +23,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
           .max(MAX_INCLUDE_CONTEXT_LINES)
           .default(DEFAULT_INCLUDE_CONTEXT_LINES),
         languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
-        mode: z.enum(["auto", "lexical", "symbol", "hybrid"]).default("auto"),
+        mode: z.enum(SEARCH_MODES).default("auto"),
         pathContains: z.string().min(1).optional(),
         pathPrefix: z.string().min(1).optional(),
         projectRootPath: z.string().min(1),

@@ -1,4 +1,5 @@
 import type { QueryAnalysis } from "../common/types.js";
+import { buildSemanticTerms } from "./semanticText.js";
 
 const TOKEN_SPLIT_PATTERN = /[^\p{L}\p{N}_.$/\\#-]+/u;
 const FTS_TERM_SPLIT_PATTERN = /[.$/\\#-]+/u;
@@ -47,6 +48,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
     isPathLike: /[/.\\]/.test(normalizedQuery),
     isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? ""),
     rawQuery: normalizedQuery,
+    semanticTerms: buildSemanticTerms(normalizedQuery),
     tokens: uniqueTokens,
   };
 }
