@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { Logger } from "../core/common/logger.js";
 import { createTestProjectEnvironment } from "../test/helpers.js";
+import { APP_VERSION } from "../version.js";
 import { startWebApp } from "./app.js";
 
 test("web app exposes runtime diagnostics and health metadata", async () => {
@@ -16,7 +17,7 @@ test("web app exposes runtime diagnostics and health metadata", async () => {
       nodeVersion: process.version,
       pid: process.pid,
       startedAt: new Date(Date.now() - 500).toISOString(),
-      version: "3.0.0",
+      version: APP_VERSION,
       webPort: undefined,
     };
     const handle = await startWebApp(0, {
