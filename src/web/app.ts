@@ -61,6 +61,10 @@ function normalizePathPrefix(value: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizePathContains(value: unknown): string | undefined {
+  return normalizePathPrefix(value);
+}
+
 function normalizeSupportedLanguages(value: unknown): SupportedLanguage[] | undefined {
   const rawValues = Array.isArray(value)
     ? value
@@ -140,16 +144,26 @@ function getHomePageHtml(): string {
           <option value="auto">auto</option>
           <option value="lexical">lexical</option>
           <option value="symbol">symbol</option>
+          <option value="semantic">semantic</option>
           <option value="hybrid">hybrid</option>
         </select>
         <label for="top-k">Top K</label>
         <input id="top-k" type="number" min="1" max="50" value="8" />
+        <label for="search-result-mode">Result mode</label>
+        <select id="search-result-mode">
+          <option value="full">full</option>
+          <option value="metadata">metadata</option>
+        </select>
         <label for="include-context-lines">Context lines</label>
         <input id="include-context-lines" type="number" min="0" max="50" value="0" />
         <label for="search-languages">Languages (comma-separated)</label>
         <input id="search-languages" class="mono" placeholder="javascript,java" />
         <label for="search-path-prefix">Path prefix</label>
         <input id="search-path-prefix" class="mono" placeholder="src/web" />
+        <label for="search-path-contains">Path contains</label>
+        <input id="search-path-contains" class="mono" placeholder="search" />
+        <label for="search-exclude-path-prefix">Exclude path prefix</label>
+        <input id="search-exclude-path-prefix" class="mono" placeholder="dist" />
         <button id="run-search" type="button">Run search_context</button>
       </div>
       <div class="card">
@@ -172,9 +186,12 @@ function getHomePageHtml(): string {
       const projectRootInput = document.getElementById("project-root");
       const searchQueryInput = document.getElementById("search-query");
       const searchModeInput = document.getElementById("search-mode");
+      const searchResultModeInput = document.getElementById("search-result-mode");
       const topKInput = document.getElementById("top-k");
       const includeContextLinesInput = document.getElementById("include-context-lines");
       const searchLanguagesInput = document.getElementById("search-languages");
+      const searchPathContainsInput = document.getElementById("search-path-contains");
+      const searchExcludePathPrefixInput = document.getElementById("search-exclude-path-prefix");
       const searchPathPrefixInput = document.getElementById("search-path-prefix");
       const snippetPathInput = document.getElementById("snippet-path");
       const snippetStartInput = document.getElementById("snippet-start");
@@ -237,9 +254,12 @@ function getHomePageHtml(): string {
         includeContextLines: Number(includeContextLinesInput.value || 0),
         languages: parseSearchLanguages(searchLanguagesInput.value),
         mode: searchModeInput.value,
+        excludePathPrefix: searchExcludePathPrefixInput.value.trim() || undefined,
+        pathContains: searchPathContainsInput.value.trim() || undefined,
         pathPrefix: searchPathPrefixInput.value.trim() || undefined,
         projectRootPath: projectRootInput.value,
         query: searchQueryInput.value,
+        resultMode: searchResultModeInput.value,
         topK: Number(topKInput.value || 8)
       })));
 
@@ -259,7 +279,7 @@ function toolCatalog(): Array<{ description: string; name: string }> {
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
     {
       description:
-        "Incrementally index the project and return code snippets relevant to a natural language, symbol, or path query, with optional context lines, language filters, and path-prefix filtering.",
+        "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query, with optional context lines and path/language filters.",
       name: "search_context",
     },
     { description: "Read a range of lines from a project file.", name: "get_file_snippet" },
@@ -348,13 +368,18 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           ? (body.mode as "auto" | "lexical" | "symbol" | "hybrid")
           : "auto";
         const topK = clampInteger(body.topK, 1, 50, dependencies.settings.defaultTopK);
+        const resultMode = ["full", "metadata"].includes(String(body.resultMode ?? "full"))
+          ? (body.resultMode as "full" | "metadata")
+          : "full";
         const includeContextLines = clampInteger(
           body.includeContextLines,
           DEFAULT_INCLUDE_CONTEXT_LINES,
           MAX_INCLUDE_CONTEXT_LINES,
           DEFAULT_INCLUDE_CONTEXT_LINES,
         );
+        const excludePathPrefix = normalizePathPrefix(body.excludePathPrefix);
         const languages = normalizeSupportedLanguages(body.languages);
+        const pathContains = normalizePathContains(body.pathContains);
         const pathPrefix = normalizePathPrefix(body.pathPrefix);
         const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
         const result = await dependencies.searchService.search(
@@ -364,9 +389,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           topK,
           includeContextLines,
           {
+            excludePathPrefix,
             languages,
+            pathContains,
             pathPrefix,
           },
+          resultMode,
         );
         result.indexing = {
           changedFiles: indexResult.changedFiles,
