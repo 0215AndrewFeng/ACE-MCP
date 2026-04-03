@@ -38,6 +38,12 @@ npm install
 npm run build
 ```
 
+查看当前版本：
+
+```bash
+node dist/index.js --version
+```
+
 ## 本地运行
 
 ### 作为 MCP Server 启动
@@ -56,6 +62,7 @@ npm start -- --web-port 8787
 
 - `http://127.0.0.1:8787/`
 - `http://127.0.0.1:8787/health`
+- `http://127.0.0.1:8787/api/runtime`
 
 ## MCP 客户端配置示例
 
@@ -90,6 +97,12 @@ npm start -- --web-port 8787
   }
 }
 ```
+
+### 宿主升级与重连建议
+
+- 升级 `dist/` 或切换到新版本包后，需在 MCP 宿主侧执行一次 **reload / reconnect**，让宿主拉起新的 `ace-mcp` 进程。
+- 若怀疑宿主仍连着旧进程，可先执行 `node dist/index.js --version` 确认版本，再访问 `/health` 或 `/api/runtime` 检查当前进程的 `version`、`pid` 与 `uptimeMs`。
+- 若宿主需要并行调试，可在配置中加上 `--web-port 8787`，通过 HTTP 接口独立验证 `index_project` / `search_context`。
 
 ## 可用工具
 
@@ -143,6 +156,8 @@ npm start -- --web-port 8787
 其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages`、`pathPrefix`、`pathContains`、`excludePathPrefix`、`resultMode` 与 `mode` 均为可选；未传时保持当前全局搜索行为。`resultMode = "metadata"` 时结果仍保留位置、分数和 `explanation`，但 `snippet` 会被省略为空字符串，且 `snippetIncluded = false`。
 
 当前 `auto` 与 `hybrid` 模式会额外启用语义召回 `MVP`：基于本地索引内容生成语义词，并结合常见代码概念同义词（如 `login/signin/auth`、`repository/dao/store`、`handler/controller/endpoint`）进行混合检索；若只想看语义候选，也可直接使用 `mode = "semantic"`。
+
+当查询中已经包含明显的复合代码标识符（如 `MyWorkOrderController`、`GetMyWorkOrders`）时，`auto` 模式会优先走 lexical / symbol / path 分支，避免在大仓库上被高开销的 semantic 扩展拖慢。
 
 搜索结果中的每个条目现在还会附带紧凑的 `explanation` 摘要，用于解释该结果为何靠前，例如：
 
@@ -198,6 +213,7 @@ excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "ob
 当前提供最小能力：
 
 - 健康检查
+- 运行态信息查看（版本、PID、启动时间、运行时长）
 - 当前配置查看
 - 工具列表查看
 - 已索引项目列表
@@ -209,6 +225,7 @@ excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "ob
 主要接口：
 
 - `GET /health`
+- `GET /api/runtime`
 - `GET /api/config`
 - `GET /api/tools`
 - `GET /api/projects`

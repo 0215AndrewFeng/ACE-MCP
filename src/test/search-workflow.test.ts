@@ -281,6 +281,39 @@ test("semantic mode matches conceptual synonyms in code identifiers", async () =
   }
 });
 
+test("auto mode skips semantic expansion for mixed identifier queries", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/RefundController.ts": `
+export class RefundController {
+  createRefundFlow() {
+    return "ok";
+  }
+}
+`,
+    "src/refund/LookupService.ts": "export function lookupRefundRequest() { return 'lookup'; }\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const response = await environment.searchService.search(
+      environment.projectRootPath,
+      "RefundController createRefundFlow refund request flow",
+      "auto",
+      5,
+      0,
+      undefined,
+      "metadata",
+    );
+
+    assert.equal(response.results[0]?.filePath, "src/refund/RefundController.ts");
+    assert.equal(response.results.some((result) => result.reason.includes("semantic")), false);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("Java Python and .NET adapters extract qualified types and methods", () => {
   const javaSymbols = javaAdapter.extractSymbols(
     "java-file",

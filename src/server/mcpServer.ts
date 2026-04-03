@@ -1,11 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { registerTools, type ToolDependencies } from "./toolRegistry.js";
+import { APP_NAME, APP_VERSION } from "../version.js";
 
 export function createMcpServer(dependencies: ToolDependencies): McpServer {
   const server = new McpServer({
-    name: "ace-mcp",
-    version: "3.0.0",
+    name: APP_NAME,
+    version: APP_VERSION,
   });
 
   registerTools(server, dependencies);
