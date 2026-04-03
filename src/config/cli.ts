@@ -1,4 +1,5 @@
 import type { CliOptions } from "../core/common/types.js";
+import { APP_NAME } from "../version.js";
 
 function parsePort(value: string | undefined): number | undefined {
   if (!value) {
@@ -16,11 +17,17 @@ function parsePort(value: string | undefined): number | undefined {
 export function parseCliArgs(argv: string[]): CliOptions {
   let webPort: number | undefined;
   let help = false;
+  let version = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--help" || arg === "-h") {
       help = true;
+      continue;
+    }
+
+    if (arg === "--version" || arg === "-v") {
+      version = true;
       continue;
     }
 
@@ -35,18 +42,19 @@ export function parseCliArgs(argv: string[]): CliOptions {
     }
   }
 
-  return { help, webPort };
+  return { help, version, webPort };
 }
 
 export function formatHelpText(): string {
   return [
-    "ace-mcp",
+    APP_NAME,
     "",
     "Usage:",
-    "  node dist/index.js [--web-port 8787]",
+    "  node dist/index.js [--web-port 8787] [--version]",
     "",
     "Options:",
     "  --web-port <port>   Start the HTTP debug panel on the specified port",
+    "  -v, --version       Show version",
     "  -h, --help          Show help",
   ].join("\n");
 }

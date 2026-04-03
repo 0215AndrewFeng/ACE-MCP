@@ -1,7 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
+import { performance } from "node:perf_hooks";
 
 import iconv from "iconv-lite";
 
+import { mapInBatches } from "../common/batch.js";
 import type { Logger } from "../common/logger.js";
 import type {
   CollectedFile,
@@ -25,6 +27,17 @@ interface DecodedSource {
   content: string;
   encoding: string;
 }
+
+type IndexedFileResult =
+  | {
+      chunkCount: number;
+      indexed: true;
+    }
+  | {
+      filePath: string;
+      indexed: false;
+      message: string;
+    };
 
 function scoreDecodedContent(content: string): number {
   const replacementCount = (content.match(/\uFFFD/g) ?? []).length;
@@ -70,15 +83,20 @@ export class IndexCoordinator {
   ) {}
 
   public async indexProject(projectRootPath: string, mode: "full" | "incremental" = "incremental"): Promise<IndexProjectResult> {
+    const startedAtMs = performance.now();
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
     const rootStats = await stat(normalizedRoot).catch(() => null);
     if (!rootStats?.isDirectory()) {
       throw new AppError("INVALID_PROJECT_ROOT", `Project root does not exist or is not a directory: ${normalizedRoot}`);
     }
 
+    const collectStartedAtMs = performance.now();
     const ignoreManager = await IgnoreManager.create(normalizedRoot, this.settings.excludePatterns);
     const sourceFiles = await collectSourceFiles(normalizedRoot, this.settings, ignoreManager);
+    const collectMs = Math.round(performance.now() - collectStartedAtMs);
+    const detectStartedAtMs = performance.now();
     const project = await detectProject(normalizedRoot, sourceFiles);
+    const detectMs = Math.round(performance.now() - detectStartedAtMs);
     const projectId = buildStableId([normalizedRoot]);
     const timestamp = new Date().toISOString();
 
@@ -91,18 +109,13 @@ export class IndexCoordinator {
     const deletedFiles = [...existingFiles.keys()].filter((relativePath) => !currentPaths.has(relativePath));
     this.store.deleteFiles(projectId, deletedFiles);
 
-    let changedFiles = 0;
-    let chunkCount = 0;
-    const failedFiles: IndexFailure[] = [];
-    let indexedFiles = 0;
-
-    for (const file of sourceFiles) {
+    const filesToIndex = sourceFiles.filter((file) => {
       const existing = existingFiles.get(file.relativePath);
-      if (mode !== "full" && !hasFileChanged(existing, file)) {
-        continue;
-      }
-
-      changedFiles += 1;
+      return mode === "full" || hasFileChanged(existing, file);
+    });
+    const changedFiles = filesToIndex.length;
+    const indexingStartedAtMs = performance.now();
+    const fileResults = await mapInBatches<CollectedFile, IndexedFileResult>(filesToIndex, this.settings.batchSize, async (file) => {
       try {
         const buffer = await readFile(file.absolutePath);
         const { content, encoding } = decodeSourceBuffer(buffer);
@@ -121,20 +134,39 @@ export class IndexCoordinator {
         };
 
         this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
-        indexedFiles += 1;
-        chunkCount += chunks.length;
+        return {
+          chunkCount: chunks.length,
+          indexed: true as const,
+        };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        failedFiles.push({
-          filePath: file.relativePath,
-          message,
-        });
         this.logger.warn("file indexing failed", {
           error: message,
           filePath: file.relativePath,
           projectRootPath: normalizedRoot,
         });
+        return {
+          filePath: file.relativePath,
+          indexed: false as const,
+          message,
+        };
       }
+    });
+    const indexMs = Math.round(performance.now() - indexingStartedAtMs);
+    const failedFiles: IndexFailure[] = [];
+    let chunkCount = 0;
+    let indexedFiles = 0;
+    for (const result of fileResults) {
+      if (result.indexed) {
+        indexedFiles += 1;
+        chunkCount += result.chunkCount;
+        continue;
+      }
+
+      failedFiles.push({
+        filePath: result.filePath,
+        message: result.message,
+      });
     }
 
     this.store.updateProjectAfterIndex(projectId, timestamp, "ready");
@@ -149,13 +181,18 @@ export class IndexCoordinator {
     });
 
     this.logger.info("project indexed", {
+      batchSize: this.settings.batchSize,
       changedFiles,
+      collectMs,
       chunkCount,
+      detectMs,
       deletedFiles: deletedFiles.length,
       failedFileCount: failedFiles.length,
+      indexMs,
       indexedFiles,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
+      totalMs: Math.round(performance.now() - startedAtMs),
     });
 
     return {
