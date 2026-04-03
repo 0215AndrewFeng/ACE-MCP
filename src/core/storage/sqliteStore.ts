@@ -1,6 +1,8 @@
 import Database from "better-sqlite3";
 
 import { buildStableId } from "../indexing/fileFingerprint.js";
+import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
+import { buildSemanticFtsQuery, buildSemanticText } from "../search/semanticText.js";
 import type {
   ChunkRecord,
   IndexEventSummary,
@@ -80,6 +82,16 @@ function buildSearchFilterClause(filters: SearchFilters | undefined): {
     parameters.push(`${filters.pathPrefix.toLowerCase()}%`);
   }
 
+  if (filters.pathContains) {
+    clauses.push("LOWER(f.relative_path) LIKE ?");
+    parameters.push(`%${filters.pathContains.toLowerCase()}%`);
+  }
+
+  if (filters.excludePathPrefix) {
+    clauses.push("LOWER(f.relative_path) NOT LIKE ?");
+    parameters.push(`${filters.excludePathPrefix.toLowerCase()}%`);
+  }
+
   return {
     parameters,
     sql: clauses.length > 0 ? ` AND ${clauses.join(" AND ")}` : "",
@@ -108,6 +120,7 @@ export class SQLiteStore {
       .all(projectId, ...relativePaths) as Array<{ file_id: string }>;
 
     const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
+    const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
     const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
     const deleteFile = this.db.prepare("DELETE FROM file WHERE file_id = ?");
     const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id = ?");
@@ -118,6 +131,7 @@ export class SQLiteStore {
         const chunkIds = selectChunkIds.all(fileId) as Array<{ chunk_id: string }>;
         for (const chunkId of chunkIds) {
           deleteChunkFts.run(chunkId.chunk_id);
+          deleteChunkSemanticFts.run(chunkId.chunk_id);
         }
 
         deleteSymbols.run(fileId);
@@ -130,13 +144,14 @@ export class SQLiteStore {
   }
 
   public getProjectByRoot(projectRootPath: string): ProjectRow | undefined {
+    const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
     return this.db
       .prepare(
         `SELECT project_id, project_root_path, project_type, languages, last_scan_at, last_index_at, status, index_version
-         FROM project
-         WHERE project_root_path = ?`,
+          FROM project
+          WHERE project_root_path = ?`,
       )
-      .get(projectRootPath) as ProjectRow | undefined;
+      .get(normalizedProjectRootPath) as ProjectRow | undefined;
   }
 
   public getProjectStats(projectRootPath: string): ProjectStats | null {
@@ -287,6 +302,13 @@ export class SQLiteStore {
         language,
         content,
         symbol_names
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS chunk_semantic_fts USING fts5(
+        chunk_id UNINDEXED,
+        relative_path,
+        language,
+        semantic_text
       );
     `);
 
@@ -452,6 +474,148 @@ export class SQLiteStore {
       reason: "path",
       score: 0.65 - index * 0.05,
       snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+    }));
+  }
+
+  public ensureSemanticIndex(projectId: string): void {
+    const rows = this.db
+      .prepare(
+        `SELECT
+           c.chunk_id,
+           c.content,
+           c.symbol_names,
+           f.language,
+           f.relative_path
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         LEFT JOIN chunk_semantic_fts sf ON sf.chunk_id = c.chunk_id
+         WHERE f.project_id = ?
+           AND sf.chunk_id IS NULL`,
+      )
+      .all(projectId) as Array<{
+      chunk_id: string;
+      content: string;
+      language: Language;
+      relative_path: string;
+      symbol_names: string;
+    }>;
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const insertSemanticChunk = this.db.prepare(
+      `INSERT INTO chunk_semantic_fts (chunk_id, relative_path, language, semantic_text)
+       VALUES (?, ?, ?, ?)`,
+    );
+    const tx = this.db.transaction((missingRows: typeof rows) => {
+      for (const row of missingRows) {
+        const symbolNames = JSON.parse(row.symbol_names) as string[];
+        insertSemanticChunk.run(
+          row.chunk_id,
+          row.relative_path,
+          row.language,
+          buildSemanticText(row.relative_path, row.content, symbolNames),
+        );
+      }
+    });
+
+    tx(rows);
+  }
+
+  public searchBySemantic(projectId: string, semanticTerms: string[], limit: number, filters?: SearchFilters): SearchResult[] {
+    const semanticQuery = buildSemanticFtsQuery(semanticTerms);
+    if (!semanticQuery) {
+      return [];
+    }
+
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           c.start_line,
+           c.end_line,
+           c.content,
+           sf.semantic_text,
+           bm25(chunk_semantic_fts) AS raw_score
+         FROM chunk_semantic_fts sf
+         JOIN chunk c ON c.chunk_id = sf.chunk_id
+         JOIN file f ON f.file_id = c.file_id
+         WHERE f.project_id = ?
+           AND chunk_semantic_fts MATCH ?
+           ${filterClause.sql}
+         ORDER BY raw_score
+         LIMIT ?`,
+      )
+      .all(projectId, semanticQuery, ...filterClause.parameters, limit) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      raw_score: number;
+      relative_path: string;
+      semantic_text: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row) => {
+      const overlap = semanticTerms.filter((term) => row.semantic_text.includes(term)).length;
+      const overlapScore = semanticTerms.length > 0 ? overlap / semanticTerms.length : 0;
+      return {
+        endLine: row.end_line,
+        filePath: row.relative_path,
+        language: row.language,
+        reason: "semantic",
+        score: 0.35 + overlapScore * 0.45 + 0.2 * (1 / (1 + Math.abs(row.raw_score))),
+        snippet: row.content,
+        snippetIncluded: true,
+        startLine: row.start_line,
+      };
+    });
+  }
+
+  public searchByTextSubstrings(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const whereClause = tokens.map(() => "instr(c.content, ?) > 0").join(" OR ");
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           c.start_line,
+           c.end_line,
+           c.content
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         WHERE f.project_id = ?
+           AND (${whereClause})
+           ${filterClause.sql}
+         ORDER BY c.start_line ASC, LENGTH(f.relative_path) ASC
+         LIMIT ?`,
+      )
+      .all(projectId, ...tokens, ...filterClause.parameters, limit) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      relative_path: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row, index) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      reason: "lexical",
+      score: 0.72 - index * 0.04,
+      snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
     }));
   }
@@ -499,6 +663,7 @@ export class SQLiteStore {
       reason: "symbol",
       score: 0.8 - index * 0.05,
       snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
       symbol: row.name,
     }));
@@ -533,6 +698,7 @@ export class SQLiteStore {
       reason: "lexical",
       score: 1 / (1 + Math.abs(row.raw_score)),
       snippet: row.content,
+      snippetIncluded: true,
       startLine: row.start_line,
     }));
   }
@@ -583,6 +749,7 @@ export class SQLiteStore {
     indexedAt: string,
   ): void {
     const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
+    const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
     const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
     const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id = ?");
     const deleteChunks = this.db.prepare("DELETE FROM chunk WHERE file_id = ?");
@@ -607,6 +774,10 @@ export class SQLiteStore {
       `INSERT INTO chunk_fts (chunk_id, relative_path, language, content, symbol_names)
        VALUES (?, ?, ?, ?, ?)`,
     );
+    const insertChunkSemanticFts = this.db.prepare(
+      `INSERT INTO chunk_semantic_fts (chunk_id, relative_path, language, semantic_text)
+       VALUES (?, ?, ?, ?)`,
+    );
     const insertSymbol = this.db.prepare(
       `INSERT INTO symbol (symbol_id, file_id, name, full_name, kind, line, signature)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -616,6 +787,7 @@ export class SQLiteStore {
       const oldChunkIds = selectChunkIds.all(indexedFile.fileId) as Array<{ chunk_id: string }>;
       for (const chunkId of oldChunkIds) {
         deleteChunkFts.run(chunkId.chunk_id);
+        deleteChunkSemanticFts.run(chunkId.chunk_id);
       }
 
       deleteSymbols.run(indexedFile.fileId);
@@ -649,6 +821,12 @@ export class SQLiteStore {
           indexedFile.language,
           chunk.content,
           chunk.symbolNames.join(" "),
+        );
+        insertChunkSemanticFts.run(
+          chunk.chunkId,
+          indexedFile.relativePath,
+          indexedFile.language,
+          buildSemanticText(indexedFile.relativePath, chunk.content, chunk.symbolNames),
         );
       }
 

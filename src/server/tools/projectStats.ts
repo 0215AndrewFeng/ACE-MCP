@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 
 export function registerProjectStatsTool(server: McpServer, dependencies: ToolDependencies): void {
@@ -14,14 +15,15 @@ export function registerProjectStatsTool(server: McpServer, dependencies: ToolDe
       title: "Project Stats",
     },
     async ({ projectRootPath }) => {
-      const stats = dependencies.store.getProjectStats(projectRootPath);
+      const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
+      const stats = dependencies.store.getProjectStats(normalizedProjectRootPath);
       return {
         content: [
           {
             text: JSON.stringify(
               stats ?? {
                 message: "Project has not been indexed yet.",
-                projectRootPath,
+                projectRootPath: normalizedProjectRootPath,
               },
               null,
               2,

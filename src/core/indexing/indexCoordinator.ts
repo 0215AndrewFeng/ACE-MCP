@@ -32,7 +32,16 @@ function scoreDecodedContent(content: string): number {
   return printableCount - replacementCount * 10;
 }
 
+function isValidUtf8(buffer: Buffer): boolean {
+  const decoded = buffer.toString("utf8");
+  return Buffer.from(decoded, "utf8").equals(buffer);
+}
+
 function decodeSourceBuffer(buffer: Buffer): DecodedSource {
+  if (isValidUtf8(buffer)) {
+    return { content: buffer.toString("utf8"), encoding: "utf8" };
+  }
+
   const encodings = ["utf8", "utf16le", "gbk", "latin1"] as const;
   let best: DecodedSource = { content: buffer.toString("utf8"), encoding: "utf8" };
   let bestScore = Number.NEGATIVE_INFINITY;
