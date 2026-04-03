@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { inferLanguageFromFilePath } from "../../adapters/index.js";
+import { mapInBatches } from "../common/batch.js";
 import type { CollectedFile, Settings } from "../common/types.js";
 import { IgnoreManager } from "./ignoreManager.js";
 import { toProjectRelativePath } from "./pathNormalizer.js";
@@ -11,12 +12,18 @@ export async function collectSourceFiles(
   settings: Settings,
   ignoreManager: IgnoreManager,
 ): Promise<CollectedFile[]> {
-  const results: CollectedFile[] = [];
   const allowedExtensions = new Set(settings.textExtensions.map((extension) => extension.toLowerCase()));
   const maxFileSizeBytes = settings.maxFileSizeKb * 1024;
 
-  async function walk(currentDirectory: string): Promise<void> {
+  async function walk(currentDirectory: string): Promise<CollectedFile[]> {
     const entries = await readdir(currentDirectory, { withFileTypes: true });
+    const nestedDirectories: string[] = [];
+    const fileCandidates: Array<{
+      absolutePath: string;
+      language: CollectedFile["language"];
+      relativePath: string;
+    }> = [];
+
     for (const entry of entries) {
       const absolutePath = path.join(currentDirectory, entry.name);
       const relativePath = toProjectRelativePath(projectRootPath, absolutePath);
@@ -30,7 +37,7 @@ export async function collectSourceFiles(
           continue;
         }
 
-        await walk(absolutePath);
+        nestedDirectories.push(absolutePath);
         continue;
       }
 
@@ -52,22 +59,36 @@ export async function collectSourceFiles(
         continue;
       }
 
-      const stats = await stat(absolutePath);
-      if (stats.size > maxFileSizeBytes) {
-        continue;
-      }
-
-      results.push({
+      fileCandidates.push({
         absolutePath,
         language,
-        mtimeMs: Math.round(stats.mtimeMs),
         relativePath,
-        size: stats.size,
       });
     }
+
+    const nestedResults = await mapInBatches(nestedDirectories, settings.batchSize, (directoryPath) => walk(directoryPath));
+    const currentResults = await mapInBatches(fileCandidates, settings.batchSize, async (candidate) => {
+      const stats = await stat(candidate.absolutePath);
+      if (stats.size > maxFileSizeBytes) {
+        return undefined;
+      }
+
+      return {
+        absolutePath: candidate.absolutePath,
+        language: candidate.language,
+        mtimeMs: Math.round(stats.mtimeMs),
+        relativePath: candidate.relativePath,
+        size: stats.size,
+      } satisfies CollectedFile;
+    });
+
+    return [
+      ...nestedResults.flat(),
+      ...currentResults.filter((result): result is CollectedFile => result !== undefined),
+    ];
   }
 
-  await walk(projectRootPath);
+  const results = await walk(projectRootPath);
   results.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
   return results;
 }
