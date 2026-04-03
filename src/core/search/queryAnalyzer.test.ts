@@ -29,4 +29,19 @@ test("analyzeQuery builds semantic terms with synonym expansion", () => {
   assert.equal(analysis.semanticTerms.includes("auth"), true);
   assert.equal(analysis.semanticTerms.includes("handler"), true);
   assert.equal(analysis.semanticTerms.includes("controller"), true);
+  assert.equal(analysis.hasIdentifierLikeSegments, false);
+});
+
+test("analyzeQuery flags compound identifiers inside mixed natural-language queries", () => {
+  const analysis = analyzeQuery("MyWorkOrderController GetMyWorkOrders work order query flow");
+
+  assert.equal(analysis.hasIdentifierLikeSegments, true);
+  assert.deepEqual(analysis.tokens, [
+    "myworkordercontroller",
+    "getmyworkorders",
+    "work",
+    "order",
+    "query",
+    "flow",
+  ]);
 });

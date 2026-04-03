@@ -5,6 +5,8 @@ const TOKEN_SPLIT_PATTERN = /[^\p{L}\p{N}_.$/\\#-]+/u;
 const FTS_TERM_SPLIT_PATTERN = /[.$/\\#-]+/u;
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 const SYMBOL_TOKEN_PATTERN = /^[\p{L}_$][\p{L}\p{N}_$.#-]*$/u;
+const IDENTIFIER_SEGMENT_PATTERN = /^[\p{L}\p{N}_.$/\\#-]+$/u;
+const IDENTIFIER_BOUNDARY_PATTERN = /[._/$\\#-]|[a-z0-9][A-Z]|[A-Z]+[A-Z][a-z]/;
 
 function normalizeToken(token: string): string {
   return token.normalize("NFKC").replaceAll("\\", "/").trim().toLowerCase();
@@ -32,6 +34,14 @@ function buildFtsQuery(tokens: string[]): string | null {
   return terms.length > 0 ? terms.map((term) => `${term}*`).join(" OR ") : null;
 }
 
+function hasIdentifierLikeSegments(query: string): boolean {
+  return query
+    .split(/\s+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .some((segment) => IDENTIFIER_SEGMENT_PATTERN.test(segment) && segment.length >= 8 && IDENTIFIER_BOUNDARY_PATTERN.test(segment));
+}
+
 export function analyzeQuery(query: string): QueryAnalysis {
   const normalizedQuery = query.normalize("NFKC");
   const tokens = normalizedQuery
@@ -45,6 +55,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
 
   return {
     ftsQuery,
+    hasIdentifierLikeSegments: hasIdentifierLikeSegments(normalizedQuery),
     isPathLike: /[/.\\]/.test(normalizedQuery),
     isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? ""),
     rawQuery: normalizedQuery,

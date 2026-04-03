@@ -468,7 +468,10 @@ export class SearchService {
     if (
       (mode === "semantic" ||
         mode === "hybrid" ||
-        (mode === "auto" && !analysis.isPathLike && !analysis.isSymbolLike)) &&
+        (mode === "auto" &&
+          !analysis.isPathLike &&
+          !analysis.isSymbolLike &&
+          !analysis.hasIdentifierLikeSegments)) &&
       analysis.semanticTerms.length > 0
     ) {
       this.store.ensureSemanticIndex(project.project_id);
