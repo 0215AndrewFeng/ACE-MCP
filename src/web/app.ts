@@ -4,6 +4,7 @@ import { URL } from "node:url";
 import {
   DEFAULT_INCLUDE_CONTEXT_LINES,
   MAX_INCLUDE_CONTEXT_LINES,
+  type AppRuntimeInfo,
   type Settings,
   type SupportedLanguage,
 } from "../core/common/types.js";
@@ -16,9 +17,15 @@ import { SQLiteStore } from "../core/storage/sqliteStore.js";
 interface WebAppDependencies {
   indexCoordinator: IndexCoordinator;
   logger: Logger;
+  runtime: AppRuntimeInfo;
   searchService: SearchService;
   settings: Settings;
   store: SQLiteStore;
+}
+
+export interface WebAppHandle {
+  close: () => Promise<void>;
+  port: number;
 }
 
 const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
@@ -114,6 +121,7 @@ function getHomePageHtml(): string {
         <h2>Quick actions</h2>
         <div class="actions">
           <button id="load-health" class="secondary" type="button">Load health</button>
+          <button id="load-runtime" class="secondary" type="button">Load runtime</button>
           <button id="load-config" class="secondary" type="button">Load config</button>
           <button id="load-tools" class="secondary" type="button">Load tools</button>
           <button id="load-projects" class="secondary" type="button">Load projects</button>
@@ -236,6 +244,7 @@ function getHomePageHtml(): string {
       }
 
       document.getElementById("load-health").addEventListener("click", () => run(() => request("GET", "/health")));
+      document.getElementById("load-runtime").addEventListener("click", () => run(() => request("GET", "/api/runtime")));
       document.getElementById("load-config").addEventListener("click", () => run(() => request("GET", "/api/config")));
       document.getElementById("load-tools").addEventListener("click", () => run(() => request("GET", "/api/tools")));
       document.getElementById("load-projects").addEventListener("click", () => run(() => request("GET", "/api/projects")));
@@ -287,7 +296,14 @@ function toolCatalog(): Array<{ description: string; name: string }> {
   ];
 }
 
-export async function startWebApp(port: number, dependencies: WebAppDependencies): Promise<void> {
+function buildRuntimeStatus(runtime: AppRuntimeInfo): AppRuntimeInfo & { uptimeMs: number } {
+  return {
+    ...runtime,
+    uptimeMs: Math.round(Date.now() - Date.parse(runtime.startedAt)),
+  };
+}
+
+export async function startWebApp(port: number, dependencies: WebAppDependencies): Promise<WebAppHandle> {
   const server = createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
@@ -299,7 +315,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       if (request.method === "GET" && pathname === "/health") {
-        sendJson(response, 200, { status: "ok" });
+        sendJson(response, 200, { status: "ok", ...buildRuntimeStatus(dependencies.runtime) });
+        return;
+      }
+
+      if (request.method === "GET" && pathname === "/api/runtime") {
+        sendJson(response, 200, buildRuntimeStatus(dependencies.runtime));
         return;
       }
 
@@ -364,8 +385,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         const body = await readJsonBody(request);
         const projectRootPath = String(body.projectRootPath ?? "");
         const query = String(body.query ?? "");
-        const mode = ["auto", "lexical", "symbol", "hybrid"].includes(String(body.mode ?? "auto"))
-          ? (body.mode as "auto" | "lexical" | "symbol" | "hybrid")
+        const mode = ["auto", "lexical", "symbol", "semantic", "hybrid"].includes(String(body.mode ?? "auto"))
+          ? (body.mode as "auto" | "lexical" | "symbol" | "semantic" | "hybrid")
           : "auto";
         const topK = clampInteger(body.topK, 1, 50, dependencies.settings.defaultTopK);
         const resultMode = ["full", "metadata"].includes(String(body.resultMode ?? "full"))
@@ -429,5 +450,23 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     server.listen(port, "127.0.0.1", () => resolve());
   });
 
-  dependencies.logger.info("web debug panel started", { port });
+  const address = server.address();
+  const listeningPort =
+    typeof address === "object" && address !== null && "port" in address ? address.port : port;
+
+  dependencies.logger.info("web debug panel started", { port: listeningPort });
+  return {
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      }),
+    port: listeningPort,
+  };
 }

@@ -8,11 +8,17 @@ import { SearchService } from "./core/search/searchService.js";
 import { SQLiteStore } from "./core/storage/sqliteStore.js";
 import { createMcpServer } from "./server/mcpServer.js";
 import { startWebApp } from "./web/app.js";
+import { APP_VERSION } from "./version.js";
 
 async function main(): Promise<void> {
   const cliOptions = parseCliArgs(process.argv.slice(2));
   if (cliOptions.help) {
     process.stdout.write(`${formatHelpText()}\n`);
+    return;
+  }
+
+  if (cliOptions.version) {
+    process.stdout.write(`${APP_VERSION}\n`);
     return;
   }
 
@@ -31,11 +37,49 @@ async function main(): Promise<void> {
     settings,
     store,
   });
+  const runtime = {
+    nodeVersion: process.version,
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    version: APP_VERSION,
+    webPort: cliOptions.webPort,
+  };
+  let webAppHandle: Awaited<ReturnType<typeof startWebApp>> | undefined;
+
+  const shutdown = async (signal: string, exitCode: number): Promise<void> => {
+    logger.info("shutdown requested", { signal });
+    try {
+      if (webAppHandle) {
+        await webAppHandle.close();
+      }
+    } finally {
+      process.exit(exitCode);
+    }
+  };
+
+  process.on("unhandledRejection", (error) => {
+    logger.error("unhandled rejection", {
+      error: error instanceof Error ? error.stack ?? error.message : String(error),
+    });
+  });
+  process.on("uncaughtException", (error) => {
+    logger.error("uncaught exception", {
+      error: error.stack ?? error.message,
+    });
+    void shutdown("uncaughtException", 1);
+  });
+  process.once("SIGINT", () => {
+    void shutdown("SIGINT", 0);
+  });
+  process.once("SIGTERM", () => {
+    void shutdown("SIGTERM", 0);
+  });
 
   if (cliOptions.webPort) {
-    await startWebApp(cliOptions.webPort, {
+    webAppHandle = await startWebApp(cliOptions.webPort, {
       indexCoordinator,
       logger,
+      runtime,
       searchService,
       settings,
       store,
@@ -44,7 +88,12 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info("ace-mcp server started", { databasePath: settings.databasePath, webPort: cliOptions.webPort });
+  logger.info("ace-mcp server started", {
+    databasePath: settings.databasePath,
+    pid: process.pid,
+    version: APP_VERSION,
+    webPort: cliOptions.webPort,
+  });
 }
 
 main().catch((error: unknown) => {

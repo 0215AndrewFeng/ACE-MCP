@@ -510,6 +510,16 @@ export class SearchService {
     const stats = this.store.getProjectStats(projectRootPath);
     const searchMs = Math.round(performance.now() - startedAt);
 
+    this.logger.info("search completed", {
+      mode,
+      projectRootPath,
+      query,
+      resultCount: results.length,
+      resultMode,
+      searchMs,
+      topK,
+    });
+
     return {
       projectRootPath,
       query,

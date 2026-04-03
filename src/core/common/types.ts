@@ -22,6 +22,15 @@ export interface Settings {
 
 export interface CliOptions {
   help: boolean;
+  version: boolean;
+  webPort?: number;
+}
+
+export interface AppRuntimeInfo {
+  nodeVersion: string;
+  pid: number;
+  startedAt: string;
+  version: string;
   webPort?: number;
 }
 
