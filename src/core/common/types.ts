@@ -109,6 +109,7 @@ export interface IndexEventSummary {
 
 export interface QueryAnalysis {
   ftsQuery: string | null;
+  hasIdentifierLikeSegments: boolean;
   isPathLike: boolean;
   isSymbolLike: boolean;
   rawQuery: string;
