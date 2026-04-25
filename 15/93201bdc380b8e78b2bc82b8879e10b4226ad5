@@ -1,0 +1,43 @@
+src/web/app.ts
+  9a0a70f7a727e4fd 1-3,15,18-25,45,50,56,66,72-73,77-78,80-82,84-87,89-92,94-106,108-110,112-114,116-124,126-130,132,136-143,146-183,185-188,190-201
+src/core/search/searchService.ts
+  9a0a70f7a727e4fd 21,24-33,492-506
+package.json
+  9a0a70f7a727e4fd 3,29,37
+src/web/static/css/main.css
+  9a0a70f7a727e4fd 1-26
+src/web/static/index.html
+  9a0a70f7a727e4fd 1-94
+src/server/tools/searchContext.ts
+  9a0a70f7a727e4fd 4,6,30,38-76,78-95,99,103-117
+src/core/common/types.ts
+  9a0a70f7a727e4fd 198-204
+src/version.ts
+  9a0a70f7a727e4fd 2
+src/core/storage/sqliteStore.ts
+  9a0a70f7a727e4fd 20,24-45,243-270,275-277,367-373,641-714,983-1057
+src/core/search/embedding.ts
+  9a0a70f7a727e4fd 1-166
+src/web/static/js/app.js
+  9a0a70f7a727e4fd 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "1593201bdc380b8e78b2bc82b8879e10b4226ad5",
+  "prompts": {
+    "9a0a70f7a727e4fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "793c4d69-ee96-4f10-afcb-add0f4f3bd3a",
+        "model": "minimax-m2.7"
+      },
+      "human_author": "feng.ling",
+      "messages": [],
+      "total_additions": 869,
+      "total_deletions": 461,
+      "accepted_lines": 864,
+      "overriden_lines": 0
+    }
+  }
+}
