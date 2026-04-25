@@ -125,7 +125,7 @@ npm start -- --web-port 8787
 
 自动执行增量索引后返回相关代码片段。
 
-若增量索引过程中出现文件级失败，返回结果还会包含 `indexing` 摘要，便于排查“为什么这次搜索没有覆盖到某些新改动”。
+工具层现在统一返回 `meta / request / data / stats / notes` 五段结构，并同时通过 MCP `content.text` 与 `structuredContent` 暴露同一份 JSON。
 
 也支持可选过滤条件：
 
@@ -165,15 +165,22 @@ npm start -- --web-port 8787
 - 命中的查询 token 与覆盖率 `matchedTokens` / `tokenCoverage`
 - 是否存在精确路径、文件名、符号或 snippet 查询命中
 
+返回中的关键统计含义如下：
+
+- `stats.project.indexedFileCount`：项目当前持久化索引里的总文件数
+- `stats.indexSync.indexedFileCount`：本次搜索前增量同步实际重新写入的文件数
+- `stats.indexSync.scannedFileCount`：本次增量同步扫描过的文件数
+- `notes`：当本次增量同步未发现变更、或存在失败文件时，给出解释性提示，避免把 `0` 误读为“项目未建索引”
+
 ### `get_file_snippet`
 
-读取指定文件的行区间。
+读取指定文件的行区间，结果放在 `data.snippet`，实际返回的行号范围放在 `stats.snippet`。
 
 ### `project_stats`
 
 返回项目索引统计信息。
 
-当项目已有索引记录时，结果会包含最近一次索引事件摘要 `latestIndexEvent`，其中包括失败文件数量和部分失败明细。
+项目总量放在 `stats.project`，最近一次索引事件放在 `stats.latestIndexing`。若项目尚未索引，`data.indexed = false`，并在 `notes` 中给出说明。
 
 ## 配置文件
 

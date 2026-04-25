@@ -195,6 +195,13 @@ export interface ProjectListItem {
   status: ProjectStatus;
 }
 
+// Vector embedding types
+export interface VectorEntry {
+  chunkId: string;
+  embedding: number[];
+  modelName: string;
+}
+
 export interface SearchContextInput {
   excludePathPrefix?: string;
   includeContextLines?: number;
