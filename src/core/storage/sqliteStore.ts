@@ -17,8 +17,31 @@ import type {
   SearchResult,
   SupportedLanguage,
   SymbolInfo,
+  VectorEntry,
 } from "../common/types.js";
 import type { Logger } from "../common/logger.js";
+
+/**
+ * 计算两个向量的余弦相似度
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    return 0;
+  }
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dotProduct / denom;
+}
 
 interface ProjectRow {
   index_version: number;
@@ -217,10 +240,41 @@ export class SQLiteStore {
     }));
   }
 
+  public getProjectByPath(projectRootPath: string): ProjectListItem | null {
+    const row = this.db
+      .prepare(
+        `SELECT project_root_path, languages, last_scan_at, last_index_at, status
+         FROM project
+         WHERE project_root_path = ?`,
+      )
+      .get(projectRootPath) as {
+        languages: string;
+        last_index_at: string | null;
+        last_scan_at: string | null;
+        project_root_path: string;
+        status: ProjectStatus;
+      } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      languages: JSON.parse(row.languages) as Language[],
+      lastIndexAt: row.last_index_at,
+      lastScanAt: row.last_scan_at,
+      projectRootPath: row.project_root_path,
+      status: row.status,
+    };
+  }
+
   public initialize(): void {
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
+      PRAGMA cache_size = -64000;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA temp_store = MEMORY;
 
       CREATE TABLE IF NOT EXISTS project (
         project_id TEXT PRIMARY KEY,
@@ -309,6 +363,13 @@ export class SQLiteStore {
         relative_path,
         language,
         semantic_text
+      );
+
+      CREATE TABLE IF NOT EXISTS chunk_vector (
+        chunk_id TEXT PRIMARY KEY,
+        embedding BLOB NOT NULL,
+        model_name TEXT NOT NULL,
+        FOREIGN KEY(chunk_id) REFERENCES chunk(chunk_id) ON DELETE CASCADE
       );
     `);
 
@@ -575,6 +636,80 @@ export class SQLiteStore {
         startLine: row.start_line,
       };
     });
+  }
+
+  /**
+   * 向量搜索
+   * 使用余弦相似度在内存中进行向量搜索
+   */
+  public searchByVector(
+    projectId: string,
+    queryEmbedding: number[],
+    limit: number,
+    filters?: SearchFilters,
+  ): SearchResult[] {
+    // 获取项目的所有向量
+    const vectors = this.getProjectVectors(projectId);
+
+    if (vectors.length === 0) {
+      return [];
+    }
+
+    // 计算余弦相似度
+    const scored = vectors.map((v) => ({
+      chunkId: v.chunkId,
+      score: cosineSimilarity(queryEmbedding, v.embedding),
+    }));
+
+    // 排序并取 top K
+    scored.sort((a, b) => b.score - a.score);
+    const topChunkIds = scored.slice(0, limit);
+
+    if (topChunkIds.length === 0) {
+      return [];
+    }
+
+    // 获取对应的 chunk 信息
+    const chunkIds = topChunkIds.map((t) => t.chunkId);
+    const scoreMap = new Map(topChunkIds.map((t) => [t.chunkId, t.score]));
+
+    const placeholders = chunkIds.map(() => "?").join(", ");
+    const filterClause = buildSearchFilterClause(filters);
+
+    const rows = this.db
+      .prepare(
+        `SELECT
+           c.chunk_id,
+           c.start_line,
+           c.end_line,
+           c.content,
+           f.relative_path,
+           f.language
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         WHERE c.chunk_id IN (${placeholders})
+           AND f.project_id = ?
+           ${filterClause.sql}`,
+      )
+      .all(...chunkIds, projectId, ...filterClause.parameters) as Array<{
+      chunk_id: string;
+      content: string;
+      end_line: number;
+      language: Language;
+      relative_path: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      reason: "semantic",
+      score: scoreMap.get(row.chunk_id) ?? 0,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+    }));
   }
 
   public searchByTextSubstrings(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
@@ -844,5 +979,80 @@ export class SQLiteStore {
     });
 
     tx();
+  }
+
+  /**
+   * 写入 chunk 向量
+   */
+  public writeChunkVector(chunkId: string, embedding: number[], modelName: string): void {
+    const insertOrUpdate = this.db.prepare(`
+      INSERT INTO chunk_vector (chunk_id, embedding, model_name)
+      VALUES (?, ?, ?)
+      ON CONFLICT(chunk_id) DO UPDATE SET
+        embedding = excluded.embedding,
+        model_name = excluded.model_name
+    `);
+    // 将 number[] 序列化为 Blob (Float32Array)
+    const blob = Buffer.from(new Float32Array(embedding).buffer);
+    insertOrUpdate.run(chunkId, blob, modelName);
+  }
+
+  /**
+   * 获取 chunk 向量
+   */
+  public getChunkVector(chunkId: string): VectorEntry | null {
+    const row = this.db
+      .prepare("SELECT chunk_id, embedding, model_name FROM chunk_vector WHERE chunk_id = ?")
+      .get(chunkId) as { chunk_id: string; embedding: Buffer; model_name: string } | undefined;
+
+    if (!row) {
+      return null;
+    }
+
+    // 从 Blob 反序列化
+    const embedding = Array.from(new Float32Array(row.embedding.buffer));
+    return {
+      chunkId: row.chunk_id,
+      embedding,
+      modelName: row.model_name,
+    };
+  }
+
+  /**
+   * 获取项目的所有 chunk 向量
+   */
+  public getProjectVectors(projectId: string): VectorEntry[] {
+    const rows = this.db
+      .prepare(`
+        SELECT cv.chunk_id, cv.embedding, cv.model_name
+        FROM chunk_vector cv
+        JOIN chunk c ON c.chunk_id = cv.chunk_id
+        JOIN file f ON f.file_id = c.file_id
+        WHERE f.project_id = ?
+      `)
+      .all(projectId) as Array<{ chunk_id: string; embedding: Buffer; model_name: string }>;
+
+    return rows.map((row) => ({
+      chunkId: row.chunk_id,
+      embedding: Array.from(new Float32Array(row.embedding.buffer)),
+      modelName: row.model_name,
+    }));
+  }
+
+  /**
+   * 检查项目是否已有向量索引
+   */
+  public hasVectorIndex(projectId: string): boolean {
+    const count = this.db
+      .prepare(`
+        SELECT COUNT(*) as cnt
+        FROM chunk_vector cv
+        JOIN chunk c ON c.chunk_id = cv.chunk_id
+        JOIN file f ON f.file_id = c.file_id
+        WHERE f.project_id = ?
+      `)
+      .get(projectId) as { cnt: number };
+
+    return count.cnt > 0;
   }
 }

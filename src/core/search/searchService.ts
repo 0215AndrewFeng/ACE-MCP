@@ -18,7 +18,18 @@ import {
 import { AppError } from "../common/errors.js";
 import { readFileSnippet } from "../project/fileSnippet.js";
 import { analyzeQuery } from "./queryAnalyzer.js";
+import { InMemoryEmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
+
+// 共享的嵌入实例
+let embeddingProvider: InMemoryEmbeddingProvider | null = null;
+
+function getEmbeddingProvider(): InMemoryEmbeddingProvider {
+  if (!embeddingProvider) {
+    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-tfidf");
+  }
+  return embeddingProvider;
+}
 
 const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
 const SEARCH_FANOUT_LIMIT = 50;
@@ -476,6 +487,21 @@ export class SearchService {
     ) {
       this.store.ensureSemanticIndex(project.project_id);
       resultSets.push(this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters));
+    }
+
+    // 向量搜索（仅在 semantic 或 hybrid 模式下，且已有向量索引时）
+    if ((mode === "semantic" || mode === "hybrid") && this.store.hasVectorIndex(project.project_id)) {
+      try {
+        const provider = getEmbeddingProvider();
+        const queryEmbedding = await provider.embed(query);
+        resultSets.push(this.store.searchByVector(project.project_id, queryEmbedding, fanoutLimit, normalizedFilters));
+      } catch (error) {
+        this.logger.warn("vector search failed", {
+          error: error instanceof Error ? error.message : String(error),
+          projectRootPath,
+          query,
+        });
+      }
     }
 
     if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens)) {

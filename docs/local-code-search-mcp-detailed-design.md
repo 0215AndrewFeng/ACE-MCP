@@ -465,7 +465,7 @@ interface LanguageAdapter {
 
 - `project_root_path`：项目绝对路径
 - `query`：搜索文本
-- `mode`：`auto | lexical | symbol | hybrid`
+- `mode`：`auto | lexical | symbol | semantic | hybrid`
 - `top_k`：最大返回数
 - `include_context_lines`：附加上下文行数
 
@@ -473,25 +473,41 @@ interface LanguageAdapter {
 
 ```json
 {
-  "project_root_path": "/path/to/project",
-  "query": "查找订单退款服务实现",
-  "results": [
-    {
-      "file_path": "src/refund/service.py",
-      "language": "python",
-      "start_line": 48,
-      "end_line": 76,
-      "symbol": "RefundService.process_refund",
-      "score": 0.91,
-      "reason": "keyword+symbol",
-      "snippet": "..."
-    }
-  ],
+  "meta": {
+    "ok": true,
+    "tool": "search_context"
+  },
+  "request": {
+    "projectRootPath": "/path/to/project",
+    "query": "查找订单退款服务实现"
+  },
+  "data": {
+    "results": [
+      {
+        "file_path": "src/refund/service.py",
+        "language": "python",
+        "start_line": 48,
+        "end_line": 76,
+        "symbol": "RefundService.process_refund",
+        "score": 0.91,
+        "reason": "keyword+symbol",
+        "snippet": "..."
+      }
+    ]
+  },
   "stats": {
-    "scanned_files": 215,
-    "indexed_files": 3,
-    "search_ms": 143
-  }
+    "project": {
+      "indexedFileCount": 215
+    },
+    "indexSync": {
+      "indexedFileCount": 3,
+      "scannedFileCount": 215
+    },
+    "search": {
+      "searchMs": 143
+    }
+  },
+  "notes": []
 }
 ```
 
@@ -521,7 +537,7 @@ interface LanguageAdapter {
 
 ### 8.4 `project_stats`
 
-返回项目级索引统计、最近任务、失败文件列表等信息。
+返回统一 envelope，其中 `stats.project` 表示项目总量，`stats.latestIndexing` 表示最近一次索引任务摘要，避免把本次增量写入量误读为项目总索引规模。
 
 ## 9. 配置设计
 

@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { ToolDependencies } from "../toolRegistry.js";
+import { buildIndexProjectToolPayload, createStructuredToolResult } from "../toolPayloads.js";
 
 export function registerIndexProjectTool(server: McpServer, dependencies: ToolDependencies): void {
   server.registerTool(
@@ -16,14 +17,12 @@ export function registerIndexProjectTool(server: McpServer, dependencies: ToolDe
     },
     async ({ mode, projectRootPath }) => {
       const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
-      return {
-        content: [
-          {
-            text: JSON.stringify(result, null, 2),
-            type: "text",
-          },
-        ],
-      };
+      const payload = buildIndexProjectToolPayload(
+        result,
+        dependencies.store.getProjectStats(result.projectRootPath),
+        mode,
+      );
+      return createStructuredToolResult(payload);
     },
   );
 }

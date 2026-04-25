@@ -135,18 +135,36 @@ Project Scan        Indexing      Search       Config/Log/Web
 
 ```json
 {
-  "results": [
-    {
-      "file_path": "src/refund/service.py",
-      "language": "python",
-      "start_line": 40,
-      "end_line": 72,
-      "score": 0.91,
-      "symbol": "RefundService.process_refund",
-      "reason": "keyword+symbol",
-      "snippet": "..."
+  "meta": {
+    "ok": true,
+    "tool": "search_context"
+  },
+  "data": {
+    "results": [
+      {
+        "file_path": "src/refund/service.py",
+        "language": "python",
+        "start_line": 40,
+        "end_line": 72,
+        "score": 0.91,
+        "symbol": "RefundService.process_refund",
+        "reason": "keyword+symbol",
+        "snippet": "..."
+      }
+    ]
+  },
+  "stats": {
+    "project": {
+      "indexedFileCount": 215
+    },
+    "indexSync": {
+      "indexedFileCount": 3,
+      "scannedFileCount": 215
+    },
+    "search": {
+      "searchMs": 143
     }
-  ]
+  }
 }
 ```
 
@@ -160,7 +178,7 @@ Project Scan        Indexing      Search       Config/Log/Web
 
 ### 7.4 `project_stats`
 
-返回文件数、chunk 数、上次索引时间、排除文件数、失败文件数等信息。
+返回统一 envelope，其中 `stats.project` 表示项目当前持久化索引总量，`stats.latestIndexing` 表示最近一次索引任务摘要。
 
 ## 8. 技术选型建议
 

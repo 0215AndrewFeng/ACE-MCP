@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ace-mcp debug panel</title>
+    <link rel="stylesheet" href="/static/css/main.css" />
+  </head>
+  <body>
+    <h1>ace-mcp debug panel</h1>
+    <p>Use this page to inspect server state and debug indexing, search, stats, and snippet retrieval.</p>
+    <div class="grid">
+      <div class="card wide">
+        <h2>Quick actions</h2>
+        <div class="actions">
+          <button id="load-health" class="secondary" type="button">Load health</button>
+          <button id="load-runtime" class="secondary" type="button">Load runtime</button>
+          <button id="load-config" class="secondary" type="button">Load config</button>
+          <button id="load-tools" class="secondary" type="button">Load tools</button>
+          <button id="load-projects" class="secondary" type="button">Load projects</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Index project</h2>
+        <label for="project-root">Project root path</label>
+        <select id="project-root-select">
+          <option value="">-- Select a project --</option>
+        </select>
+        <input id="project-root" class="mono" placeholder="/path/to/project" />
+        <label for="index-mode">Index mode</label>
+        <select id="index-mode">
+          <option value="incremental">incremental</option>
+          <option value="full">full</option>
+        </select>
+        <button id="run-index" type="button">Run index_project</button>
+      </div>
+      <div class="card">
+        <h2>Project stats</h2>
+        <p class="hint">Fetch persisted stats for the current project root.</p>
+        <button id="run-stats" type="button">Load project_stats</button>
+      </div>
+      <div class="card">
+        <h2>Search context</h2>
+        <label for="search-query">Query</label>
+        <textarea id="search-query" placeholder="refund service implementation"></textarea>
+        <label for="search-mode">Mode</label>
+        <select id="search-mode">
+          <option value="auto">auto</option>
+          <option value="lexical">lexical</option>
+          <option value="symbol">symbol</option>
+          <option value="semantic">semantic</option>
+          <option value="hybrid">hybrid</option>
+        </select>
+        <label for="top-k">Top K</label>
+        <input id="top-k" type="number" min="1" max="50" value="8" />
+        <label for="search-result-mode">Result mode</label>
+        <select id="search-result-mode">
+          <option value="full">full</option>
+          <option value="metadata">metadata</option>
+        </select>
+        <label for="include-context-lines">Context lines</label>
+        <input id="include-context-lines" type="number" min="0" max="50" value="0" />
+        <label for="search-languages">Languages (comma-separated)</label>
+        <input id="search-languages" class="mono" placeholder="javascript,java" />
+        <label for="search-path-prefix">Path prefix</label>
+        <input id="search-path-prefix" class="mono" placeholder="src/web" />
+        <label for="search-path-contains">Path contains</label>
+        <input id="search-path-contains" class="mono" placeholder="search" />
+        <label for="search-exclude-path-prefix">Exclude path prefix</label>
+        <input id="search-exclude-path-prefix" class="mono" placeholder="dist" />
+        <button id="run-search" type="button">Run search_context</button>
+      </div>
+      <div class="card">
+        <h2>Get file snippet</h2>
+        <label for="snippet-path">File path (relative to project root)</label>
+        <input id="snippet-path" class="mono" placeholder="src/index.ts" />
+        <label for="snippet-start">Start line</label>
+        <input id="snippet-start" type="number" min="1" value="1" />
+        <label for="snippet-end">End line</label>
+        <input id="snippet-end" type="number" min="1" value="40" />
+        <button id="run-snippet" type="button">Run get_file_snippet</button>
+      </div>
+      <div class="card wide">
+        <h2>Search History</h2>
+        <div id="search-history" class="search-history"></div>
+      </div>
+      <div class="card wide">
+        <h2>Result</h2>
+        <pre id="result">Click an action to begin.</pre>
+      </div>
+    </div>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>

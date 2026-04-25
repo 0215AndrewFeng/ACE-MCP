@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
@@ -26,6 +26,7 @@
     "@iarna/toml": "^2.2.5",
     "@modelcontextprotocol/sdk": "^1.21.1",
     "better-sqlite3": "^11.8.1",
+    "express": "^5.2.1",
     "iconv-lite": "^0.6.3",
     "ignore": "^7.0.4",
     "typescript": "^5.9.3",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.14.0",
     "tsx": "^4.20.6"
   }
