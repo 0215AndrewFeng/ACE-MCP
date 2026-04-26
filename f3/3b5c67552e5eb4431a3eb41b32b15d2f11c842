@@ -1,0 +1,25 @@
+src/web/app.ts
+  9a0a70f7a727e4fd 117-122,129-133,143-149,175-187
+package.json
+  9a0a70f7a727e4fd 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f33b5c67552e5eb4431a3eb41b32b15d2f11c842",
+  "prompts": {
+    "9a0a70f7a727e4fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "793c4d69-ee96-4f10-afcb-add0f4f3bd3a",
+        "model": "minimax-m2.7"
+      },
+      "human_author": "feng.ling",
+      "messages": [],
+      "total_additions": 724,
+      "total_deletions": 645,
+      "accepted_lines": 325,
+      "overriden_lines": 0
+    }
+  }
+}
