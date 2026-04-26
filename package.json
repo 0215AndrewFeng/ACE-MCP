@@ -13,7 +13,7 @@
     "ace-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp -r src/web/static dist/web/",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:web": "node dist/index.js --web-port 8787",

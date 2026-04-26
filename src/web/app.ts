@@ -15,12 +15,6 @@ import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
-import {
-  buildGetFileSnippetToolPayload,
-  buildIndexProjectToolPayload,
-  buildProjectStatsToolPayload,
-  buildSearchContextToolPayload,
-} from "../server/toolPayloads.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -120,14 +114,23 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       return;
     }
     const normalized = normalizeAbsolutePath(projectRootPath);
-    res.json(buildProjectStatsToolPayload(normalized, dependencies.store.getProjectStats(normalized)));
+    const stats = dependencies.store.getProjectStats(normalized);
+    res.json({
+      data: stats,
+      meta: { ok: stats !== null, generatedAt: new Date().toISOString() },
+      projectRootPath: normalized,
+    });
   });
 
   app.post("/api/file-snippet", async (req: Request, res: Response) => {
     try {
       const { projectRootPath, filePath, startLine, endLine } = req.body;
       const result = await readFileSnippet(String(projectRootPath ?? ""), String(filePath ?? ""), Number(startLine ?? 1), Number(endLine ?? 1));
-      res.json(buildGetFileSnippetToolPayload(result, { endLine: Number(endLine ?? 1), filePath: String(filePath ?? ""), projectRootPath: String(projectRootPath ?? ""), startLine: Number(startLine ?? 1) }));
+      res.json({
+        data: result,
+        meta: { ok: true, generatedAt: new Date().toISOString() },
+        request: { endLine: Number(endLine ?? 1), filePath: String(filePath ?? ""), projectRootPath: String(projectRootPath ?? ""), startLine: Number(startLine ?? 1) },
+      });
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -137,7 +140,13 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, mode } = req.body;
       const result = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), mode === "full" ? "full" : "incremental");
-      res.json(buildIndexProjectToolPayload(result, dependencies.store.getProjectStats(result.projectRootPath), mode));
+      const stats = dependencies.store.getProjectStats(result.projectRootPath);
+      res.json({
+        data: result,
+        meta: { ok: true, generatedAt: new Date().toISOString() },
+        projectRootPath: result.projectRootPath,
+        stats,
+      });
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -163,20 +172,19 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         },
         normalizedResultMode,
       );
-      res.json(buildSearchContextToolPayload(result, indexResult, dependencies.store.getProjectStats(indexResult.projectRootPath), {
-        filters: {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
-        },
-        includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-        mode: normalizedMode,
-        projectRootPath: indexResult.projectRootPath,
-        query: String(query ?? ""),
-        resultMode: normalizedResultMode,
-        topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-      }));
+      result.indexing = {
+        changedFiles: indexResult.changedFiles,
+        chunkCount: indexResult.chunkCount,
+        createdAt: indexResult.createdAt,
+        deletedFiles: indexResult.deletedFiles,
+        failedFileCount: indexResult.failedFileCount,
+        failedFiles: indexResult.failedFiles,
+        indexedFiles: indexResult.indexedFiles,
+        scannedFiles: indexResult.scannedFiles,
+      };
+      result.stats.indexedFiles = indexResult.indexedFiles;
+      result.stats.scannedFiles = indexResult.scannedFiles;
+      res.json(result);
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
