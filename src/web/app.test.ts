@@ -52,3 +52,70 @@ test("web app exposes runtime diagnostics and health metadata", async () => {
     await environment.cleanup();
   }
 });
+
+test("web search and stats responses return valid data", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/service.ts": "export function refundHandler() {\n  return 'refund';\n}\n",
+  });
+
+  try {
+    const runtime = {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: APP_VERSION,
+      webPort: undefined,
+    };
+    const handle = await startWebApp(0, {
+      indexCoordinator: environment.indexCoordinator,
+      logger: new Logger(environment.settings.logFilePath, "error"),
+      runtime,
+      searchService: environment.searchService,
+      settings: environment.settings,
+      store: environment.store,
+    });
+
+    try {
+      // First search - should index the project
+      const firstSearchResponse = await fetch(`http://127.0.0.1:${handle.port}/api/search-context`, {
+        body: JSON.stringify({
+          mode: "auto",
+          projectRootPath: environment.projectRootPath,
+          query: "refundHandler",
+          topK: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(firstSearchResponse.status, 200);
+
+      const searchPayload = (await firstSearchResponse.json()) as {
+        results: unknown[];
+        stats: {
+          indexedFiles: number;
+          searchMs: number;
+        };
+      };
+      assert.equal(Array.isArray(searchPayload.results), true);
+      assert.equal(searchPayload.stats.indexedFiles >= 1, true);
+      assert.equal(typeof searchPayload.stats.searchMs === "number", true);
+
+      // Stats API
+      const statsResponse = await fetch(
+        `http://127.0.0.1:${handle.port}/api/project-stats?projectRootPath=${encodeURIComponent(environment.projectRootPath)}`,
+      );
+      const statsPayload = (await statsResponse.json()) as {
+        data: {
+          status: string;
+        };
+      };
+      assert.equal(statsResponse.status, 200);
+      assert.equal(statsPayload.data.status, "ready");
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await environment.cleanup();
+  }
+});
