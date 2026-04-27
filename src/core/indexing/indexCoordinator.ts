@@ -22,6 +22,17 @@ import { IgnoreManager } from "../project/ignoreManager.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { detectProject } from "../project/projectDetector.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
+import { InMemoryEmbeddingProvider } from "../search/embedding.js";
+
+// 共享的嵌入实例
+let embeddingProvider: InMemoryEmbeddingProvider | null = null;
+
+function getEmbeddingProvider(): InMemoryEmbeddingProvider {
+  if (!embeddingProvider) {
+    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-tfidf");
+  }
+  return embeddingProvider;
+}
 
 interface DecodedSource {
   content: string;
@@ -134,6 +145,15 @@ export class IndexCoordinator {
         };
 
         this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
+
+        // 生成并存储向量
+        const provider = getEmbeddingProvider();
+        const chunkTexts = chunks.map((c) => c.content);
+        const embeddings = await provider.embedBatch(chunkTexts);
+        for (let i = 0; i < chunks.length; i++) {
+          this.store.writeChunkVector(chunks[i].chunkId, embeddings[i], provider.getModelName());
+        }
+
         return {
           chunkCount: chunks.length,
           indexed: true as const,
