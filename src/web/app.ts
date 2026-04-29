@@ -15,6 +15,7 @@ import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
+import { buildEnvelope } from "../server/tools/responseEnvelope.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -91,11 +92,13 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       dataDir: dependencies.settings.dataDir,
       databasePath: dependencies.settings.databasePath,
       defaultTopK: dependencies.settings.defaultTopK,
+      enableVectorSearch: dependencies.settings.enableVectorSearch,
       excludePatterns: dependencies.settings.excludePatterns,
       logFilePath: dependencies.settings.logFilePath,
       maxFileSizeKb: dependencies.settings.maxFileSizeKb,
       maxLinesPerChunk: dependencies.settings.maxLinesPerChunk,
       textExtensions: dependencies.settings.textExtensions,
+      vectorIndexingMode: dependencies.settings.vectorIndexingMode,
     });
   });
 
@@ -115,22 +118,59 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     }
     const normalized = normalizeAbsolutePath(projectRootPath);
     const stats = dependencies.store.getProjectStats(normalized);
-    res.json({
-      data: stats,
-      meta: { ok: stats !== null, generatedAt: new Date().toISOString() },
-      projectRootPath: normalized,
-    });
+    res.json(
+      buildEnvelope(
+        { projectRootPath: normalized },
+        {
+          indexed: stats !== null,
+          projectRootPath: normalized,
+          status: stats?.status ?? "unknown",
+        },
+        {
+          latestIndexing: stats?.latestIndexEvent ?? null,
+          project: stats
+            ? {
+                chunkCount: stats.chunkCount,
+                fileCount: stats.fileCount,
+                languages: stats.languages,
+                lastIndexAt: stats.lastIndexAt,
+                lastScanAt: stats.lastScanAt,
+                status: stats.status,
+                symbolCount: stats.symbolCount,
+              }
+            : null,
+        },
+        stats ? [] : ["Project has not been indexed yet."],
+      ),
+    );
   });
 
   app.post("/api/file-snippet", async (req: Request, res: Response) => {
     try {
       const { projectRootPath, filePath, startLine, endLine } = req.body;
       const result = await readFileSnippet(String(projectRootPath ?? ""), String(filePath ?? ""), Number(startLine ?? 1), Number(endLine ?? 1));
-      res.json({
-        data: result,
-        meta: { ok: true, generatedAt: new Date().toISOString() },
-        request: { endLine: Number(endLine ?? 1), filePath: String(filePath ?? ""), projectRootPath: String(projectRootPath ?? ""), startLine: Number(startLine ?? 1) },
-      });
+      res.json(
+        buildEnvelope(
+          {
+            endLine: Number(endLine ?? 1),
+            filePath: String(filePath ?? ""),
+            projectRootPath: result.projectRootPath,
+            startLine: Number(startLine ?? 1),
+          },
+          {
+            filePath: result.filePath,
+            projectRootPath: result.projectRootPath,
+            snippet: result.snippet,
+          },
+          {
+            snippet: {
+              endLine: result.endLine,
+              lineCount: result.endLine - result.startLine + 1,
+              startLine: result.startLine,
+            },
+          },
+        ),
+      );
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -140,13 +180,30 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, mode } = req.body;
       const result = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), mode === "full" ? "full" : "incremental");
-      const stats = dependencies.store.getProjectStats(result.projectRootPath);
-      res.json({
-        data: result,
-        meta: { ok: true, generatedAt: new Date().toISOString() },
-        projectRootPath: result.projectRootPath,
-        stats,
-      });
+      res.json(
+        buildEnvelope(
+          { mode: mode === "full" ? "full" : "incremental", projectRootPath: result.projectRootPath },
+          {
+            project: result.project,
+            projectId: result.projectId,
+            projectRootPath: result.projectRootPath,
+          },
+          {
+            indexSync: {
+              changedFiles: result.changedFiles,
+              chunkCount: result.chunkCount,
+              deletedFiles: result.deletedFiles,
+              failedFileCount: result.failedFileCount,
+              failedFiles: result.failedFiles,
+              indexedFiles: result.indexedFiles,
+              scannedFiles: result.scannedFiles,
+              timings: result.timings,
+              vectorIndex: result.vectorIndex,
+            },
+          },
+          result.failedFileCount > 0 ? ["Some files failed during indexing; see stats.indexSync.failedFiles for details."] : [],
+        ),
+      );
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -172,7 +229,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         },
         normalizedResultMode,
       );
-      result.indexing = {
+      const indexSync = {
         changedFiles: indexResult.changedFiles,
         chunkCount: indexResult.chunkCount,
         createdAt: indexResult.createdAt,
@@ -181,10 +238,58 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         failedFiles: indexResult.failedFiles,
         indexedFiles: indexResult.indexedFiles,
         scannedFiles: indexResult.scannedFiles,
+        timings: indexResult.timings,
+        vectorIndex: indexResult.vectorIndex,
       };
+      result.indexing = indexSync;
       result.stats.indexedFiles = indexResult.indexedFiles;
       result.stats.scannedFiles = indexResult.scannedFiles;
-      res.json(result);
+      const projectStats = dependencies.store.getProjectStats(indexResult.projectRootPath);
+      res.json(
+        buildEnvelope(
+          {
+            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
+            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+            languages: normalizeSupportedLanguages(languages),
+            mode: normalizedMode,
+            pathContains: normalizePathPrefix(pathContains),
+            pathPrefix: normalizePathPrefix(pathPrefix),
+            projectRootPath: indexResult.projectRootPath,
+            query: String(query ?? ""),
+            resultMode: normalizedResultMode,
+            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+          },
+          {
+            diagnostics: result.diagnostics,
+            projectRootPath: result.projectRootPath,
+            query: result.query,
+            resultMode: result.resultMode,
+            results: result.results,
+          },
+          {
+            indexSync,
+            project: projectStats
+              ? {
+                  chunkCount: projectStats.chunkCount,
+                  fileCount: projectStats.fileCount,
+                  indexedFileCount: result.stats.indexedFiles,
+                  languages: projectStats.languages,
+                  status: projectStats.status,
+                  symbolCount: projectStats.symbolCount,
+                }
+              : null,
+            search: {
+              candidateCount: result.diagnostics.candidateCount,
+              resultCount: result.stats.resultCount,
+              searchMs: result.stats.searchMs,
+            },
+          },
+          [
+            ...result.notes,
+            ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
+          ],
+        ),
+      );
     } catch (error: unknown) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }

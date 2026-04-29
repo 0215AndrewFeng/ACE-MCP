@@ -41,6 +41,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     dataDir,
     databasePath: path.join(dataDir, "index.db"),
     defaultTopK: 8,
+    enableVectorSearch: true,
     excludePatterns: [".git", "node_modules", "dist"],
     logDir,
     logFilePath: path.join(logDir, "ace-mcp.log"),
@@ -49,6 +50,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     maxLinesPerChunk: 80,
     settingsFilePath: path.join(tempDir, "settings.toml"),
     textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
+    vectorIndexingMode: "lazy",
   };
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);
@@ -60,7 +62,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     },
     indexCoordinator: new IndexCoordinator(settings, store, logger),
     projectRootPath,
-    searchService: new SearchService(store, logger),
+    searchService: new SearchService(store, logger, settings),
     settings,
     store,
     tempDir,

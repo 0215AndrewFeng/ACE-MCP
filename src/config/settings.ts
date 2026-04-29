@@ -11,17 +11,20 @@ type RawSettings = Partial<
     Settings,
     | "batchSize"
     | "defaultTopK"
+    | "enableVectorSearch"
     | "excludePatterns"
     | "logLevel"
     | "maxFileSizeKb"
     | "maxLinesPerChunk"
     | "textExtensions"
+    | "vectorIndexingMode"
   >
 >;
 
 const DEFAULT_PUBLIC_SETTINGS = {
   batchSize: 32,
   defaultTopK: 8,
+  enableVectorSearch: true,
   excludePatterns: [
     ".git",
     "node_modules",
@@ -39,6 +42,7 @@ const DEFAULT_PUBLIC_SETTINGS = {
   maxFileSizeKb: 1024,
   maxLinesPerChunk: 220,
   textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
+  vectorIndexingMode: "lazy",
 } satisfies RawSettings;
 
 function coerceArray(value: string | undefined): string[] | undefined {
@@ -50,6 +54,31 @@ function coerceArray(value: string | undefined): string[] | undefined {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function coerceBoolean(value: string | undefined): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  throw new Error(`Invalid boolean value: ${value}`);
+}
+
+function coerceVectorIndexingMode(value: string | undefined): Settings["vectorIndexingMode"] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return value === "eager" ? "eager" : value === "lazy" ? "lazy" : undefined;
 }
 
 export async function loadSettings(): Promise<Settings> {
@@ -80,6 +109,8 @@ export async function loadSettings(): Promise<Settings> {
 
   const envExtensions = coerceArray(process.env.ACE_MCP_TEXT_EXTENSIONS);
   const envExcludes = coerceArray(process.env.ACE_MCP_EXCLUDE_PATTERNS);
+  const envEnableVectorSearch = coerceBoolean(process.env.ACE_MCP_ENABLE_VECTOR_SEARCH);
+  const envVectorIndexingMode = coerceVectorIndexingMode(process.env.ACE_MCP_VECTOR_INDEXING_MODE);
 
   return {
     batchSize:
@@ -88,6 +119,8 @@ export async function loadSettings(): Promise<Settings> {
     databasePath,
     defaultTopK:
       Number(process.env.ACE_MCP_DEFAULT_TOP_K ?? fileSettings.defaultTopK ?? DEFAULT_PUBLIC_SETTINGS.defaultTopK),
+    enableVectorSearch:
+      envEnableVectorSearch ?? fileSettings.enableVectorSearch ?? DEFAULT_PUBLIC_SETTINGS.enableVectorSearch,
     excludePatterns: envExcludes ?? fileSettings.excludePatterns ?? DEFAULT_PUBLIC_SETTINGS.excludePatterns,
     logDir,
     logFilePath,
@@ -103,5 +136,7 @@ export async function loadSettings(): Promise<Settings> {
       ),
     settingsFilePath,
     textExtensions: envExtensions ?? fileSettings.textExtensions ?? DEFAULT_PUBLIC_SETTINGS.textExtensions,
+    vectorIndexingMode:
+      envVectorIndexingMode ?? fileSettings.vectorIndexingMode ?? DEFAULT_PUBLIC_SETTINGS.vectorIndexingMode,
   };
 }

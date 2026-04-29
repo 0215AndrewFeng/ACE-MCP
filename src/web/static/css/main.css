@@ -23,4 +23,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .search-history { display: flex; flex-wrap: wrap; gap: 8px; }
 .search-history-item { background: #f3f4f6; padding: 4px 12px; border-radius: 16px; font-size: 13px; cursor: pointer; }
 .search-history-item:hover { background: #e5e7eb; }
+.result-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.result-summary-card { background: #f3f4f6; border-radius: 10px; padding: 10px 12px; }
+.result-summary-card strong { display: block; font-size: 12px; color: #374151; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+.result-summary-card span { font-size: 14px; color: #111827; }
 .error { color: #dc2626; background: #fef2f2; padding: 12px; border-radius: 8px; margin-top: 8px; }

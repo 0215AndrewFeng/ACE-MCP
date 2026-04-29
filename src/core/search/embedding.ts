@@ -16,13 +16,10 @@ export interface EmbeddingProvider {
  * 适用于没有外部依赖的场景
  */
 export class InMemoryEmbeddingProvider implements EmbeddingProvider {
-  private dimension: number;
-  private modelName: string;
-  private vocabulary: Map<string, number> = new Map();
-  private idf: Map<string, number> = new Map();
-  private documentCount: number = 0;
+  private readonly dimension: number;
+  private readonly modelName: string;
 
-  constructor(dimension: number = 128, modelName: string = "in-memory-tfidf") {
+  constructor(dimension: number = 128, modelName: string = "in-memory-hash-vector-v1") {
     this.dimension = dimension;
     this.modelName = modelName;
   }
@@ -40,47 +37,17 @@ export class InMemoryEmbeddingProvider implements EmbeddingProvider {
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
-    // 学习词汇和 IDF（如果尚未学习）
-    if (this.documentCount === 0) {
-      this.learnVocabulary(texts);
-    }
-
-    // 为每个文本生成向量
     return texts.map((text) => this.computeTfIdfVector(text));
   }
 
-  private learnVocabulary(texts: string[]): void {
-    const docFreq: Map<string, number> = new Map();
-    const allTokens: Set<string> = new Set();
-
-    for (const text of texts) {
-      const tokens = this.tokenize(text);
-      const uniqueTokens = new Set(tokens);
-
-      for (const token of uniqueTokens) {
-        allTokens.add(token);
-        docFreq.set(token, (docFreq.get(token) || 0) + 1);
-      }
+  private bucketForToken(token: string): number {
+    let hash = 2166136261;
+    for (let index = 0; index < token.length; index += 1) {
+      hash ^= token.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
     }
 
-    // 选择最常见的词作为词汇表
-    const sortedTokens = [...allTokens].sort((a, b) => {
-      const freqA = docFreq.get(a) || 0;
-      const freqB = docFreq.get(b) || 0;
-      return freqB - freqA;
-    });
-
-    // 限制词汇表大小
-    const maxVocab = Math.min(this.dimension, sortedTokens.length);
-    for (let i = 0; i < maxVocab; i++) {
-      this.vocabulary.set(sortedTokens[i], i);
-    }
-
-    // 计算 IDF
-    this.documentCount = texts.length;
-    for (const [token, freq] of docFreq) {
-      this.idf.set(token, Math.log((this.documentCount + 1) / (freq + 1)) + 1);
-    }
+    return Math.abs(hash) % this.dimension;
   }
 
   private computeTfIdfVector(text: string): number[] {
@@ -95,12 +62,10 @@ export class InMemoryEmbeddingProvider implements EmbeddingProvider {
     // 归一化并计算 TF-IDF
     const vector = new Array<number>(this.dimension).fill(0);
     for (const [token, freq] of tf) {
-      const idx = this.vocabulary.get(token);
-      if (idx !== undefined) {
-        const tfNorm = freq / tokens.length;
-        const idf = this.idf.get(token) || 1;
-        vector[idx] = tfNorm * idf;
-      }
+      const idx = this.bucketForToken(token);
+      const tfNorm = freq / tokens.length;
+      const tokenWeight = 1 + Math.log1p(token.length);
+      vector[idx] += tfNorm * tokenWeight;
     }
 
     // L2 归一化

@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   store.initialize();
 
   const indexCoordinator = new IndexCoordinator(settings, store, logger);
-  const searchService = new SearchService(store, logger);
+  const searchService = new SearchService(store, logger, settings);
 
   const server = createMcpServer({
     indexCoordinator,

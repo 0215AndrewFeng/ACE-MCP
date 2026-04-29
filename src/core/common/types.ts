@@ -2,6 +2,7 @@ export type Language = "java" | "javascript" | "dotnet" | "python" | "unknown";
 export type SupportedLanguage = Exclude<Language, "unknown">;
 export type SearchMode = "auto" | "lexical" | "symbol" | "semantic" | "hybrid";
 export type ProjectStatus = "ready" | "indexing" | "error";
+export type VectorIndexingMode = "lazy" | "eager";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
 
@@ -10,6 +11,7 @@ export interface Settings {
   dataDir: string;
   databasePath: string;
   defaultTopK: number;
+  enableVectorSearch: boolean;
   excludePatterns: string[];
   logDir: string;
   logFilePath: string;
@@ -18,6 +20,7 @@ export interface Settings {
   maxLinesPerChunk: number;
   settingsFilePath: string;
   textExtensions: string[];
+  vectorIndexingMode: VectorIndexingMode;
 }
 
 export interface CliOptions {
@@ -98,6 +101,8 @@ export interface IndexProjectResult {
   projectId: string;
   projectRootPath: string;
   scannedFiles: number;
+  timings: IndexTimingStats;
+  vectorIndex: IndexVectorStats;
 }
 
 export interface IndexFailure {
@@ -114,6 +119,8 @@ export interface IndexEventSummary {
   failedFiles: IndexFailure[];
   indexedFiles: number;
   scannedFiles: number;
+  timings: IndexTimingStats;
+  vectorIndex: IndexVectorStats;
 }
 
 export interface QueryAnalysis {
@@ -163,13 +170,16 @@ export interface SearchFilters {
 }
 
 export interface SearchResponse {
+  diagnostics: SearchDiagnostics;
   indexing?: IndexEventSummary;
+  notes: string[];
   projectRootPath: string;
   query: string;
   resultMode: SearchResultMode;
   results: SearchResult[];
   stats: {
     indexedFiles: number;
+    resultCount: number;
     scannedFiles: number;
     searchMs: number;
   };
@@ -187,6 +197,20 @@ export interface ProjectStats {
   symbolCount: number;
 }
 
+export interface IndexTimingStats {
+  collectMs: number;
+  detectMs: number;
+  indexMs: number;
+  totalMs: number;
+  vectorMs: number;
+}
+
+export interface IndexVectorStats {
+  enabled: boolean;
+  hydratedChunkCount: number;
+  mode: VectorIndexingMode;
+}
+
 export interface ProjectListItem {
   languages: Language[];
   lastIndexAt: string | null;
@@ -199,7 +223,32 @@ export interface ProjectListItem {
 export interface VectorEntry {
   chunkId: string;
   embedding: number[];
+  filePath: string;
+  language: Language;
   modelName: string;
+}
+
+export interface SearchPhaseStat {
+  candidateCount: number;
+  durationMs: number;
+  error?: string;
+  name: string;
+  reason?: string;
+  skipped?: boolean;
+}
+
+export interface SearchDiagnostics {
+  candidateCount: number;
+  executedStrategies: SearchPhaseStat[];
+  queryAnalysis: QueryAnalysis;
+  resultSourceBreakdown: Partial<Record<SearchMatchSource, number>>;
+  vectorIndex: {
+    cacheHit: boolean;
+    candidateCount: number;
+    enabled: boolean;
+    hydratedChunkCount: number;
+    mode: VectorIndexingMode;
+  };
 }
 
 export interface SearchContextInput {

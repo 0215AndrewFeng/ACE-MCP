@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v3.0.1`
+当前版本：`v3.3.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -12,8 +12,11 @@
 - 增量索引
 - `SQLite + FTS5` 全文检索
 - 语义召回 `MVP`（本地语义词扩展 + 混合检索）
+- 懒加载向量索引与项目级向量缓存
 - JavaScript/TypeScript AST 级定义抽取，Java / Python / .NET 增强轻量符号抽取
 - `search_context` / `index_project` / `get_file_snippet` / `project_stats`
+- 统一的 `meta / request / data / stats / notes` 返回结构
+- 搜索诊断信息（query analysis / phase timings / source breakdown / vector status）
 - 可选 Web 调试面板
 
 ## 使用示例
@@ -123,7 +126,7 @@ npm start -- --web-port 8787
 
 ### `search_context`
 
-自动执行增量索引后返回相关代码片段。
+自动执行增量索引后返回相关代码片段与结构化诊断信息。
 
 工具层现在统一返回 `meta / request / data / stats / notes` 五段结构，并同时通过 MCP `content.text` 与 `structuredContent` 暴露同一份 JSON。
 
@@ -155,7 +158,7 @@ npm start -- --web-port 8787
 
 其中 `includeContextLines` 为可选参数，默认 `0`，表示在命中片段前后额外展开的上下文行数，最大 `50`。`languages`、`pathPrefix`、`pathContains`、`excludePathPrefix`、`resultMode` 与 `mode` 均为可选；未传时保持当前全局搜索行为。`resultMode = "metadata"` 时结果仍保留位置、分数和 `explanation`，但 `snippet` 会被省略为空字符串，且 `snippetIncluded = false`。
 
-当前 `auto` 与 `hybrid` 模式会额外启用语义召回 `MVP`：基于本地索引内容生成语义词，并结合常见代码概念同义词（如 `login/signin/auth`、`repository/dao/store`、`handler/controller/endpoint`）进行混合检索；若只想看语义候选，也可直接使用 `mode = "semantic"`。
+当前 `auto` 与 `hybrid` 模式会额外启用语义召回 `MVP`：基于本地索引内容生成语义词，并结合常见代码概念同义词（如 `login/signin/auth`、`repository/dao/store`、`handler/controller/endpoint`）进行混合检索；若只想看语义候选，也可直接使用 `mode = "semantic"`。向量检索默认采用 `lazy` 模式，仅在首次 `semantic / hybrid` 查询时按需补齐对应项目的 chunk 向量，以降低大仓库索引时延。
 
 当查询中已经包含明显的复合代码标识符（如 `MyWorkOrderController`、`GetMyWorkOrders`）时，`auto` 模式会优先走 lexical / symbol / path 分支，避免在大仓库上被高开销的 semantic 扩展拖慢。
 
@@ -168,8 +171,10 @@ npm start -- --web-port 8787
 返回中的关键统计含义如下：
 
 - `stats.project.indexedFileCount`：项目当前持久化索引里的总文件数
-- `stats.indexSync.indexedFileCount`：本次搜索前增量同步实际重新写入的文件数
-- `stats.indexSync.scannedFileCount`：本次增量同步扫描过的文件数
+- `stats.indexSync.indexedFiles`：本次搜索前增量同步实际重新写入的文件数
+- `stats.indexSync.scannedFiles`：本次增量同步扫描过的文件数
+- `stats.search.candidateCount`：本次重排前汇总到的候选结果数
+- `data.diagnostics.executedStrategies`：各搜索阶段是否执行、耗时和候选量
 - `notes`：当本次增量同步未发现变更、或存在失败文件时，给出解释性提示，避免把 `0` 误读为“项目未建索引”
 
 ### `get_file_snippet`
@@ -198,22 +203,26 @@ npm start -- --web-port 8787
 ```toml
 batchSize = 32
 defaultTopK = 8
+enableVectorSearch = true
 maxFileSizeKb = 1024
 maxLinesPerChunk = 220
 logLevel = "info"
 textExtensions = [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"]
 excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "obj", "__pycache__", ".venv"]
+vectorIndexingMode = "lazy"
 ```
 
 也支持环境变量覆盖：
 
 - `ACE_MCP_BATCH_SIZE`
 - `ACE_MCP_DEFAULT_TOP_K`
+- `ACE_MCP_ENABLE_VECTOR_SEARCH`
 - `ACE_MCP_MAX_FILE_SIZE_KB`
 - `ACE_MCP_MAX_LINES_PER_CHUNK`
 - `ACE_MCP_LOG_LEVEL`
 - `ACE_MCP_TEXT_EXTENSIONS`
 - `ACE_MCP_EXCLUDE_PATTERNS`
+- `ACE_MCP_VECTOR_INDEXING_MODE`
 
 ## Web 调试面板
 
@@ -228,6 +237,7 @@ excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "ob
 - 交互式调试表单页面
 - 直接通过 HTTP 调试 `index_project` 与 `search_context`（含上下文行、语言与路径前缀过滤）
 - 直接通过 HTTP 调试 `get_file_snippet`
+- 搜索与索引结果摘要（候选数、耗时、向量模式）
 
 主要接口：
 
@@ -243,9 +253,9 @@ excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "ob
 
 ## 开发建议
 
-当前版本优先实现“稳定可用的本地搜索骨架”。如果继续增强，建议按以下顺序推进：
+当前版本已经补齐性能、诊断和契约一致性。如果继续增强，建议按以下顺序推进：
 
 1. 更细的语言适配器拆分
-2. 语义向量检索
+2. `sqlite-vss` / ANN 等更高效的向量后端
 3. 更丰富的 Web UI
-4. 结果重排与质量评估
+4. 离线结果重排与质量评估
