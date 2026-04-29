@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { ToolDependencies } from "../toolRegistry.js";
 import { readFileSnippet } from "../../core/project/fileSnippet.js";
+import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
 export function registerGetFileSnippetTool(server: McpServer, _dependencies: ToolDependencies): void {
   server.registerTool(
@@ -19,15 +20,22 @@ export function registerGetFileSnippetTool(server: McpServer, _dependencies: Too
     },
     async ({ endLine, filePath, projectRootPath, startLine }) => {
       const result = await readFileSnippet(projectRootPath, filePath, startLine, endLine);
-
-      return {
-        content: [
-          {
-            text: JSON.stringify(result, null, 2),
-            type: "text",
+      const payload = buildEnvelope(
+        { endLine, filePath, projectRootPath: result.projectRootPath, startLine },
+        {
+          filePath: result.filePath,
+          projectRootPath: result.projectRootPath,
+          snippet: result.snippet,
+        },
+        {
+          snippet: {
+            endLine: result.endLine,
+            lineCount: result.endLine - result.startLine + 1,
+            startLine: result.startLine,
           },
-        ],
-      };
+        },
+      );
+      return asStructuredToolResponse(payload);
     },
   );
 }

@@ -6,13 +6,16 @@ import {
   DEFAULT_INCLUDE_CONTEXT_LINES,
   MAX_INCLUDE_CONTEXT_LINES,
   type QueryAnalysis,
+  type SearchDiagnostics,
   type SearchFilters,
   type SearchMatchSource,
   type SearchMode,
+  type SearchPhaseStat,
   type SearchResponse,
   type SearchResultExplanation,
   type SearchResultMode,
   type SearchResult,
+  type Settings,
   type SupportedLanguage,
 } from "../common/types.js";
 import { AppError } from "../common/errors.js";
@@ -26,7 +29,7 @@ let embeddingProvider: InMemoryEmbeddingProvider | null = null;
 
 function getEmbeddingProvider(): InMemoryEmbeddingProvider {
   if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-tfidf");
+    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-hash-vector-v1");
   }
   return embeddingProvider;
 }
@@ -437,11 +440,50 @@ async function expandResultSnippets(
   );
 }
 
+function buildResultSourceBreakdown(results: SearchResult[]): Partial<Record<SearchMatchSource, number>> {
+  const breakdown: Partial<Record<SearchMatchSource, number>> = {};
+  for (const result of results) {
+    for (const source of parseMatchedSources(result.reason)) {
+      breakdown[source] = (breakdown[source] ?? 0) + 1;
+    }
+  }
+
+  return breakdown;
+}
+
 export class SearchService {
   public constructor(
     private readonly store: SQLiteStore,
     private readonly logger: Logger,
+    private readonly settings: Settings,
   ) {}
+
+  private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
+    const missingChunks = this.store.listChunksMissingVectors(projectId, modelName);
+    if (missingChunks.length === 0) {
+      return 0;
+    }
+
+    const provider = getEmbeddingProvider();
+    const batchSize = Math.max(8, Math.min(64, this.settings.batchSize));
+    let hydratedChunkCount = 0;
+
+    for (let index = 0; index < missingChunks.length; index += batchSize) {
+      const batch = missingChunks.slice(index, index + batchSize);
+      const embeddings = await provider.embedBatch(batch.map((chunk) => chunk.content));
+      this.store.writeChunkVectors(
+        batch.map((chunk, embeddingIndex) => ({
+          chunkId: chunk.chunkId,
+          embedding: embeddings[embeddingIndex],
+          modelName,
+        })),
+        projectId,
+      );
+      hydratedChunkCount += batch.length;
+    }
+
+    return hydratedChunkCount;
+  }
 
   public async search(
     projectRootPath: string,
@@ -459,71 +501,170 @@ export class SearchService {
     }
 
     const analysis = analyzeQuery(query);
+    const notes: string[] = [];
     const resultSets: SearchResult[][] = [];
+    const executedStrategies: SearchPhaseStat[] = [];
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const normalizedFilters = normalizeSearchFilters(filters);
     const fanoutLimit = Math.min(SEARCH_FANOUT_LIMIT, Math.max(topK, topK * SEARCH_FANOUT_MULTIPLIER));
+    let vectorCacheHit = false;
+    let vectorCandidateCount = 0;
+    let vectorHydratedChunkCount = 0;
 
-    if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && analysis.ftsQuery) {
+    const runPhase = async (
+      name: string,
+      enabled: boolean,
+      operation: () => SearchResult[] | Promise<SearchResult[]>,
+      reason: string,
+    ): Promise<SearchResult[]> => {
+      if (!enabled) {
+        executedStrategies.push({
+          candidateCount: 0,
+          durationMs: 0,
+          name,
+          reason,
+          skipped: true,
+        });
+        return [];
+      }
+
+      const phaseStartedAt = performance.now();
       try {
-        resultSets.push(this.store.searchByText(project.project_id, analysis.ftsQuery, fanoutLimit, normalizedFilters));
+        const results = await operation();
+        executedStrategies.push({
+          candidateCount: results.length,
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          name,
+        });
+        return results;
       } catch (error: unknown) {
-        this.logger.warn("fts query failed", {
-          error: error instanceof Error ? error.message : String(error),
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn("search phase failed", {
+          error: message,
+          phase: name,
           projectRootPath,
           query,
         });
+        executedStrategies.push({
+          candidateCount: 0,
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          error: message,
+          name,
+        });
+        notes.push(`${name} failed: ${message}`);
+        return [];
       }
-    }
+    };
 
-    if (
+    const lexicalEnabled = (mode === "auto" || mode === "lexical" || mode === "hybrid") && Boolean(analysis.ftsQuery);
+    resultSets.push(
+      await runPhase(
+        "lexical",
+        lexicalEnabled,
+        () => this.store.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
+        analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
+      ),
+    );
+
+    const semanticFtsEnabled =
       (mode === "semantic" ||
         mode === "hybrid" ||
         (mode === "auto" &&
           !analysis.isPathLike &&
           !analysis.isSymbolLike &&
           !analysis.hasIdentifierLikeSegments)) &&
-      analysis.semanticTerms.length > 0
-    ) {
-      this.store.ensureSemanticIndex(project.project_id);
-      resultSets.push(this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters));
-    }
+      analysis.semanticTerms.length > 0;
+    resultSets.push(
+      await runPhase(
+        "semantic-fts",
+        semanticFtsEnabled,
+        () => {
+          this.store.ensureSemanticIndex(project.project_id);
+          return this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters);
+        },
+        analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
+      ),
+    );
 
-    // 向量搜索（仅在 semantic 或 hybrid 模式下，且已有向量索引时）
-    if ((mode === "semantic" || mode === "hybrid") && this.store.hasVectorIndex(project.project_id)) {
-      try {
-        const provider = getEmbeddingProvider();
-        const queryEmbedding = await provider.embed(query);
-        resultSets.push(this.store.searchByVector(project.project_id, queryEmbedding, fanoutLimit, normalizedFilters));
-      } catch (error) {
-        this.logger.warn("vector search failed", {
-          error: error instanceof Error ? error.message : String(error),
-          projectRootPath,
-          query,
-        });
-      }
-    }
+    const provider = getEmbeddingProvider();
+    const vectorModelName = provider.getModelName();
+    const vectorCoverage = this.store.getVectorCoverage(project.project_id, vectorModelName);
+    const vectorEnabled = this.settings.enableVectorSearch && (mode === "semantic" || mode === "hybrid");
+    resultSets.push(
+      await runPhase(
+        "vector",
+        vectorEnabled,
+        async () => {
+          if (this.settings.vectorIndexingMode === "lazy") {
+            vectorHydratedChunkCount = await this.ensureProjectVectors(project.project_id, vectorModelName);
+            if (vectorHydratedChunkCount > 0) {
+              notes.push(`Lazy vector hydration indexed ${vectorHydratedChunkCount} chunk vectors for this query.`);
+            }
+          }
 
-    if ((mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens)) {
-      resultSets.push(
-        this.store.searchByTextSubstrings(
-          project.project_id,
-          buildExpandedUnicodeTokens(analysis),
-          fanoutLimit,
-          normalizedFilters,
-        ),
-      );
-    }
+          const queryEmbedding = await provider.embed(query);
+          const vectorSearch = this.store.searchByVector(
+            project.project_id,
+            queryEmbedding,
+            fanoutLimit,
+            vectorModelName,
+            normalizedFilters,
+            project.index_version,
+          );
+          vectorCacheHit = vectorSearch.cacheHit;
+          vectorCandidateCount = vectorSearch.candidateCount;
+          return vectorSearch.results;
+        },
+        this.settings.enableVectorSearch ? "mode-disabled" : "vector-search-disabled",
+      ),
+    );
 
-    if (mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike) {
-      resultSets.push(this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
-    }
+    const unicodeEnabled = (mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens);
+    resultSets.push(
+      await runPhase(
+        "unicode-substring",
+        unicodeEnabled,
+        () =>
+          this.store.searchByTextSubstrings(
+            project.project_id,
+            buildExpandedUnicodeTokens(analysis),
+            fanoutLimit,
+            normalizedFilters,
+          ),
+        containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
+      ),
+    );
 
-    if (mode === "auto" || mode === "hybrid" || analysis.isPathLike) {
-      resultSets.push(this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters));
-    }
+    const symbolEnabled = mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike;
+    resultSets.push(
+      await runPhase(
+        "symbol",
+        symbolEnabled,
+        () => this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        "mode-disabled",
+      ),
+    );
 
-    const rerankedResults = rerankResults(mergeResults(resultSets), analysis, topK);
+    const pathEnabled = mode === "auto" || mode === "hybrid" || analysis.isPathLike;
+    resultSets.push(
+      await runPhase(
+        "path",
+        pathEnabled,
+        () => this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
+      ),
+    );
+
+    const rerankStartedAt = performance.now();
+    const mergedResults = mergeResults(resultSets);
+    const rerankedResults = rerankResults(mergedResults, analysis, topK);
+    executedStrategies.push({
+      candidateCount: rerankedResults.length,
+      durationMs: Math.round(performance.now() - rerankStartedAt),
+      name: "rerank",
+    });
+
+    const snippetStartedAt = performance.now();
     const hydratedResults =
       resultMode === "full"
         ? await expandResultSnippets(
@@ -532,11 +673,38 @@ export class SearchService {
             normalizedIncludeContextLines,
           )
         : rerankedResults;
+    executedStrategies.push({
+      candidateCount: hydratedResults.length,
+      durationMs: Math.round(performance.now() - snippetStartedAt),
+      name: "snippet-expand",
+      reason: resultMode === "full" ? undefined : "metadata-mode",
+      skipped: resultMode !== "full",
+    });
     const results = applyResultMode(hydratedResults, resultMode);
     const stats = this.store.getProjectStats(projectRootPath);
     const searchMs = Math.round(performance.now() - startedAt);
+    const diagnostics: SearchDiagnostics = {
+      candidateCount: mergedResults.length,
+      executedStrategies,
+      queryAnalysis: analysis,
+      resultSourceBreakdown: buildResultSourceBreakdown(results),
+      vectorIndex: {
+        cacheHit: vectorCacheHit,
+        candidateCount: vectorCandidateCount,
+        enabled: this.settings.enableVectorSearch,
+        hydratedChunkCount: vectorHydratedChunkCount,
+        mode: this.settings.vectorIndexingMode,
+      },
+    };
+
+    if (!this.settings.enableVectorSearch) {
+      notes.push("Vector search is disabled in settings; semantic results came from semantic FTS only.");
+    } else if (this.settings.vectorIndexingMode === "lazy" && vectorCoverage.missingChunkCount > 0 && vectorHydratedChunkCount === 0) {
+      notes.push("Vector coverage was already warm for this query; no lazy hydration was needed.");
+    }
 
     this.logger.info("search completed", {
+      candidateCount: mergedResults.length,
       mode,
       projectRootPath,
       query,
@@ -544,16 +712,22 @@ export class SearchService {
       resultMode,
       searchMs,
       topK,
+      vectorCacheHit,
+      vectorCandidateCount,
+      vectorHydratedChunkCount,
     });
 
     return {
+      diagnostics,
+      notes,
       projectRootPath,
       query,
       resultMode,
       results,
       stats: {
         indexedFiles: stats?.fileCount ?? 0,
-        scannedFiles: stats?.fileCount ?? 0,
+        resultCount: results.length,
+        scannedFiles: stats?.latestIndexEvent?.scannedFiles ?? stats?.fileCount ?? 0,
         searchMs,
       },
     };

@@ -1,6 +1,7 @@
 const MAX_HISTORY = 20;
 
 const resultEl = document.getElementById("result");
+const resultSummaryEl = document.getElementById("result-summary");
 const projectRootInput = document.getElementById("project-root");
 const projectRootSelect = document.getElementById("project-root-select");
 const searchQueryInput = document.getElementById("search-query");
@@ -65,11 +66,58 @@ function parseSearchLanguages(value) {
 }
 
 function render(data) {
+  renderSummary(data);
   resultEl.textContent = JSON.stringify(data, null, 2);
+}
+
+function renderSummary(data) {
+  if (!resultSummaryEl) return;
+
+  const cards = [];
+  const stats = data?.stats || {};
+  const payload = data?.data || {};
+  const diagnostics = payload?.diagnostics || {};
+  const vectorIndex = diagnostics?.vectorIndex || stats?.indexSync?.vectorIndex;
+
+  if (stats?.search?.resultCount ?? stats?.resultCount) {
+    cards.push({ label: "Results", value: String(stats.search?.resultCount ?? stats.resultCount) });
+  }
+  if (stats?.search?.searchMs ?? stats?.searchMs) {
+    cards.push({ label: "Search ms", value: String(stats.search?.searchMs ?? stats.searchMs) });
+  }
+  if (stats?.search?.candidateCount ?? diagnostics?.candidateCount) {
+    cards.push({ label: "Candidates", value: String(stats.search?.candidateCount ?? diagnostics.candidateCount) });
+  }
+  if (stats?.project?.fileCount ?? stats?.project?.indexedFileCount) {
+    cards.push({ label: "Indexed files", value: String(stats.project?.indexedFileCount ?? stats.project?.fileCount) });
+  }
+  if (stats?.indexSync?.timings?.totalMs) {
+    cards.push({ label: "Index total ms", value: String(stats.indexSync.timings.totalMs) });
+  }
+  if (vectorIndex?.enabled !== undefined) {
+    const mode = vectorIndex.mode ? ` (${vectorIndex.mode})` : "";
+    const hydrated = vectorIndex.hydratedChunkCount ? `, hydrated ${vectorIndex.hydratedChunkCount}` : "";
+    cards.push({ label: "Vector index", value: `${vectorIndex.enabled ? "on" : "off"}${mode}${hydrated}` });
+  }
+
+  if (cards.length === 0) {
+    resultSummaryEl.hidden = true;
+    resultSummaryEl.innerHTML = "";
+    return;
+  }
+
+  resultSummaryEl.hidden = false;
+  resultSummaryEl.innerHTML = cards.map(card =>
+    `<div class="result-summary-card"><strong>${escapeHtml(card.label)}</strong><span>${escapeHtml(card.value)}</span></div>`
+  ).join("");
 }
 
 async function run(action) {
   resultEl.textContent = "Loading...";
+  if (resultSummaryEl) {
+    resultSummaryEl.hidden = true;
+    resultSummaryEl.innerHTML = "";
+  }
   resultEl.classList.add("loading");
   try {
     const data = await action();

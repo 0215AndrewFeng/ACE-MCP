@@ -91,15 +91,25 @@ test("web search and stats responses return valid data", async () => {
       assert.equal(firstSearchResponse.status, 200);
 
       const searchPayload = (await firstSearchResponse.json()) as {
-        results: unknown[];
+        data: {
+          diagnostics: {
+            candidateCount: number;
+          };
+          results: unknown[];
+        };
         stats: {
-          indexedFiles: number;
-          searchMs: number;
+          project: {
+            indexedFileCount: number;
+          } | null;
+          search: {
+            searchMs: number;
+          };
         };
       };
-      assert.equal(Array.isArray(searchPayload.results), true);
-      assert.equal(searchPayload.stats.indexedFiles >= 1, true);
-      assert.equal(typeof searchPayload.stats.searchMs === "number", true);
+      assert.equal(Array.isArray(searchPayload.data.results), true);
+      assert.equal((searchPayload.stats.project?.indexedFileCount ?? 0) >= 1, true);
+      assert.equal(typeof searchPayload.stats.search.searchMs === "number", true);
+      assert.equal(searchPayload.data.diagnostics.candidateCount >= searchPayload.data.results.length, true);
 
       // Stats API
       const statsResponse = await fetch(

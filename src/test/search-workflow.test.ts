@@ -281,6 +281,38 @@ test("semantic mode matches conceptual synonyms in code identifiers", async () =
   }
 });
 
+test("semantic search lazily hydrates vectors and reuses cached project vectors", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/auth/signInHandler.ts": "export const signInHandler = async () => 'ok';\n",
+    "src/orders/OrderDao.ts": "export class OrderDao { insertOrder() { return true; } }\n",
+  });
+
+  try {
+    const indexed = await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+    assert.equal(indexed.vectorIndex.mode, "lazy");
+    assert.equal(indexed.vectorIndex.hydratedChunkCount, 0);
+    assert.equal(indexed.timings.totalMs >= indexed.timings.indexMs, true);
+
+    const project = environment.store.getProjectByRoot(environment.projectRootPath);
+    assert.ok(project);
+    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v1"), false);
+
+    const firstResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
+    assert.equal(firstResponse.diagnostics.vectorIndex.hydratedChunkCount > 0, true);
+    assert.equal(firstResponse.diagnostics.vectorIndex.cacheHit, false);
+    assert.equal(firstResponse.notes.some((note) => note.includes("Lazy vector hydration indexed")), true);
+    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v1"), true);
+
+    const secondResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
+    assert.equal(secondResponse.diagnostics.vectorIndex.hydratedChunkCount, 0);
+    assert.equal(secondResponse.diagnostics.vectorIndex.cacheHit, true);
+    assert.equal(secondResponse.diagnostics.executedStrategies.some((phase) => phase.name === "rerank"), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("auto mode skips semantic expansion for mixed identifier queries", async () => {
   const environment = await createTestProjectEnvironment({
     "package.json": JSON.stringify({ name: "fixture" }),

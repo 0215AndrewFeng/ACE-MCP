@@ -29,7 +29,7 @@ let embeddingProvider: InMemoryEmbeddingProvider | null = null;
 
 function getEmbeddingProvider(): InMemoryEmbeddingProvider {
   if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-tfidf");
+    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-hash-vector-v1");
   }
   return embeddingProvider;
 }
@@ -43,6 +43,7 @@ type IndexedFileResult =
   | {
       chunkCount: number;
       indexed: true;
+      vectorChunkCount: number;
     }
   | {
       filePath: string;
@@ -126,6 +127,7 @@ export class IndexCoordinator {
     });
     const changedFiles = filesToIndex.length;
     const indexingStartedAtMs = performance.now();
+    let vectorMs = 0;
     const fileResults = await mapInBatches<CollectedFile, IndexedFileResult>(filesToIndex, this.settings.batchSize, async (file) => {
       try {
         const buffer = await readFile(file.absolutePath);
@@ -145,18 +147,27 @@ export class IndexCoordinator {
         };
 
         this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
-
-        // 生成并存储向量
-        const provider = getEmbeddingProvider();
-        const chunkTexts = chunks.map((c) => c.content);
-        const embeddings = await provider.embedBatch(chunkTexts);
-        for (let i = 0; i < chunks.length; i++) {
-          this.store.writeChunkVector(chunks[i].chunkId, embeddings[i], provider.getModelName());
+        let vectorChunkCount = 0;
+        if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager" && chunks.length > 0) {
+          const provider = getEmbeddingProvider();
+          const vectorStartedAtMs = performance.now();
+          const embeddings = await provider.embedBatch(chunks.map((chunk) => chunk.content));
+          vectorMs += Math.round(performance.now() - vectorStartedAtMs);
+          vectorChunkCount = chunks.length;
+          this.store.writeChunkVectors(
+            chunks.map((chunk, index) => ({
+              chunkId: chunk.chunkId,
+              embedding: embeddings[index],
+              modelName: provider.getModelName(),
+            })),
+            projectId,
+          );
         }
 
         return {
           chunkCount: chunks.length,
           indexed: true as const,
+          vectorChunkCount,
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -176,10 +187,12 @@ export class IndexCoordinator {
     const failedFiles: IndexFailure[] = [];
     let chunkCount = 0;
     let indexedFiles = 0;
+    let hydratedChunkCount = 0;
     for (const result of fileResults) {
       if (result.indexed) {
         indexedFiles += 1;
         chunkCount += result.chunkCount;
+        hydratedChunkCount += result.vectorChunkCount;
         continue;
       }
 
@@ -189,7 +202,9 @@ export class IndexCoordinator {
       });
     }
 
-    this.store.updateProjectAfterIndex(projectId, timestamp, "ready");
+    const totalMs = Math.round(performance.now() - startedAtMs);
+    const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
+    this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion);
     this.store.recordIndexEvent(projectId, {
       changedFiles,
       chunkCount,
@@ -197,6 +212,20 @@ export class IndexCoordinator {
       deletedFiles: deletedFiles.length,
       failedFiles,
       indexedFiles,
+      metadata: {
+        timings: {
+          collectMs,
+          detectMs,
+          indexMs,
+          totalMs,
+          vectorMs,
+        },
+        vectorIndex: {
+          enabled: this.settings.enableVectorSearch,
+          hydratedChunkCount,
+          mode: this.settings.vectorIndexingMode,
+        },
+      },
       scannedFiles: sourceFiles.length,
     });
 
@@ -212,7 +241,10 @@ export class IndexCoordinator {
       indexedFiles,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
-      totalMs: Math.round(performance.now() - startedAtMs),
+      totalMs,
+      vectorIndexingMode: this.settings.vectorIndexingMode,
+      vectorMs,
+      vectorSearchEnabled: this.settings.enableVectorSearch,
     });
 
     return {
@@ -227,6 +259,18 @@ export class IndexCoordinator {
       projectId,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
+      timings: {
+        collectMs,
+        detectMs,
+        indexMs,
+        totalMs,
+        vectorMs,
+      },
+      vectorIndex: {
+        enabled: this.settings.enableVectorSearch,
+        hydratedChunkCount,
+        mode: this.settings.vectorIndexingMode,
+      },
     };
   }
 }

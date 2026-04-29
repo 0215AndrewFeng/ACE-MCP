@@ -7,6 +7,8 @@ import type {
   ChunkRecord,
   IndexEventSummary,
   IndexFailure,
+  IndexTimingStats,
+  IndexVectorStats,
   IndexedFileRecord,
   Language,
   ProjectListItem,
@@ -71,6 +73,10 @@ interface IndexEventPayload {
   deletedFiles: number;
   failedFiles: IndexFailure[];
   indexedFiles: number;
+  metadata: {
+    timings: IndexTimingStats;
+    vectorIndex: IndexVectorStats;
+  };
   scannedFiles: number;
 }
 
@@ -81,7 +87,40 @@ interface IndexEventRow {
   deleted_files: number;
   event_id: string;
   indexed_files: number;
+  metadata_json: string;
   scanned_files: number;
+}
+
+function normalizeComparablePath(value: string): string {
+  return value.toLowerCase().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
+}
+
+function matchesSearchFilters(
+  entry: Pick<VectorEntry, "filePath" | "language">,
+  filters: SearchFilters | undefined,
+): boolean {
+  if (!filters) {
+    return true;
+  }
+
+  const normalizedPath = normalizeComparablePath(entry.filePath);
+  if (filters.languages && filters.languages.length > 0 && !filters.languages.includes(entry.language as SupportedLanguage)) {
+    return false;
+  }
+
+  if (filters.pathPrefix && !normalizedPath.startsWith(normalizeComparablePath(filters.pathPrefix))) {
+    return false;
+  }
+
+  if (filters.pathContains && !normalizedPath.includes(normalizeComparablePath(filters.pathContains))) {
+    return false;
+  }
+
+  if (filters.excludePathPrefix && normalizedPath.startsWith(normalizeComparablePath(filters.excludePathPrefix))) {
+    return false;
+  }
+
+  return true;
 }
 
 function buildSearchFilterClause(filters: SearchFilters | undefined): {
@@ -123,9 +162,28 @@ function buildSearchFilterClause(filters: SearchFilters | undefined): {
 
 export class SQLiteStore {
   private readonly db: Database.Database;
+  private readonly vectorCache = new Map<string, { indexVersion: number; modelName: string; vectors: VectorEntry[] }>();
 
   public constructor(databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
+  }
+
+  private clearVectorCache(projectId?: string): void {
+    if (projectId) {
+      this.vectorCache.delete(projectId);
+      return;
+    }
+
+    this.vectorCache.clear();
+  }
+
+  private ensureColumn(tableName: string, columnName: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    if (columns.some((column) => column.name === columnName)) {
+      return;
+    }
+
+    this.db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
   }
 
   public deleteFiles(projectId: string, relativePaths: string[]): void {
@@ -164,6 +222,7 @@ export class SQLiteStore {
     });
 
     tx(fileIds.map((row) => row.file_id));
+    this.clearVectorCache(projectId);
   }
 
   public getProjectByRoot(projectRootPath: string): ProjectRow | undefined {
@@ -331,6 +390,7 @@ export class SQLiteStore {
         deleted_files INTEGER NOT NULL,
         chunk_count INTEGER NOT NULL,
         scanned_files INTEGER NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL,
         FOREIGN KEY(project_id) REFERENCES project(project_id) ON DELETE CASCADE
       );
@@ -372,6 +432,8 @@ export class SQLiteStore {
         FOREIGN KEY(chunk_id) REFERENCES chunk(chunk_id) ON DELETE CASCADE
       );
     `);
+    this.ensureColumn("index_event", "metadata_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.db.prepare("DELETE FROM chunk_vector WHERE chunk_id IS NULL").run();
 
     this.logger.info("sqlite store initialized");
   }
@@ -416,8 +478,8 @@ export class SQLiteStore {
     ]);
     const insertEvent = this.db.prepare(
       `INSERT INTO index_event (
-         event_id, project_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         event_id, project_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, metadata_json, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertFailure = this.db.prepare(
       `INSERT INTO index_event_failure (
@@ -433,6 +495,7 @@ export class SQLiteStore {
         payload.deletedFiles,
         payload.chunkCount,
         payload.scannedFiles,
+        JSON.stringify(payload.metadata),
         payload.createdAt,
       );
 
@@ -447,12 +510,13 @@ export class SQLiteStore {
     });
 
     tx();
+    this.clearVectorCache(projectId);
   }
 
   public getLatestIndexEvent(projectId: string, failureLimit = 20): IndexEventSummary | null {
     const event = this.db
       .prepare(
-        `SELECT event_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, created_at
+        `SELECT event_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, metadata_json, created_at
          FROM index_event
          WHERE project_id = ?
          ORDER BY created_at DESC, event_id DESC
@@ -479,8 +543,12 @@ export class SQLiteStore {
          WHERE event_id = ?
          ORDER BY file_path ASC
          LIMIT ?`,
-      )
-      .all(event.event_id, failureLimit) as Array<{ file_path: string; message: string }>;
+       )
+       .all(event.event_id, failureLimit) as Array<{ file_path: string; message: string }>;
+    const metadata = JSON.parse(event.metadata_json || "{}") as Partial<{
+      timings: IndexTimingStats;
+      vectorIndex: IndexVectorStats;
+    }>;
 
     return {
       changedFiles: event.changed_files,
@@ -494,6 +562,18 @@ export class SQLiteStore {
       })),
       indexedFiles: event.indexed_files,
       scannedFiles: event.scanned_files,
+      timings: metadata.timings ?? {
+        collectMs: 0,
+        detectMs: 0,
+        indexMs: 0,
+        totalMs: 0,
+        vectorMs: 0,
+      },
+      vectorIndex: metadata.vectorIndex ?? {
+        enabled: false,
+        hydratedChunkCount: 0,
+        mode: "lazy",
+      },
     };
   }
 
@@ -646,35 +726,41 @@ export class SQLiteStore {
     projectId: string,
     queryEmbedding: number[],
     limit: number,
+    modelName: string,
     filters?: SearchFilters,
-  ): SearchResult[] {
-    // 获取项目的所有向量
-    const vectors = this.getProjectVectors(projectId);
+    indexVersion = Number.NaN,
+  ): { cacheHit: boolean; candidateCount: number; results: SearchResult[] } {
+    const { cacheHit, vectors } = this.getProjectVectors(projectId, modelName, indexVersion);
+    const filteredVectors = filters ? vectors.filter((vector) => matchesSearchFilters(vector, filters)) : vectors;
 
-    if (vectors.length === 0) {
-      return [];
+    if (filteredVectors.length === 0) {
+      return {
+        cacheHit,
+        candidateCount: 0,
+        results: [],
+      };
     }
 
-    // 计算余弦相似度
-    const scored = vectors.map((v) => ({
+    const scored = filteredVectors.map((v) => ({
       chunkId: v.chunkId,
       score: cosineSimilarity(queryEmbedding, v.embedding),
     }));
 
-    // 排序并取 top K
     scored.sort((a, b) => b.score - a.score);
     const topChunkIds = scored.slice(0, limit);
 
     if (topChunkIds.length === 0) {
-      return [];
+      return {
+        cacheHit,
+        candidateCount: filteredVectors.length,
+        results: [],
+      };
     }
 
-    // 获取对应的 chunk 信息
     const chunkIds = topChunkIds.map((t) => t.chunkId);
     const scoreMap = new Map(topChunkIds.map((t) => [t.chunkId, t.score]));
 
     const placeholders = chunkIds.map(() => "?").join(", ");
-    const filterClause = buildSearchFilterClause(filters);
 
     const rows = this.db
       .prepare(
@@ -688,10 +774,9 @@ export class SQLiteStore {
          FROM chunk c
          JOIN file f ON f.file_id = c.file_id
          WHERE c.chunk_id IN (${placeholders})
-           AND f.project_id = ?
-           ${filterClause.sql}`,
+            AND f.project_id = ?`,
       )
-      .all(...chunkIds, projectId, ...filterClause.parameters) as Array<{
+      .all(...chunkIds, projectId) as Array<{
       chunk_id: string;
       content: string;
       end_line: number;
@@ -700,16 +785,20 @@ export class SQLiteStore {
       start_line: number;
     }>;
 
-    return rows.map((row) => ({
-      endLine: row.end_line,
-      filePath: row.relative_path,
-      language: row.language,
-      reason: "semantic",
-      score: scoreMap.get(row.chunk_id) ?? 0,
-      snippet: row.content,
-      snippetIncluded: true,
-      startLine: row.start_line,
-    }));
+    return {
+      cacheHit,
+      candidateCount: filteredVectors.length,
+      results: rows.map((row) => ({
+        endLine: row.end_line,
+        filePath: row.relative_path,
+        language: row.language,
+        reason: "semantic",
+        score: scoreMap.get(row.chunk_id) ?? 0,
+        snippet: row.content,
+        snippetIncluded: true,
+        startLine: row.start_line,
+      })),
+    };
   }
 
   public searchByTextSubstrings(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
@@ -840,7 +929,7 @@ export class SQLiteStore {
 
   public upsertProject(projectId: string, project: ProjectInfo, status: ProjectStatus, timestamp: string): void {
     const existing = this.getProjectByRoot(project.rootPath);
-    const version = (existing?.index_version ?? 0) + 1;
+    const version = existing?.index_version ?? 1;
 
     this.db
       .prepare(
@@ -866,7 +955,18 @@ export class SQLiteStore {
       );
   }
 
-  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus): void {
+  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus, bumpIndexVersion: boolean): void {
+    if (bumpIndexVersion) {
+      this.db
+        .prepare(
+          `UPDATE project
+           SET last_scan_at = ?, last_index_at = ?, status = ?, index_version = index_version + 1
+           WHERE project_id = ?`,
+        )
+        .run(timestamp, timestamp, status, projectId);
+      return;
+    }
+
     this.db
       .prepare(
         `UPDATE project
@@ -981,10 +1081,14 @@ export class SQLiteStore {
     tx();
   }
 
-  /**
-   * 写入 chunk 向量
-   */
-  public writeChunkVector(chunkId: string, embedding: number[], modelName: string): void {
+  public writeChunkVectors(
+    entries: Array<{ chunkId: string; embedding: number[]; modelName: string }>,
+    projectId?: string,
+  ): void {
+    if (entries.length === 0) {
+      return;
+    }
+
     const insertOrUpdate = this.db.prepare(`
       INSERT INTO chunk_vector (chunk_id, embedding, model_name)
       VALUES (?, ?, ?)
@@ -992,57 +1096,99 @@ export class SQLiteStore {
         embedding = excluded.embedding,
         model_name = excluded.model_name
     `);
-    // 将 number[] 序列化为 Blob (Float32Array)
-    const blob = Buffer.from(new Float32Array(embedding).buffer);
-    insertOrUpdate.run(chunkId, blob, modelName);
+    const tx = this.db.transaction((vectorEntries: typeof entries) => {
+      for (const entry of vectorEntries) {
+        const blob = Buffer.from(new Float32Array(entry.embedding).buffer);
+        insertOrUpdate.run(entry.chunkId, blob, entry.modelName);
+      }
+    });
+
+    tx(entries);
+    this.clearVectorCache(projectId);
   }
 
-  /**
-   * 获取 chunk 向量
-   */
   public getChunkVector(chunkId: string): VectorEntry | null {
     const row = this.db
-      .prepare("SELECT chunk_id, embedding, model_name FROM chunk_vector WHERE chunk_id = ?")
-      .get(chunkId) as { chunk_id: string; embedding: Buffer; model_name: string } | undefined;
+      .prepare(
+        `SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
+         FROM chunk_vector cv
+         JOIN chunk c ON c.chunk_id = cv.chunk_id
+         JOIN file f ON f.file_id = c.file_id
+         WHERE cv.chunk_id = ?`,
+      )
+      .get(chunkId) as { chunk_id: string; embedding: Buffer; language: Language; model_name: string; relative_path: string } | undefined;
 
     if (!row) {
       return null;
     }
 
-    // 从 Blob 反序列化
     const embedding = Array.from(new Float32Array(row.embedding.buffer));
     return {
       chunkId: row.chunk_id,
       embedding,
+      filePath: row.relative_path,
+      language: row.language,
       modelName: row.model_name,
     };
   }
 
-  /**
-   * 获取项目的所有 chunk 向量
-   */
-  public getProjectVectors(projectId: string): VectorEntry[] {
+  public getProjectVectors(
+    projectId: string,
+    modelName: string,
+    indexVersion = Number.NaN,
+  ): { cacheHit: boolean; vectors: VectorEntry[] } {
+    const cached = this.vectorCache.get(projectId);
+    if (
+      cached &&
+      cached.modelName === modelName &&
+      (!Number.isFinite(indexVersion) || cached.indexVersion === indexVersion)
+    ) {
+      return {
+        cacheHit: true,
+        vectors: cached.vectors,
+      };
+    }
+
     const rows = this.db
       .prepare(`
-        SELECT cv.chunk_id, cv.embedding, cv.model_name
+        SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
         FROM chunk_vector cv
         JOIN chunk c ON c.chunk_id = cv.chunk_id
         JOIN file f ON f.file_id = c.file_id
         WHERE f.project_id = ?
+          AND cv.model_name = ?
       `)
-      .all(projectId) as Array<{ chunk_id: string; embedding: Buffer; model_name: string }>;
+      .all(projectId, modelName) as Array<{
+      chunk_id: string;
+      embedding: Buffer;
+      language: Language;
+      model_name: string;
+      relative_path: string;
+    }>;
 
-    return rows.map((row) => ({
+    const vectors = rows.map((row) => ({
       chunkId: row.chunk_id,
       embedding: Array.from(new Float32Array(row.embedding.buffer)),
+      filePath: row.relative_path,
+      language: row.language,
       modelName: row.model_name,
     }));
+    if (Number.isFinite(indexVersion)) {
+      this.vectorCache.set(projectId, {
+        indexVersion,
+        modelName,
+        vectors,
+      });
+    }
+
+    return {
+      cacheHit: false,
+      vectors,
+    };
   }
 
-  /**
-   * 检查项目是否已有向量索引
-   */
-  public hasVectorIndex(projectId: string): boolean {
+  public hasVectorIndex(projectId: string, modelName?: string): boolean {
+    const modelClause = modelName ? "AND cv.model_name = ?" : "";
     const count = this.db
       .prepare(`
         SELECT COUNT(*) as cnt
@@ -1050,9 +1196,52 @@ export class SQLiteStore {
         JOIN chunk c ON c.chunk_id = cv.chunk_id
         JOIN file f ON f.file_id = c.file_id
         WHERE f.project_id = ?
+          ${modelClause}
       `)
-      .get(projectId) as { cnt: number };
+      .get(...(modelName ? [projectId, modelName] : [projectId])) as { cnt: number };
 
     return count.cnt > 0;
+  }
+
+  public getVectorCoverage(projectId: string, modelName: string): {
+    indexedChunkCount: number;
+    missingChunkCount: number;
+    totalChunkCount: number;
+  } {
+    const row = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total_chunk_count,
+           SUM(CASE WHEN cv.chunk_id IS NOT NULL AND cv.model_name = ? THEN 1 ELSE 0 END) AS indexed_chunk_count
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         LEFT JOIN chunk_vector cv ON cv.chunk_id = c.chunk_id
+         WHERE f.project_id = ?`,
+      )
+      .get(modelName, projectId) as {
+      indexed_chunk_count: number | null;
+      total_chunk_count: number;
+    };
+
+    const indexedChunkCount = row.indexed_chunk_count ?? 0;
+    return {
+      indexedChunkCount,
+      missingChunkCount: Math.max(0, row.total_chunk_count - indexedChunkCount),
+      totalChunkCount: row.total_chunk_count,
+    };
+  }
+
+  public listChunksMissingVectors(projectId: string, modelName: string): Array<{ chunkId: string; content: string }> {
+    return this.db
+      .prepare(
+        `SELECT c.chunk_id AS chunkId, c.content
+         FROM chunk c
+         JOIN file f ON f.file_id = c.file_id
+         LEFT JOIN chunk_vector cv ON cv.chunk_id = c.chunk_id AND cv.model_name = ?
+         WHERE f.project_id = ?
+           AND cv.chunk_id IS NULL
+         ORDER BY f.relative_path ASC, c.start_line ASC`,
+      )
+      .all(modelName, projectId) as Array<{ chunkId: string; content: string }>;
   }
 }

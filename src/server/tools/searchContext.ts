@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES } from "../../core/common/types.js";
 import type { ToolDependencies } from "../toolRegistry.js";
+import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
 const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python"] as const;
 const SEARCH_RESULT_MODES = ["full", "metadata"] as const;
@@ -49,7 +50,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
         },
         resultMode,
       );
-      response.indexing = {
+      const indexSync = {
         changedFiles: indexResult.changedFiles,
         chunkCount: indexResult.chunkCount,
         createdAt: indexResult.createdAt,
@@ -58,18 +59,57 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
         failedFiles: indexResult.failedFiles,
         indexedFiles: indexResult.indexedFiles,
         scannedFiles: indexResult.scannedFiles,
+        timings: indexResult.timings,
+        vectorIndex: indexResult.vectorIndex,
       };
+      response.indexing = indexSync;
       response.stats.indexedFiles = indexResult.indexedFiles;
       response.stats.scannedFiles = indexResult.scannedFiles;
-
-      return {
-        content: [
-          {
-            text: JSON.stringify(response, null, 2),
-            type: "text",
+      const projectStats = dependencies.store.getProjectStats(indexResult.projectRootPath);
+      const payload = buildEnvelope(
+        {
+          excludePathPrefix,
+          includeContextLines,
+          languages,
+          mode,
+          pathContains,
+          pathPrefix,
+          projectRootPath: indexResult.projectRootPath,
+          query,
+          resultMode,
+          topK,
+        },
+        {
+          diagnostics: response.diagnostics,
+          projectRootPath: response.projectRootPath,
+          query: response.query,
+          resultMode: response.resultMode,
+          results: response.results,
+        },
+        {
+          indexSync,
+          project: projectStats
+            ? {
+                chunkCount: projectStats.chunkCount,
+                fileCount: projectStats.fileCount,
+                indexedFileCount: response.stats.indexedFiles,
+                languages: projectStats.languages,
+                status: projectStats.status,
+                symbolCount: projectStats.symbolCount,
+              }
+            : null,
+          search: {
+            candidateCount: response.diagnostics.candidateCount,
+            resultCount: response.stats.resultCount,
+            searchMs: response.stats.searchMs,
           },
+        },
+        [
+          ...response.notes,
+          ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
         ],
-      };
+      );
+      return asStructuredToolResponse(payload);
     },
   );
 }
