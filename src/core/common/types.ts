@@ -222,7 +222,7 @@ export interface ProjectListItem {
 // Vector embedding types
 export interface VectorEntry {
   chunkId: string;
-  embedding: number[];
+  embedding: Float32Array;
   filePath: string;
   language: Language;
   modelName: string;

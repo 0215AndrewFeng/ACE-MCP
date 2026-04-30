@@ -26,7 +26,7 @@ import type { Logger } from "../common/logger.js";
 /**
  * 计算两个向量的余弦相似度
  */
-function cosineSimilarity(a: number[], b: number[]): number {
+function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
   if (a.length !== b.length) {
     return 0;
   }
@@ -160,9 +160,12 @@ function buildSearchFilterClause(filters: SearchFilters | undefined): {
   };
 }
 
+const VECTOR_CACHE_MAX_PROJECTS = 10;
+
 export class SQLiteStore {
   private readonly db: Database.Database;
   private readonly vectorCache = new Map<string, { indexVersion: number; modelName: string; vectors: VectorEntry[] }>();
+  private readonly vectorCacheOrder: string[] = [];
 
   public constructor(databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
@@ -171,10 +174,22 @@ export class SQLiteStore {
   private clearVectorCache(projectId?: string): void {
     if (projectId) {
       this.vectorCache.delete(projectId);
+      const orderIdx = this.vectorCacheOrder.indexOf(projectId);
+      if (orderIdx >= 0) {
+        this.vectorCacheOrder.splice(orderIdx, 1);
+      }
       return;
     }
 
     this.vectorCache.clear();
+    this.vectorCacheOrder.length = 0;
+  }
+
+  private evictVectorCache(): void {
+    while (this.vectorCache.size > VECTOR_CACHE_MAX_PROJECTS && this.vectorCacheOrder.length > 0) {
+      const oldest = this.vectorCacheOrder.shift()!;
+      this.vectorCache.delete(oldest);
+    }
   }
 
   private ensureColumn(tableName: string, columnName: string, definition: string): void {
@@ -1122,10 +1137,9 @@ export class SQLiteStore {
       return null;
     }
 
-    const embedding = Array.from(new Float32Array(row.embedding.buffer));
     return {
       chunkId: row.chunk_id,
-      embedding,
+      embedding: new Float32Array(row.embedding.buffer),
       filePath: row.relative_path,
       language: row.language,
       modelName: row.model_name,
@@ -1143,6 +1157,12 @@ export class SQLiteStore {
       cached.modelName === modelName &&
       (!Number.isFinite(indexVersion) || cached.indexVersion === indexVersion)
     ) {
+      // LRU: 将访问的条目移到末尾
+      const orderIdx = this.vectorCacheOrder.indexOf(projectId);
+      if (orderIdx >= 0) {
+        this.vectorCacheOrder.splice(orderIdx, 1);
+        this.vectorCacheOrder.push(projectId);
+      }
       return {
         cacheHit: true,
         vectors: cached.vectors,
@@ -1168,7 +1188,7 @@ export class SQLiteStore {
 
     const vectors = rows.map((row) => ({
       chunkId: row.chunk_id,
-      embedding: Array.from(new Float32Array(row.embedding.buffer)),
+      embedding: new Float32Array(row.embedding.buffer),
       filePath: row.relative_path,
       language: row.language,
       modelName: row.model_name,
@@ -1179,6 +1199,13 @@ export class SQLiteStore {
         modelName,
         vectors,
       });
+      // LRU: 更新访问顺序并淘汰
+      const orderIdx = this.vectorCacheOrder.indexOf(projectId);
+      if (orderIdx >= 0) {
+        this.vectorCacheOrder.splice(orderIdx, 1);
+      }
+      this.vectorCacheOrder.push(projectId);
+      this.evictVectorCache();
     }
 
     return {
