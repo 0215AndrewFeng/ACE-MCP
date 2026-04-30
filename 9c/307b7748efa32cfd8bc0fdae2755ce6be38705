@@ -1,0 +1,35 @@
+src/core/indexing/indexCoordinator.ts
+  9a0a70f7a727e4fd 32
+src/core/search/embedding.ts
+  9a0a70f7a727e4fd 14-15,21,42,44-45,48,63-68,83-85,89-96,103,105
+src/core/storage/sqliteStore.ts
+  9a0a70f7a727e4fd 29,163-164,168,177-180,185-192,1142,1160-1165,1191,1202-1208
+CHANGELOG.md
+  9a0a70f7a727e4fd 12,21-23
+src/test/search-workflow.test.ts
+  9a0a70f7a727e4fd 299,305
+src/core/search/searchService.ts
+  9a0a70f7a727e4fd 32,454-461,463-464,471-513,556-565,783,797-802
+src/core/common/types.ts
+  9a0a70f7a727e4fd 225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9c307b7748efa32cfd8bc0fdae2755ce6be38705",
+  "prompts": {
+    "9a0a70f7a727e4fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "793c4d69-ee96-4f10-afcb-add0f4f3bd3a",
+        "model": "minimax-m2.7"
+      },
+      "human_author": "feng.ling",
+      "messages": [],
+      "total_additions": 148,
+      "total_deletions": 42,
+      "accepted_lines": 318,
+      "overriden_lines": 0
+    }
+  }
+}
