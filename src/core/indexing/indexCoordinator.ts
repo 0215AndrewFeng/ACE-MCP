@@ -29,7 +29,7 @@ let embeddingProvider: InMemoryEmbeddingProvider | null = null;
 
 function getEmbeddingProvider(): InMemoryEmbeddingProvider {
   if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-hash-vector-v1");
+    embeddingProvider = new InMemoryEmbeddingProvider();
   }
   return embeddingProvider;
 }

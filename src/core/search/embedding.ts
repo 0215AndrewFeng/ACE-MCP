@@ -11,15 +11,14 @@ export interface EmbeddingProvider {
 }
 
 /**
- * 简单的内存嵌入实现
- * 使用 TF-IDF 风格的词频统计作为伪嵌入
- * 适用于没有外部依赖的场景
+ * 内存嵌入实现 v2
+ * 使用双重 hash + n-gram 减少碰撞，提升向量区分度
  */
 export class InMemoryEmbeddingProvider implements EmbeddingProvider {
   private readonly dimension: number;
   private readonly modelName: string;
 
-  constructor(dimension: number = 128, modelName: string = "in-memory-hash-vector-v1") {
+  constructor(dimension: number = 256, modelName: string = "in-memory-hash-vector-v2") {
     this.dimension = dimension;
     this.modelName = modelName;
   }
@@ -40,32 +39,33 @@ export class InMemoryEmbeddingProvider implements EmbeddingProvider {
     return texts.map((text) => this.computeTfIdfVector(text));
   }
 
-  private bucketForToken(token: string): number {
+  private fnv1aHash(input: string): number {
     let hash = 2166136261;
-    for (let index = 0; index < token.length; index += 1) {
-      hash ^= token.charCodeAt(index);
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= input.charCodeAt(index);
       hash = Math.imul(hash, 16777619);
     }
-
-    return Math.abs(hash) % this.dimension;
+    return hash;
   }
 
   private computeTfIdfVector(text: string): number[] {
     const tokens = this.tokenize(text);
     const tf: Map<string, number> = new Map();
 
-    // 计算词频
     for (const token of tokens) {
       tf.set(token, (tf.get(token) || 0) + 1);
     }
 
-    // 归一化并计算 TF-IDF
     const vector = new Array<number>(this.dimension).fill(0);
     for (const [token, freq] of tf) {
-      const idx = this.bucketForToken(token);
       const tfNorm = freq / tokens.length;
       const tokenWeight = 1 + Math.log1p(token.length);
-      vector[idx] += tfNorm * tokenWeight;
+
+      // 双重 hash：在两个维度上分布权重，减少碰撞
+      const idx1 = Math.abs(this.fnv1aHash(token)) % this.dimension;
+      const idx2 = Math.abs(this.fnv1aHash(token + "_salt")) % this.dimension;
+      vector[idx1] += tfNorm * tokenWeight * 0.6;
+      vector[idx2] += tfNorm * tokenWeight * 0.4;
     }
 
     // L2 归一化
@@ -80,22 +80,29 @@ export class InMemoryEmbeddingProvider implements EmbeddingProvider {
   }
 
   private tokenize(text: string): string[] {
-    // 简单的分词：处理驼峰、下划线、空白
-    return text
-      .replace(/([a-z])([A-Z])/g, "$1 $2") // 驼峰分割
-      .replace(/[_\-./\\:#]/g, " ") // 分隔符替换
+    const words = text
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_\-./\\:#]/g, " ")
       .toLowerCase()
       .split(/\s+/)
       .filter((t) => t.length >= 2);
+
+    // 添加 bigram 特征提升局部顺序感知
+    const bigrams: string[] = [];
+    for (let i = 0; i < words.length - 1; i++) {
+      bigrams.push(`${words[i]}_${words[i + 1]}`);
+    }
+
+    return [...words, ...bigrams];
   }
 }
 
 /**
  * 余弦相似度计算
  */
-export function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
   if (a.length !== b.length) {
-    throw new Error("Vector dimensions must match");
+    return 0;
   }
 
   let dotProduct = 0;
@@ -125,7 +132,6 @@ export function searchVectors(
     score: cosineSimilarity(queryEmbedding, v.embedding),
   }));
 
-  // 排序并返回 topK
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, topK);
 }

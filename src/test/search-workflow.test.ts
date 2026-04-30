@@ -296,13 +296,13 @@ test("semantic search lazily hydrates vectors and reuses cached project vectors"
 
     const project = environment.store.getProjectByRoot(environment.projectRootPath);
     assert.ok(project);
-    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v1"), false);
+    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), false);
 
     const firstResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
     assert.equal(firstResponse.diagnostics.vectorIndex.hydratedChunkCount > 0, true);
     assert.equal(firstResponse.diagnostics.vectorIndex.cacheHit, false);
     assert.equal(firstResponse.notes.some((note) => note.includes("Lazy vector hydration indexed")), true);
-    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v1"), true);
+    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), true);
 
     const secondResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
     assert.equal(secondResponse.diagnostics.vectorIndex.hydratedChunkCount, 0);

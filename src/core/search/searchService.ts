@@ -29,7 +29,7 @@ let embeddingProvider: InMemoryEmbeddingProvider | null = null;
 
 function getEmbeddingProvider(): InMemoryEmbeddingProvider {
   if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider(128, "in-memory-hash-vector-v1");
+    embeddingProvider = new InMemoryEmbeddingProvider();
   }
   return embeddingProvider;
 }
@@ -451,12 +451,65 @@ function buildResultSourceBreakdown(results: SearchResult[]): Partial<Record<Sea
   return breakdown;
 }
 
+const SEARCH_CACHE_MAX_SIZE = 100;
+const SEARCH_CACHE_TTL_MS = 60 * 1000; // 1 minute
+
+interface SearchCacheEntry {
+  response: SearchResponse;
+  timestamp: number;
+}
+
 export class SearchService {
+  private readonly searchCache = new Map<string, SearchCacheEntry>();
+
   public constructor(
     private readonly store: SQLiteStore,
     private readonly logger: Logger,
     private readonly settings: Settings,
   ) {}
+
+  private buildCacheKey(
+    projectId: string,
+    indexVersion: number,
+    query: string,
+    mode: SearchMode,
+    topK: number,
+    filters?: SearchFilters,
+    resultMode?: SearchResultMode,
+  ): string {
+    return JSON.stringify({ filters, indexVersion, mode, projectId, query, resultMode, topK });
+  }
+
+  private evictSearchCache(): void {
+    const now = Date.now();
+    // 先清理过期条目
+    for (const [key, entry] of this.searchCache) {
+      if (now - entry.timestamp > SEARCH_CACHE_TTL_MS) {
+        this.searchCache.delete(key);
+      }
+    }
+    // 如果仍然超过限制，删除最旧的条目
+    if (this.searchCache.size > SEARCH_CACHE_MAX_SIZE) {
+      const entries = [...this.searchCache.entries()]
+        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toDelete = entries.slice(0, this.searchCache.size - SEARCH_CACHE_MAX_SIZE);
+      for (const [key] of toDelete) {
+        this.searchCache.delete(key);
+      }
+    }
+  }
+
+  public clearSearchCache(projectId?: string): void {
+    if (projectId) {
+      for (const key of this.searchCache.keys()) {
+        if (key.includes(projectId)) {
+          this.searchCache.delete(key);
+        }
+      }
+    } else {
+      this.searchCache.clear();
+    }
+  }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
     const missingChunks = this.store.listChunksMissingVectors(projectId, modelName);
@@ -498,6 +551,16 @@ export class SearchService {
     const project = this.store.getProjectByRoot(projectRootPath);
     if (!project) {
       throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
+
+    // 检查缓存（semantic 模式需要重新检查向量缓存状态，不使用搜索缓存）
+    const cacheKey = this.buildCacheKey(project.project_id, project.index_version, query, mode, topK, filters, resultMode);
+    const cached = this.searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL_MS && mode !== "semantic" && mode !== "hybrid") {
+      return {
+        ...cached.response,
+        notes: [...(cached.response.notes || []), "Cache hit"],
+      };
     }
 
     const analysis = analyzeQuery(query);
@@ -717,7 +780,7 @@ export class SearchService {
       vectorHydratedChunkCount,
     });
 
-    return {
+    const response: SearchResponse = {
       diagnostics,
       notes,
       projectRootPath,
@@ -731,5 +794,11 @@ export class SearchService {
         searchMs,
       },
     };
+
+    // 写入搜索缓存
+    this.searchCache.set(cacheKey, { response, timestamp: Date.now() });
+    this.evictSearchCache();
+
+    return response;
   }
 }
