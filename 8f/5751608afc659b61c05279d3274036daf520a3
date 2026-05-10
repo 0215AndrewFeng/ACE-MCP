@@ -1,0 +1,68 @@
+CHANGELOG.md
+  s_9a0a70f7a727e4::t_07486150762411 5-29
+package.json
+  s_9a0a70f7a727e4::t_711e90957ffd47 3
+README.md
+  s_9a0a70f7a727e4::t_79658c98f293e2 262
+  s_9a0a70f7a727e4::t_b2d643f2c410aa 276-277
+  s_9a0a70f7a727e4::t_9fbef4622a632b 279-284
+  s_9a0a70f7a727e4::t_84a61ba5013ba7 205
+  s_9a0a70f7a727e4::t_355db99c31695e 5
+  s_9a0a70f7a727e4::t_52b5efd0bca41c 228-247
+  s_9a0a70f7a727e4::t_d88155b5c96987 14,16
+src/test/helpers.ts
+  s_9a0a70f7a727e4::t_75420ab0a7e5e9 31,65,71,73
+  s_9a0a70f7a727e4::t_64587144a61cce 42,47-50
+  s_9a0a70f7a727e4::t_fe5b3eae1b6364 6-7
+src/web/app.test.ts
+  s_9a0a70f7a727e4::t_eb95a443e0d304 132-181
+src/core/indexing/indexCoordinator.ts
+  s_9a0a70f7a727e4::t_ee42914bf84d51 82-86,94-148
+  s_9a0a70f7a727e4::t_bc5ef93222edc8 1
+  s_9a0a70f7a727e4::t_39d83b07ffa78c 91
+  s_9a0a70f7a727e4::t_777e3da10c0b92 25
+  s_9a0a70f7a727e4::t_cc1bce14c89885 205
+  s_9a0a70f7a727e4::t_cf7d80190a81d3 303-306
+src/core/search/embedding.ts
+  s_9a0a70f7a727e4::t_f2de7695e1c5ea 1-2,11-20
+src/index.ts
+  s_9a0a70f7a727e4::t_9882682c37ceff 54
+  s_9a0a70f7a727e4::t_11e6eb68990efd 7
+  s_9a0a70f7a727e4::t_227506b9c1cad5 31-33
+src/core/search/remoteEmbedding.ts
+  s_9a0a70f7a727e4::t_3d83d3852aab13 1-72
+src/web/app.ts
+  s_9a0a70f7a727e4::t_474baa6c4c9648 212-230
+src/config/settings.ts
+  s_9a0a70f7a727e4::t_eb4a18a4adfee2 12
+  s_9a0a70f7a727e4::t_3925db8553852e 116-117,120-121
+  s_9a0a70f7a727e4::t_e243846e7e3c20 128-132
+  s_9a0a70f7a727e4::t_cf5c3ccf725ab5 26
+src/version.ts
+  s_9a0a70f7a727e4::t_4402f2f0abc9cd 2
+src/core/common/types.ts
+  s_9a0a70f7a727e4::t_4deda22ce17459 9-10,12,17-20
+src/core/search/searchService.ts
+  s_9a0a70f7a727e4::t_cfd7bccf5d5c4f 511
+  s_9a0a70f7a727e4::t_e623236d8d5c61 643
+  s_9a0a70f7a727e4::t_ccb2867ffeb3d6 459
+  s_9a0a70f7a727e4::t_ce88f40b145cbb 24
+src/core/search/remoteEmbedding.test.ts
+  s_9a0a70f7a727e4::t_cdd1764f97db7f 1-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "8f5751608afc659b61c05279d3274036daf520a3",
+  "prompts": {},
+  "sessions": {
+    "s_9a0a70f7a727e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "793c4d69-ee96-4f10-afcb-add0f4f3bd3a",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
