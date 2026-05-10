@@ -4,6 +4,7 @@ import { formatHelpText, parseCliArgs } from "./config/cli.js";
 import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
 import { IndexCoordinator } from "./core/indexing/indexCoordinator.js";
+import { createEmbeddingProvider } from "./core/search/embedding.js";
 import { SearchService } from "./core/search/searchService.js";
 import { SQLiteStore } from "./core/storage/sqliteStore.js";
 import { createMcpServer } from "./server/mcpServer.js";
@@ -27,8 +28,9 @@ async function main(): Promise<void> {
   const store = new SQLiteStore(settings.databasePath, logger);
   store.initialize();
 
-  const indexCoordinator = new IndexCoordinator(settings, store, logger);
-  const searchService = new SearchService(store, logger, settings);
+  const embeddingProvider = createEmbeddingProvider(settings);
+  const indexCoordinator = new IndexCoordinator(settings, store, logger, embeddingProvider);
+  const searchService = new SearchService(store, logger, settings, embeddingProvider);
 
   const server = createMcpServer({
     indexCoordinator,
@@ -49,6 +51,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string, exitCode: number): Promise<void> => {
     logger.info("shutdown requested", { signal });
     try {
+      indexCoordinator.stopWatching();
       if (webAppHandle) {
         await webAppHandle.close();
       }

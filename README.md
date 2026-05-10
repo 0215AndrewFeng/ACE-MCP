@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v3.3.0`
+当前版本：`v3.4.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -11,8 +11,9 @@
 - 本地项目扫描与 `.gitignore` 过滤
 - 增量索引
 - `SQLite + FTS5` 全文检索
-- 语义召回 `MVP`（本地语义词扩展 + 混合检索）
+- 语义召回（本地语义词扩展 + 远程 Embedding API 支持）
 - 懒加载向量索引与项目级向量缓存
+- 文件监听自动重新索引（2500ms 防抖）
 - JavaScript/TypeScript AST 级定义抽取，Java / Python / .NET 增强轻量符号抽取
 - `search_context` / `index_project` / `get_file_snippet` / `project_stats`
 - 统一的 `meta / request / data / stats / notes` 返回结构
@@ -201,6 +202,7 @@ npm start -- --web-port 8787
 配置示例：
 
 ```toml
+autoWatch = true
 batchSize = 32
 defaultTopK = 8
 enableVectorSearch = true
@@ -223,6 +225,26 @@ vectorIndexingMode = "lazy"
 - `ACE_MCP_TEXT_EXTENSIONS`
 - `ACE_MCP_EXCLUDE_PATTERNS`
 - `ACE_MCP_VECTOR_INDEXING_MODE`
+- `ACE_MCP_AUTO_WATCH`
+
+### 远程 Embedding API
+
+通过环境变量配置远程 Embedding API，用于语义搜索的向量生成：
+
+```bash
+ACE_MCP_EMBEDDING_PROVIDER=remote \
+ACE_MCP_EMBEDDING_API_URL=https://api.openai.com/v1/embeddings \
+ACE_MCP_EMBEDDING_API_KEY=sk-xxx \
+ACE_MCP_EMBEDDING_MODEL=text-embedding-3-small \
+ace-mcp --web-port 8787
+```
+
+- `ACE_MCP_EMBEDDING_PROVIDER`：设为 `remote` 启用远程 API（默认 `memory`，使用本地哈希向量）
+- `ACE_MCP_EMBEDDING_API_URL`：OpenAI 兼容的 Embedding API 端点
+- `ACE_MCP_EMBEDDING_API_KEY`：API 密钥（仅从环境变量读取，不落盘）
+- `ACE_MCP_EMBEDDING_MODEL`：模型名，默认 `text-embedding-3-small`
+
+远程 API 请求失败时自动回退到本地内存哈希向量，保证搜索可用性。
 
 ## Web 调试面板
 
@@ -237,6 +259,7 @@ vectorIndexingMode = "lazy"
 - 交互式调试表单页面
 - 直接通过 HTTP 调试 `index_project` 与 `search_context`（含上下文行、语言与路径前缀过滤）
 - 直接通过 HTTP 调试 `get_file_snippet`
+- 文件监听控制：`POST /api/watch/start` / `POST /api/watch/stop`
 - 搜索与索引结果摘要（候选数、耗时、向量模式）
 
 主要接口：
@@ -250,6 +273,15 @@ vectorIndexingMode = "lazy"
 - `POST /api/file-snippet`
 - `POST /api/index-project`
 - `POST /api/search-context`
+- `POST /api/watch/start`
+- `POST /api/watch/stop`
+
+## 路线图
+
+### v3.5.0（规划中）
+
+- **结构化查询语言**：`AND` / `OR` / `NOT` 运算符 + field-scoped 查询（`symbol:`、`path:`、`content:`）
+- **调用关系图**：AST 级别的调用关系分析 → `find_references` / `find_definition` MCP 工具
 
 ## 开发建议
 

@@ -2,6 +2,31 @@
 
 本项目的重要版本变更记录如下。
 
+## [3.4.0] - 2026-05-10
+
+### 新增
+
+- **远程 Embedding API Provider**：支持 OpenAI 兼容的远程 Embedding API（如 `text-embedding-3-small`），通过环境变量 `ACE_MCP_EMBEDDING_PROVIDER=remote` 启用。失败时自动回退到内存哈希向量。
+- **文件监听自动索引**：索引完成后自动启动文件监听（`fs.watch`，2500ms 防抖），代码改动后自动触发增量索引。可通过 `autoWatch` 配置项或 `ACE_MCP_AUTO_WATCH` 环境变量控制。
+- **Web API 新增**：`POST /api/watch/start` 和 `POST /api/watch/stop` 端点，支持手动控制文件监听状态。
+
+### 改进
+
+- **EmbeddingProvider 依赖注入**：`IndexCoordinator` 和 `SearchService` 改为通过构造函数注入 `EmbeddingProvider`，替代原有的模块级单例模式，便于后续扩展不同的向量后端。
+
+### 新增环境变量
+
+- `ACE_MCP_EMBEDDING_PROVIDER`：设置 `remote` 启用远程 Embedding API
+- `ACE_MCP_EMBEDDING_API_URL`：远程 Embedding API 地址
+- `ACE_MCP_EMBEDDING_API_KEY`：远程 Embedding API 密钥
+- `ACE_MCP_EMBEDDING_MODEL`：远程 Embedding 模型名（默认 `text-embedding-3-small`）
+- `ACE_MCP_AUTO_WATCH`：是否自动启用文件监听（默认 `true`）
+
+### 测试
+
+- 新增 `RemoteEmbeddingProvider` 单元测试（mock fetch，验证请求/回退/维度缓存）
+- 新增文件监听 API 集成测试
+
 ## [3.3.0] - 2026-04-29
 
 ### 新增

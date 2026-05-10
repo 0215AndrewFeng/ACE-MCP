@@ -9,6 +9,7 @@ import type { Settings } from "../core/common/types.js";
 type RawSettings = Partial<
   Pick<
     Settings,
+    | "autoWatch"
     | "batchSize"
     | "defaultTopK"
     | "enableVectorSearch"
@@ -22,6 +23,7 @@ type RawSettings = Partial<
 >;
 
 const DEFAULT_PUBLIC_SETTINGS = {
+  autoWatch: true,
   batchSize: 32,
   defaultTopK: 8,
   enableVectorSearch: true,
@@ -111,14 +113,23 @@ export async function loadSettings(): Promise<Settings> {
   const envExcludes = coerceArray(process.env.ACE_MCP_EXCLUDE_PATTERNS);
   const envEnableVectorSearch = coerceBoolean(process.env.ACE_MCP_ENABLE_VECTOR_SEARCH);
   const envVectorIndexingMode = coerceVectorIndexingMode(process.env.ACE_MCP_VECTOR_INDEXING_MODE);
+  const envAutoWatch = coerceBoolean(process.env.ACE_MCP_AUTO_WATCH);
+  const envEmbeddingProvider = (process.env.ACE_MCP_EMBEDDING_PROVIDER ?? "") === "remote" ? "remote" as const : undefined;
 
   return {
+    autoWatch:
+      envAutoWatch ?? fileSettings.autoWatch ?? DEFAULT_PUBLIC_SETTINGS.autoWatch,
     batchSize:
       Number(process.env.ACE_MCP_BATCH_SIZE ?? fileSettings.batchSize ?? DEFAULT_PUBLIC_SETTINGS.batchSize),
     dataDir,
     databasePath,
     defaultTopK:
       Number(process.env.ACE_MCP_DEFAULT_TOP_K ?? fileSettings.defaultTopK ?? DEFAULT_PUBLIC_SETTINGS.defaultTopK),
+    embeddingApiKey: process.env.ACE_MCP_EMBEDDING_API_KEY ?? "",
+    embeddingApiUrl: process.env.ACE_MCP_EMBEDDING_API_URL ?? "",
+    embeddingModel: process.env.ACE_MCP_EMBEDDING_MODEL ?? "text-embedding-3-small",
+    embeddingProvider:
+      envEmbeddingProvider ?? "memory",
     enableVectorSearch:
       envEnableVectorSearch ?? fileSettings.enableVectorSearch ?? DEFAULT_PUBLIC_SETTINGS.enableVectorSearch,
     excludePatterns: envExcludes ?? fileSettings.excludePatterns ?? DEFAULT_PUBLIC_SETTINGS.excludePatterns,

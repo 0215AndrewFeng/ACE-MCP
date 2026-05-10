@@ -21,18 +21,8 @@ import {
 import { AppError } from "../common/errors.js";
 import { readFileSnippet } from "../project/fileSnippet.js";
 import { analyzeQuery } from "./queryAnalyzer.js";
-import { InMemoryEmbeddingProvider } from "./embedding.js";
+import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
-
-// 共享的嵌入实例
-let embeddingProvider: InMemoryEmbeddingProvider | null = null;
-
-function getEmbeddingProvider(): InMemoryEmbeddingProvider {
-  if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider();
-  }
-  return embeddingProvider;
-}
 
 const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
 const SEARCH_FANOUT_LIMIT = 50;
@@ -466,6 +456,7 @@ export class SearchService {
     private readonly store: SQLiteStore,
     private readonly logger: Logger,
     private readonly settings: Settings,
+    private readonly embeddingProvider: EmbeddingProvider,
   ) {}
 
   private buildCacheKey(
@@ -517,7 +508,7 @@ export class SearchService {
       return 0;
     }
 
-    const provider = getEmbeddingProvider();
+    const provider = this.embeddingProvider;
     const batchSize = Math.max(8, Math.min(64, this.settings.batchSize));
     let hydratedChunkCount = 0;
 
@@ -649,7 +640,7 @@ export class SearchService {
       ),
     );
 
-    const provider = getEmbeddingProvider();
+    const provider = this.embeddingProvider;
     const vectorModelName = provider.getModelName();
     const vectorCoverage = this.store.getVectorCoverage(project.project_id, vectorModelName);
     const vectorEnabled = this.settings.enableVectorSearch && (mode === "semantic" || mode === "hybrid");
