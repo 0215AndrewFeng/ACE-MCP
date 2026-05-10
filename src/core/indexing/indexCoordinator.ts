@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 
@@ -21,18 +22,8 @@ import { collectSourceFiles } from "../project/fileCollector.js";
 import { IgnoreManager } from "../project/ignoreManager.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { detectProject } from "../project/projectDetector.js";
+import type { EmbeddingProvider } from "../search/embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
-import { InMemoryEmbeddingProvider } from "../search/embedding.js";
-
-// 共享的嵌入实例
-let embeddingProvider: InMemoryEmbeddingProvider | null = null;
-
-function getEmbeddingProvider(): InMemoryEmbeddingProvider {
-  if (!embeddingProvider) {
-    embeddingProvider = new InMemoryEmbeddingProvider();
-  }
-  return embeddingProvider;
-}
 
 interface DecodedSource {
   content: string;
@@ -88,11 +79,73 @@ function decodeSourceBuffer(buffer: Buffer): DecodedSource {
 }
 
 export class IndexCoordinator {
+  private watching = false;
+  private watchAbortController?: AbortController;
+  private indexingLock = false;
+  private debounceTimer?: NodeJS.Timeout;
+
   public constructor(
     private readonly settings: Settings,
     private readonly store: SQLiteStore,
     private readonly logger: Logger,
+    private readonly embeddingProvider: EmbeddingProvider,
   ) {}
+
+  public isWatching(): boolean {
+    return this.watching;
+  }
+
+  public startWatching(projectRootPath: string): void {
+    if (this.watching) {
+      this.logger.warn("file watch already active", { projectRootPath });
+      return;
+    }
+
+    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    const abortController = new AbortController();
+    this.watchAbortController = abortController;
+
+    const watcher = watch(normalizedRoot, { recursive: true }, (_event, _filename) => {
+      if (this.indexingLock || abortController.signal.aborted) {
+        return;
+      }
+
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        this.indexingLock = true;
+        this.indexProject(normalizedRoot, "incremental")
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn("watch-triggered index failed", {
+              error: message,
+              projectRootPath: normalizedRoot,
+            });
+          })
+          .finally(() => {
+            this.indexingLock = false;
+          });
+      }, 2500);
+    });
+
+    abortController.signal.addEventListener("abort", () => watcher.close());
+    this.watching = true;
+    this.logger.info("file watch started", { projectRootPath: normalizedRoot });
+  }
+
+  public stopWatching(): void {
+    if (!this.watching) {
+      return;
+    }
+
+    clearTimeout(this.debounceTimer);
+    this.watchAbortController?.abort();
+    this.watching = false;
+    this.logger.info("file watch stopped");
+  }
 
   public async indexProject(projectRootPath: string, mode: "full" | "incremental" = "incremental"): Promise<IndexProjectResult> {
     const startedAtMs = performance.now();
@@ -149,7 +202,7 @@ export class IndexCoordinator {
         this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
         let vectorChunkCount = 0;
         if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager" && chunks.length > 0) {
-          const provider = getEmbeddingProvider();
+          const provider = this.embeddingProvider;
           const vectorStartedAtMs = performance.now();
           const embeddings = await provider.embedBatch(chunks.map((chunk) => chunk.content));
           vectorMs += Math.round(performance.now() - vectorStartedAtMs);
@@ -246,6 +299,10 @@ export class IndexCoordinator {
       vectorMs,
       vectorSearchEnabled: this.settings.enableVectorSearch,
     });
+
+    if (this.settings.autoWatch && !this.watching) {
+      this.startWatching(normalizedRoot);
+    }
 
     return {
       changedFiles,

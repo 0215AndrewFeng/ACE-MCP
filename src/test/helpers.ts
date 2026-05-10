@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import type { Settings } from "../core/common/types.js";
+import type { EmbeddingProvider } from "../core/search/embedding.js";
+import { createEmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import { Logger } from "../core/common/logger.js";
 import { SearchService } from "../core/search/searchService.js";
@@ -26,7 +28,7 @@ async function writeProjectFiles(projectRootPath: string, files: Record<string, 
   }
 }
 
-export async function createTestProjectEnvironment(files: Record<string, string>): Promise<TestProjectEnvironment> {
+export async function createTestProjectEnvironment(files: Record<string, string>, embeddingProvider?: EmbeddingProvider): Promise<TestProjectEnvironment> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-test-"));
   const projectRootPath = path.join(tempDir, "project");
   const dataDir = path.join(tempDir, "data");
@@ -37,10 +39,15 @@ export async function createTestProjectEnvironment(files: Record<string, string>
   await writeProjectFiles(projectRootPath, files);
 
   const settings: Settings = {
+    autoWatch: false,
     batchSize: 32,
     dataDir,
     databasePath: path.join(dataDir, "index.db"),
     defaultTopK: 8,
+    embeddingApiKey: "",
+    embeddingApiUrl: "",
+    embeddingModel: "text-embedding-3-small",
+    embeddingProvider: "memory",
     enableVectorSearch: true,
     excludePatterns: [".git", "node_modules", "dist"],
     logDir,
@@ -55,14 +62,15 @@ export async function createTestProjectEnvironment(files: Record<string, string>
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);
   store.initialize();
+  const provider = embeddingProvider ?? createEmbeddingProvider(settings);
 
   return {
     cleanup: async () => {
       await rm(tempDir, { force: true, recursive: true });
     },
-    indexCoordinator: new IndexCoordinator(settings, store, logger),
+    indexCoordinator: new IndexCoordinator(settings, store, logger, provider),
     projectRootPath,
-    searchService: new SearchService(store, logger, settings),
+    searchService: new SearchService(store, logger, settings, provider),
     settings,
     store,
     tempDir,

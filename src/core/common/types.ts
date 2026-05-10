@@ -6,11 +6,18 @@ export type VectorIndexingMode = "lazy" | "eager";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
 
+export type EmbeddingProviderType = "memory" | "remote";
+
 export interface Settings {
+  autoWatch: boolean;
   batchSize: number;
   dataDir: string;
   databasePath: string;
   defaultTopK: number;
+  embeddingApiKey: string;
+  embeddingApiUrl: string;
+  embeddingModel: string;
+  embeddingProvider: EmbeddingProviderType;
   enableVectorSearch: boolean;
   excludePatterns: string[];
   logDir: string;

@@ -209,6 +209,25 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     }
   });
 
+  app.post("/api/watch/start", (req: Request, res: Response) => {
+    try {
+      const { projectRootPath } = req.body;
+      if (!projectRootPath) {
+        res.status(400).json({ error: "projectRootPath is required" });
+        return;
+      }
+      dependencies.indexCoordinator.startWatching(String(projectRootPath));
+      res.json({ projectRootPath: normalizeAbsolutePath(String(projectRootPath)), watching: true });
+    } catch (error: unknown) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post("/api/watch/stop", (_req: Request, res: Response) => {
+    dependencies.indexCoordinator.stopWatching();
+    res.json({ watching: false });
+  });
+
   app.post("/api/search-context", async (req: Request, res: Response) => {
     try {
       const { projectRootPath, query, mode, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;

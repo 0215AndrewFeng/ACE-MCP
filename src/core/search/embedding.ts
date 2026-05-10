@@ -1,13 +1,23 @@
-/**
- * 轻量级向量嵌入接口
- * 当前使用内存向量索引，后续可按需升级到 sqlite-vss 或远程 API
- */
+import type { Settings } from "../common/types.js";
+import { RemoteEmbeddingProvider } from "./remoteEmbedding.js";
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
   getDimension(): number;
   getModelName(): string;
+}
+
+export function createEmbeddingProvider(settings: Settings): EmbeddingProvider {
+  if (settings.embeddingProvider === "remote" && settings.embeddingApiUrl) {
+    return new RemoteEmbeddingProvider(
+      settings.embeddingApiUrl,
+      settings.embeddingApiKey,
+      settings.embeddingModel,
+      new InMemoryEmbeddingProvider(),
+    );
+  }
+  return new InMemoryEmbeddingProvider();
 }
 
 /**

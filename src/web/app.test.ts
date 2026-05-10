@@ -129,3 +129,53 @@ test("web search and stats responses return valid data", async () => {
     await environment.cleanup();
   }
 });
+
+test("watch API endpoints return correct state", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+  });
+
+  try {
+    const runtime = {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: APP_VERSION,
+      webPort: undefined,
+    };
+    const handle = await startWebApp(0, {
+      indexCoordinator: environment.indexCoordinator,
+      logger: new Logger(environment.settings.logFilePath, "error"),
+      runtime,
+      searchService: environment.searchService,
+      settings: environment.settings,
+      store: environment.store,
+    });
+
+    try {
+      // start watch
+      const startResponse = await fetch(`http://127.0.0.1:${handle.port}/api/watch/start`, {
+        body: JSON.stringify({ projectRootPath: environment.projectRootPath }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(startResponse.status, 200);
+      const startPayload = (await startResponse.json()) as { projectRootPath: string; watching: boolean };
+      assert.equal(startPayload.watching, true);
+      assert.equal(typeof startPayload.projectRootPath, "string");
+
+      // stop watch
+      const stopResponse = await fetch(`http://127.0.0.1:${handle.port}/api/watch/stop`, {
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(stopResponse.status, 200);
+      const stopPayload = (await stopResponse.json()) as { watching: boolean };
+      assert.equal(stopPayload.watching, false);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await environment.cleanup();
+  }
+});
