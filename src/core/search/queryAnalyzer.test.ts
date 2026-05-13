@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { analyzeQuery } from "./queryAnalyzer.js";
+import { collectPositiveStructuredTerms, parseStructuredQuery } from "./structuredQuery.js";
 
 test("analyzeQuery keeps Unicode tokens for natural-language queries", () => {
   const analysis = analyzeQuery("订单 退款处理");
@@ -44,4 +45,28 @@ test("analyzeQuery flags compound identifiers inside mixed natural-language quer
     "query",
     "flow",
   ]);
+});
+
+test("parseStructuredQuery handles scoped fields boolean operators and phrases", () => {
+  const parsed = parseStructuredQuery('symbol:RefundService AND (path:src/refund OR content:"refund flow") NOT path:test');
+
+  assert.ok(parsed);
+  assert.deepEqual(parsed.fields.sort(), ["content", "path", "symbol"]);
+  assert.equal(parsed.operators.includes("AND"), true);
+  assert.equal(parsed.operators.includes("OR"), true);
+  assert.equal(parsed.operators.includes("NOT"), true);
+  assert.equal(parsed.terms.length, 4);
+  assert.deepEqual(parsed.terms.map((term) => ({ field: term.field, phrase: term.phrase, value: term.value })), [
+    { field: "symbol", phrase: false, value: "RefundService" },
+    { field: "path", phrase: false, value: "src/refund" },
+    { field: "content", phrase: true, value: "refund flow" },
+    { field: "path", phrase: false, value: "test" },
+  ]);
+});
+
+test("collectPositiveStructuredTerms excludes negated clauses", () => {
+  const parsed = parseStructuredQuery("symbol:RefundService AND NOT path:test");
+
+  assert.ok(parsed);
+  assert.deepEqual([...collectPositiveStructuredTerms(parsed.root)], ["term-1"]);
 });

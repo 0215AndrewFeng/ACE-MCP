@@ -479,3 +479,121 @@ public class RefundService
     await environment.cleanup();
   }
 });
+
+test("structured queries support field scopes and boolean filters", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/RefundService.ts": `
+export class RefundService {
+  processRefund() {
+    return "ok";
+  }
+}
+`,
+    "src/refund/flow.ts": "export const refundFlow = 'refund flow';\n",
+    "src/test/refund.test.ts": "export class RefundServiceTest {}\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const response = await environment.searchService.search(
+      environment.projectRootPath,
+      "symbol:RefundService AND path:src/refund NOT path:test",
+      "auto",
+      5,
+      0,
+      undefined,
+      "metadata",
+    );
+
+    assert.equal(response.results.length >= 1, true);
+    assert.equal(response.results.every((result) => result.filePath.startsWith("src/refund/")), true);
+    assert.equal(response.results.some((result) => result.filePath === "src/test/refund.test.ts"), false);
+    assert.equal(response.diagnostics.queryAnalysis.structuredQuery?.isStructured, true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("findDefinitions and findReferences resolve indexed symbols and usages", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/RefundService.ts": `
+export class RefundService {
+  processRefund(orderId: string) {
+    return orderId.trim();
+  }
+}
+`,
+    "src/refund/refundController.ts": `
+import { RefundService } from "./RefundService";
+
+const service = new RefundService();
+export const handleRefund = (orderId: string) => service.processRefund(orderId);
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const definitionResponse = await environment.searchService.findDefinitions(
+      environment.projectRootPath,
+      "RefundService.processRefund",
+      5,
+      0,
+      undefined,
+      "metadata",
+    );
+    assert.equal(definitionResponse.results[0]?.filePath, "src/refund/RefundService.ts");
+    assert.equal(definitionResponse.results[0]?.fullName, "RefundService.processRefund");
+
+    const referenceResponse = await environment.searchService.findReferences(
+      environment.projectRootPath,
+      "RefundService.processRefund",
+      5,
+      0,
+      undefined,
+      "metadata",
+    );
+    assert.equal(referenceResponse.definition?.filePath, "src/refund/RefundService.ts");
+    assert.equal(referenceResponse.results.some((result) => result.filePath === "src/refund/refundController.ts"), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("evaluateSearchQuality summarizes expected file assertions", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/auth/signInHandler.ts": "export const signInHandler = async () => 'ok';\n",
+    "src/orders/OrderDao.ts": "export class OrderDao { insertOrder() { return true; } }\n",
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const evaluation = await environment.searchService.evaluateSearchQuality(environment.projectRootPath, [
+      {
+        expectedFiles: ["src/auth/signInHandler.ts"],
+        mode: "semantic",
+        name: "semantic login",
+        query: "login handler",
+        topK: 5,
+      },
+      {
+        expectedFiles: ["src/orders/OrderDao.ts"],
+        mode: "semantic",
+        name: "repository order",
+        query: "repository save order",
+        topK: 5,
+      },
+    ]);
+
+    assert.equal(evaluation.summary.failed, 0);
+    assert.equal(evaluation.summary.passed, 2);
+    assert.equal(evaluation.cases.every((testCase) => testCase.passed), true);
+  } finally {
+    await environment.cleanup();
+  }
+});

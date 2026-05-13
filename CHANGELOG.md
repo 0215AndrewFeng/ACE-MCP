@@ -2,6 +2,24 @@
 
 本项目的重要版本变更记录如下。
 
+## [3.5.0] - 2026-05-12
+
+### 新增
+
+- **结构化查询语言**：`search_context` 现支持 `AND` / `OR` / `NOT` 布尔运算和 field-scoped 子句（`symbol:`、`path:`、`content:`），可直接组合路径、符号与内容约束。
+- **代码导航工具**：新增 `find_definition` 与 `find_references` MCP 工具，并同步提供 Web API，支持基于现有符号索引做轻量 definition/reference 定位。
+- **搜索质量评估**：新增 `evaluate_search_quality` 工具与 Web API，可批量执行预期文件断言，输出通过率和逐 case 结果，便于离线回归评估搜索质量。
+
+### 改进
+
+- 结构化查询按文件粒度执行布尔过滤，并与现有搜索重排、片段展开和统一 envelope 返回兼容。
+- Web 调试面板工具目录与 HTTP 端点扩展到 definition/reference/quality evaluation，MCP 与 Web 调试入口保持一致。
+
+### 测试
+
+- 新增结构化查询、definition/reference 检索、质量评估流程的搜索服务回归测试。
+- 新增 Web definition/reference/evaluation API 集成测试。
+
 ## [3.4.0] - 2026-05-10
 
 ### 新增

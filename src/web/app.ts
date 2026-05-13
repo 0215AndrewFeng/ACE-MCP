@@ -59,6 +59,9 @@ function toolCatalog(): Array<{ description: string; name: string }> {
   return [
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
     { description: "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query.", name: "search_context" },
+    { description: "Incrementally index the project and locate symbol definitions with signatures and snippets.", name: "find_definition" },
+    { description: "Incrementally index the project, resolve the best definition, and return likely references.", name: "find_references" },
+    { description: "Run expected-result search cases to measure retrieval quality on an indexed project.", name: "evaluate_search_quality" },
     { description: "Read a range of lines from a project file.", name: "get_file_snippet" },
     { description: "Return indexing stats for a local project.", name: "project_stats" },
   ];
@@ -307,6 +310,181 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
             ...result.notes,
             ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
           ],
+        ),
+      );
+    } catch (error: unknown) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post("/api/find-definition", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
+      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
+      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const response = await dependencies.searchService.findDefinitions(
+        indexResult.projectRootPath,
+        String(query ?? ""),
+        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        {
+          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
+          languages: normalizeSupportedLanguages(languages),
+          pathContains: normalizePathPrefix(pathContains),
+          pathPrefix: normalizePathPrefix(pathPrefix),
+        },
+        normalizedResultMode,
+      );
+      res.json(
+        buildEnvelope(
+          {
+            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
+            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+            languages: normalizeSupportedLanguages(languages),
+            pathContains: normalizePathPrefix(pathContains),
+            pathPrefix: normalizePathPrefix(pathPrefix),
+            projectRootPath: indexResult.projectRootPath,
+            query: String(query ?? ""),
+            resultMode: normalizedResultMode,
+            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+          },
+          {
+            projectRootPath: response.projectRootPath,
+            query: response.query,
+            resultMode: response.resultMode,
+            results: response.results,
+          },
+          {
+            indexSync: {
+              changedFiles: indexResult.changedFiles,
+              chunkCount: indexResult.chunkCount,
+              createdAt: indexResult.createdAt,
+              deletedFiles: indexResult.deletedFiles,
+              failedFileCount: indexResult.failedFileCount,
+              failedFiles: indexResult.failedFiles,
+              indexedFiles: indexResult.indexedFiles,
+              scannedFiles: indexResult.scannedFiles,
+              timings: indexResult.timings,
+              vectorIndex: indexResult.vectorIndex,
+            },
+            lookup: {
+              resultCount: response.stats.resultCount,
+              searchMs: response.stats.searchMs,
+            },
+          },
+          [
+            ...response.notes,
+            ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
+          ],
+        ),
+      );
+    } catch (error: unknown) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post("/api/find-references", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
+      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
+      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const response = await dependencies.searchService.findReferences(
+        indexResult.projectRootPath,
+        String(query ?? ""),
+        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        {
+          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
+          languages: normalizeSupportedLanguages(languages),
+          pathContains: normalizePathPrefix(pathContains),
+          pathPrefix: normalizePathPrefix(pathPrefix),
+        },
+        normalizedResultMode,
+      );
+      res.json(
+        buildEnvelope(
+          {
+            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
+            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+            languages: normalizeSupportedLanguages(languages),
+            pathContains: normalizePathPrefix(pathContains),
+            pathPrefix: normalizePathPrefix(pathPrefix),
+            projectRootPath: indexResult.projectRootPath,
+            query: String(query ?? ""),
+            resultMode: normalizedResultMode,
+            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+          },
+          {
+            definition: response.definition,
+            definitions: response.definitions,
+            projectRootPath: response.projectRootPath,
+            query: response.query,
+            resultMode: response.resultMode,
+            results: response.results,
+          },
+          {
+            indexSync: {
+              changedFiles: indexResult.changedFiles,
+              chunkCount: indexResult.chunkCount,
+              createdAt: indexResult.createdAt,
+              deletedFiles: indexResult.deletedFiles,
+              failedFileCount: indexResult.failedFileCount,
+              failedFiles: indexResult.failedFiles,
+              indexedFiles: indexResult.indexedFiles,
+              scannedFiles: indexResult.scannedFiles,
+              timings: indexResult.timings,
+              vectorIndex: indexResult.vectorIndex,
+            },
+            lookup: {
+              definitionCount: response.stats.definitionCount,
+              referenceCount: response.stats.referenceCount,
+              searchMs: response.stats.searchMs,
+            },
+          },
+          [
+            ...response.notes,
+            ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
+          ],
+        ),
+      );
+    } catch (error: unknown) {
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.post("/api/evaluate-search-quality", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath, cases } = req.body;
+      const normalizedCases = Array.isArray(cases) ? cases : [];
+      if (normalizedCases.length === 0) {
+        res.status(400).json({ error: "cases must be a non-empty array" });
+        return;
+      }
+      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const evaluation = await dependencies.searchService.evaluateSearchQuality(indexResult.projectRootPath, normalizedCases);
+      res.json(
+        buildEnvelope(
+          {
+            cases: normalizedCases,
+            projectRootPath: indexResult.projectRootPath,
+          },
+          evaluation,
+          {
+            indexSync: {
+              changedFiles: indexResult.changedFiles,
+              chunkCount: indexResult.chunkCount,
+              createdAt: indexResult.createdAt,
+              deletedFiles: indexResult.deletedFiles,
+              failedFileCount: indexResult.failedFileCount,
+              failedFiles: indexResult.failedFiles,
+              indexedFiles: indexResult.indexedFiles,
+              scannedFiles: indexResult.scannedFiles,
+              timings: indexResult.timings,
+              vectorIndex: indexResult.vectorIndex,
+            },
+            summary: evaluation.summary,
+          },
+          indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : [],
         ),
       );
     } catch (error: unknown) {

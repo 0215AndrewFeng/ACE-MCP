@@ -179,3 +179,110 @@ test("watch API endpoints return correct state", async () => {
     await environment.cleanup();
   }
 });
+
+test("web definition reference and evaluation APIs return structured payloads", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/RefundService.ts": `
+export class RefundService {
+  processRefund(orderId: string) {
+    return orderId.trim();
+  }
+}
+`,
+    "src/refund/refundController.ts": `
+import { RefundService } from "./RefundService";
+
+const service = new RefundService();
+export const handleRefund = (orderId: string) => service.processRefund(orderId);
+`,
+  });
+
+  try {
+    const runtime = {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: APP_VERSION,
+      webPort: undefined,
+    };
+    const handle = await startWebApp(0, {
+      indexCoordinator: environment.indexCoordinator,
+      logger: new Logger(environment.settings.logFilePath, "error"),
+      runtime,
+      searchService: environment.searchService,
+      settings: environment.settings,
+      store: environment.store,
+    });
+
+    try {
+      const definitionResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-definition`, {
+        body: JSON.stringify({
+          projectRootPath: environment.projectRootPath,
+          query: "RefundService.processRefund",
+          resultMode: "metadata",
+          topK: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(definitionResponse.status, 200);
+      const definitionPayload = (await definitionResponse.json()) as {
+        data: {
+          results: Array<{ filePath: string; fullName: string }>;
+        };
+      };
+      assert.equal(definitionPayload.data.results[0]?.filePath, "src/refund/RefundService.ts");
+
+      const referenceResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-references`, {
+        body: JSON.stringify({
+          projectRootPath: environment.projectRootPath,
+          query: "RefundService.processRefund",
+          resultMode: "metadata",
+          topK: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(referenceResponse.status, 200);
+      const referencePayload = (await referenceResponse.json()) as {
+        data: {
+          results: Array<{ filePath: string }>;
+        };
+      };
+      assert.equal(referencePayload.data.results.some((result) => result.filePath === "src/refund/refundController.ts"), true);
+
+      const evaluationResponse = await fetch(`http://127.0.0.1:${handle.port}/api/evaluate-search-quality`, {
+        body: JSON.stringify({
+          cases: [
+            {
+              expectedFiles: ["src/refund/RefundService.ts"],
+              mode: "symbol",
+              name: "definition quality",
+              query: "RefundService.processRefund",
+              topK: 5,
+            },
+          ],
+          projectRootPath: environment.projectRootPath,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(evaluationResponse.status, 200);
+      const evaluationPayload = (await evaluationResponse.json()) as {
+        data: {
+          summary: {
+            failed: number;
+            passed: number;
+          };
+        };
+      };
+      assert.equal(evaluationPayload.data.summary.failed, 0);
+      assert.equal(evaluationPayload.data.summary.passed, 1);
+    } finally {
+      await handle.close();
+    }
+  } finally {
+    await environment.cleanup();
+  }
+});

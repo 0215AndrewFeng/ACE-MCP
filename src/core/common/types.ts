@@ -1,6 +1,8 @@
 export type Language = "java" | "javascript" | "dotnet" | "python" | "unknown";
 export type SupportedLanguage = Exclude<Language, "unknown">;
 export type SearchMode = "auto" | "lexical" | "symbol" | "semantic" | "hybrid";
+export type StructuredSearchField = "content" | "path" | "symbol";
+export type StructuredSearchOperator = "AND" | "OR" | "NOT";
 export type ProjectStatus = "ready" | "indexing" | "error";
 export type VectorIndexingMode = "lazy" | "eager";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
@@ -137,6 +139,13 @@ export interface QueryAnalysis {
   isSymbolLike: boolean;
   rawQuery: string;
   semanticTerms: string[];
+  structuredQuery?: {
+    fields: StructuredSearchField[];
+    isStructured: boolean;
+    operators: StructuredSearchOperator[];
+    originalQuery: string;
+    termCount: number;
+  };
   tokens: string[];
 }
 
@@ -188,6 +197,48 @@ export interface SearchResponse {
     indexedFiles: number;
     resultCount: number;
     scannedFiles: number;
+    searchMs: number;
+  };
+}
+
+export interface DefinitionMatch {
+  endLine: number;
+  filePath: string;
+  fullName: string;
+  kind: SymbolInfo["kind"];
+  language: Language;
+  line: number;
+  name: string;
+  score: number;
+  signature: string;
+  snippet: string;
+  snippetIncluded: boolean;
+  startLine: number;
+}
+
+export interface DefinitionSearchResponse {
+  notes: string[];
+  projectRootPath: string;
+  query: string;
+  resultMode: SearchResultMode;
+  results: DefinitionMatch[];
+  stats: {
+    resultCount: number;
+    searchMs: number;
+  };
+}
+
+export interface ReferenceSearchResponse {
+  definition: DefinitionMatch | null;
+  definitions: DefinitionMatch[];
+  notes: string[];
+  projectRootPath: string;
+  query: string;
+  resultMode: SearchResultMode;
+  results: SearchResult[];
+  stats: {
+    definitionCount: number;
+    referenceCount: number;
     searchMs: number;
   };
 }
@@ -271,6 +322,66 @@ export interface SearchContextInput {
   topK?: number;
 }
 
+export interface FindDefinitionInput {
+  excludePathPrefix?: string;
+  includeContextLines?: number;
+  languages?: SupportedLanguage[];
+  pathContains?: string;
+  pathPrefix?: string;
+  projectRootPath: string;
+  query: string;
+  resultMode?: SearchResultMode;
+  topK?: number;
+}
+
+export interface FindReferencesInput {
+  excludePathPrefix?: string;
+  includeContextLines?: number;
+  languages?: SupportedLanguage[];
+  pathContains?: string;
+  pathPrefix?: string;
+  projectRootPath: string;
+  query: string;
+  resultMode?: SearchResultMode;
+  topK?: number;
+}
+
+export interface SearchQualityCaseInput {
+  excludePathPrefix?: string;
+  expectedFiles?: string[];
+  expectedTopFile?: string;
+  languages?: SupportedLanguage[];
+  mode?: SearchMode;
+  name: string;
+  pathContains?: string;
+  pathPrefix?: string;
+  query: string;
+  topK?: number;
+}
+
+export interface SearchQualityCaseResult {
+  actualFiles: string[];
+  expectedFiles: string[];
+  expectedTopFile?: string;
+  mode: SearchMode;
+  name: string;
+  passed: boolean;
+  query: string;
+  reasons: string[];
+  topFile?: string;
+}
+
+export interface SearchQualityEvaluation {
+  cases: SearchQualityCaseResult[];
+  projectRootPath: string;
+  summary: {
+    failed: number;
+    passRate: number;
+    passed: number;
+    total: number;
+  };
+}
+
 export interface IndexProjectInput {
   mode?: "full" | "incremental";
   projectRootPath: string;
@@ -284,5 +395,10 @@ export interface GetFileSnippetInput {
 }
 
 export interface ProjectStatsInput {
+  projectRootPath: string;
+}
+
+export interface EvaluateSearchQualityInput {
+  cases: SearchQualityCaseInput[];
   projectRootPath: string;
 }

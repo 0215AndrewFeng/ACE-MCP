@@ -4,13 +4,20 @@ import { performance } from "node:perf_hooks";
 import type { Logger } from "../common/logger.js";
 import {
   DEFAULT_INCLUDE_CONTEXT_LINES,
+  type DefinitionMatch,
+  type DefinitionSearchResponse,
   MAX_INCLUDE_CONTEXT_LINES,
+  type IndexedFileRecord,
   type QueryAnalysis,
+  type ReferenceSearchResponse,
   type SearchDiagnostics,
   type SearchFilters,
   type SearchMatchSource,
   type SearchMode,
   type SearchPhaseStat,
+  type SearchQualityCaseInput,
+  type SearchQualityCaseResult,
+  type SearchQualityEvaluation,
   type SearchResponse,
   type SearchResultExplanation,
   type SearchResultMode,
@@ -23,10 +30,12 @@ import { readFileSnippet } from "../project/fileSnippet.js";
 import { analyzeQuery } from "./queryAnalyzer.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
+import { collectPositiveStructuredTerms, parseStructuredQuery, type ParsedStructuredQuery, type StructuredQueryNode, type StructuredQueryTerm } from "./structuredQuery.js";
 
 const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
 const SEARCH_FANOUT_LIMIT = 50;
 const SEARCH_FANOUT_MULTIPLIER = 3;
+const STRUCTURED_SEARCH_FANOUT_LIMIT = 250;
 const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol", "semantic"]);
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
@@ -441,6 +450,140 @@ function buildResultSourceBreakdown(results: SearchResult[]): Partial<Record<Sea
   return breakdown;
 }
 
+function matchesIndexedFileFilters(
+  file: Pick<IndexedFileRecord, "language" | "relativePath">,
+  filters: SearchFilters | undefined,
+): boolean {
+  if (!filters) {
+    return true;
+  }
+
+  const normalizedPath = normalizeComparablePath(file.relativePath);
+  if (filters.languages && filters.languages.length > 0 && !filters.languages.includes(file.language as SupportedLanguage)) {
+    return false;
+  }
+
+  if (filters.pathPrefix && !normalizedPath.startsWith(normalizeComparablePath(filters.pathPrefix))) {
+    return false;
+  }
+
+  if (filters.pathContains && !normalizedPath.includes(normalizeComparablePath(filters.pathContains))) {
+    return false;
+  }
+
+  if (filters.excludePathPrefix && normalizedPath.startsWith(normalizeComparablePath(filters.excludePathPrefix))) {
+    return false;
+  }
+
+  return true;
+}
+
+function unionStringSets(left: Set<string>, right: Set<string>): Set<string> {
+  return new Set([...left, ...right]);
+}
+
+function intersectStringSets(left: Set<string>, right: Set<string>): Set<string> {
+  return new Set([...left].filter((value) => right.has(value)));
+}
+
+function differenceStringSets(left: Set<string>, right: Set<string>): Set<string> {
+  return new Set([...left].filter((value) => !right.has(value)));
+}
+
+function evaluateStructuredNode(
+  node: StructuredQueryNode,
+  matchesByTerm: Map<string, Set<string>>,
+  universe: Set<string>,
+): Set<string> {
+  if (node.type === "term") {
+    return new Set(matchesByTerm.get(node.termId) ?? []);
+  }
+
+  if (node.type === "not") {
+    return differenceStringSets(universe, evaluateStructuredNode(node.operand, matchesByTerm, universe));
+  }
+
+  const left = evaluateStructuredNode(node.left, matchesByTerm, universe);
+  const right = evaluateStructuredNode(node.right, matchesByTerm, universe);
+  return node.type === "and" ? intersectStringSets(left, right) : unionStringSets(left, right);
+}
+
+function buildStructuredQueryAnalysis(query: string, parsed: ParsedStructuredQuery): QueryAnalysis {
+  const effectiveQuery = parsed.terms.map((term) => term.value).join(" ").trim() || query;
+  const analysis = analyzeQuery(effectiveQuery);
+  return {
+    ...analysis,
+    structuredQuery: {
+      fields: parsed.fields,
+      isStructured: true,
+      operators: parsed.operators,
+      originalQuery: query,
+      termCount: parsed.terms.length,
+    },
+  };
+}
+
+function mergeDefinitionMatches(results: DefinitionMatch[]): DefinitionMatch[] {
+  const bySymbol = new Map<string, DefinitionMatch>();
+  for (const result of results) {
+    const key = `${result.filePath}:${result.line}:${result.fullName}`;
+    const existing = bySymbol.get(key);
+    if (!existing || result.score > existing.score) {
+      bySymbol.set(key, result);
+    }
+  }
+
+  return [...bySymbol.values()].sort(
+    (left, right) =>
+      right.score - left.score ||
+      left.filePath.localeCompare(right.filePath) ||
+      left.line - right.line,
+  );
+}
+
+async function expandDefinitionSnippets(
+  projectRootPath: string,
+  results: DefinitionMatch[],
+  includeContextLines: number,
+): Promise<DefinitionMatch[]> {
+  if (includeContextLines === DEFAULT_INCLUDE_CONTEXT_LINES) {
+    return results;
+  }
+
+  return Promise.all(
+    results.map(async (result) => {
+      const snippet = await readFileSnippet(
+        projectRootPath,
+        result.filePath,
+        result.startLine - includeContextLines,
+        result.endLine + includeContextLines,
+      );
+
+      return {
+        ...result,
+        endLine: snippet.endLine,
+        snippet: snippet.snippet,
+        startLine: snippet.startLine,
+      };
+    }),
+  );
+}
+
+function applyDefinitionResultMode(results: DefinitionMatch[], resultMode: SearchResultMode): DefinitionMatch[] {
+  if (resultMode === "full") {
+    return results.map((result) => ({
+      ...result,
+      snippetIncluded: true,
+    }));
+  }
+
+  return results.map((result) => ({
+    ...result,
+    snippet: "",
+    snippetIncluded: false,
+  }));
+}
+
 const SEARCH_CACHE_MAX_SIZE = 100;
 const SEARCH_CACHE_TTL_MS = 60 * 1000; // 1 minute
 
@@ -473,16 +616,14 @@ export class SearchService {
 
   private evictSearchCache(): void {
     const now = Date.now();
-    // 先清理过期条目
     for (const [key, entry] of this.searchCache) {
       if (now - entry.timestamp > SEARCH_CACHE_TTL_MS) {
         this.searchCache.delete(key);
       }
     }
-    // 如果仍然超过限制，删除最旧的条目
+
     if (this.searchCache.size > SEARCH_CACHE_MAX_SIZE) {
-      const entries = [...this.searchCache.entries()]
-        .sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const entries = [...this.searchCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
       const toDelete = entries.slice(0, this.searchCache.size - SEARCH_CACHE_MAX_SIZE);
       for (const [key] of toDelete) {
         this.searchCache.delete(key);
@@ -497,9 +638,10 @@ export class SearchService {
           this.searchCache.delete(key);
         }
       }
-    } else {
-      this.searchCache.clear();
+      return;
     }
+
+    this.searchCache.clear();
   }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
@@ -529,7 +671,7 @@ export class SearchService {
     return hydratedChunkCount;
   }
 
-  public async search(
+  private async searchPlainQuery(
     projectRootPath: string,
     query: string,
     mode: SearchMode,
@@ -544,7 +686,6 @@ export class SearchService {
       throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
     }
 
-    // 检查缓存（semantic 模式需要重新检查向量缓存状态，不使用搜索缓存）
     const cacheKey = this.buildCacheKey(project.project_id, project.index_version, query, mode, topK, filters, resultMode);
     const cached = this.searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL_MS && mode !== "semantic" && mode !== "hybrid") {
@@ -721,11 +862,7 @@ export class SearchService {
     const snippetStartedAt = performance.now();
     const hydratedResults =
       resultMode === "full"
-        ? await expandResultSnippets(
-            projectRootPath,
-            rerankedResults,
-            normalizedIncludeContextLines,
-          )
+        ? await expandResultSnippets(projectRootPath, rerankedResults, normalizedIncludeContextLines)
         : rerankedResults;
     executedStrategies.push({
       candidateCount: hydratedResults.length,
@@ -786,10 +923,371 @@ export class SearchService {
       },
     };
 
-    // 写入搜索缓存
     this.searchCache.set(cacheKey, { response, timestamp: Date.now() });
     this.evictSearchCache();
 
     return response;
+  }
+
+  private async runStructuredTermSearch(
+    projectRootPath: string,
+    projectId: string,
+    term: StructuredQueryTerm,
+    mode: SearchMode,
+    limit: number,
+    filters?: SearchFilters,
+  ): Promise<SearchResult[]> {
+    if (term.field === "path") {
+      const analysis = analyzeQuery(term.value);
+      const tokens = term.phrase
+        ? [normalizeComparablePath(term.value)]
+        : analysis.tokens.length > 0
+          ? analysis.tokens
+          : [normalizeComparablePath(term.value)];
+      return this.store.searchByPath(projectId, tokens, limit, filters);
+    }
+
+    if (term.field === "content") {
+      if (term.phrase) {
+        return this.store.searchByTextSubstrings(projectId, [term.value], limit, filters);
+      }
+      return (await this.searchPlainQuery(projectRootPath, term.value, "lexical", limit, 0, filters, "metadata")).results;
+    }
+
+    if (term.field === "symbol") {
+      return (await this.searchPlainQuery(projectRootPath, term.value, "symbol", limit, 0, filters, "metadata")).results;
+    }
+
+    return (await this.searchPlainQuery(projectRootPath, term.value, mode, limit, 0, filters, "metadata")).results;
+  }
+
+  private async searchStructuredQuery(
+    projectRootPath: string,
+    query: string,
+    mode: SearchMode,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<SearchResponse> {
+    const startedAt = performance.now();
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
+
+    const parsed = parseStructuredQuery(query);
+    if (!parsed) {
+      return this.searchPlainQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode);
+    }
+
+    const notes: string[] = [];
+    const executedStrategies: SearchPhaseStat[] = [];
+    const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
+    const normalizedFilters = normalizeSearchFilters(filters);
+    const fanoutLimit = Math.max(SEARCH_FANOUT_LIMIT, Math.min(STRUCTURED_SEARCH_FANOUT_LIMIT, topK * 10));
+    const universe = new Set(
+      this.store
+        .listProjectFiles(project.project_id)
+        .filter((file) => matchesIndexedFileFilters(file, normalizedFilters))
+        .map((file) => file.relativePath),
+    );
+    const termMatches = new Map<string, Set<string>>();
+    const termResults = new Map<string, SearchResult[]>();
+
+    for (const term of parsed.terms) {
+      const phaseStartedAt = performance.now();
+      try {
+        const results = await this.runStructuredTermSearch(
+          projectRootPath,
+          project.project_id,
+          term,
+          mode,
+          fanoutLimit,
+          normalizedFilters,
+        );
+        termResults.set(term.termId, results);
+        termMatches.set(term.termId, new Set(results.map((result) => result.filePath)));
+        executedStrategies.push({
+          candidateCount: results.length,
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          name: `structured:${term.field ?? "auto"}`,
+          reason: term.value,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        executedStrategies.push({
+          candidateCount: 0,
+          durationMs: Math.round(performance.now() - phaseStartedAt),
+          error: message,
+          name: `structured:${term.field ?? "auto"}`,
+          reason: term.value,
+        });
+        notes.push(`Structured clause "${term.value}" failed: ${message}`);
+      }
+    }
+
+    const matchedFiles = evaluateStructuredNode(parsed.root, termMatches, universe);
+    const positiveTermIds = collectPositiveStructuredTerms(parsed.root);
+    let mergedResults = mergeResults(
+      [...positiveTermIds].map((termId) =>
+        (termResults.get(termId) ?? []).filter((result) => matchedFiles.has(result.filePath)),
+      ),
+    );
+
+    if (mergedResults.length === 0 && matchedFiles.size > 0) {
+      mergedResults = this.store.getFilePreviewResults(project.project_id, [...matchedFiles].slice(0, fanoutLimit));
+      notes.push("Structured query matched files through boolean filtering; returning file previews because no positive clause produced direct snippets.");
+    }
+
+    const analysis = buildStructuredQueryAnalysis(query, parsed);
+    const rerankStartedAt = performance.now();
+    const rerankedResults = rerankResults(mergedResults, analysis, topK);
+    executedStrategies.push({
+      candidateCount: rerankedResults.length,
+      durationMs: Math.round(performance.now() - rerankStartedAt),
+      name: "rerank",
+    });
+
+    const snippetStartedAt = performance.now();
+    const hydratedResults =
+      resultMode === "full"
+        ? await expandResultSnippets(projectRootPath, rerankedResults, normalizedIncludeContextLines)
+        : rerankedResults;
+    executedStrategies.push({
+      candidateCount: hydratedResults.length,
+      durationMs: Math.round(performance.now() - snippetStartedAt),
+      name: "snippet-expand",
+      reason: resultMode === "full" ? undefined : "metadata-mode",
+      skipped: resultMode !== "full",
+    });
+
+    const results = applyResultMode(hydratedResults, resultMode);
+    const stats = this.store.getProjectStats(projectRootPath);
+    return {
+      diagnostics: {
+        candidateCount: mergedResults.length,
+        executedStrategies,
+        queryAnalysis: buildStructuredQueryAnalysis(query, parsed),
+        resultSourceBreakdown: buildResultSourceBreakdown(results),
+        vectorIndex: {
+          cacheHit: false,
+          candidateCount: 0,
+          enabled: this.settings.enableVectorSearch,
+          hydratedChunkCount: 0,
+          mode: this.settings.vectorIndexingMode,
+        },
+      },
+      notes,
+      projectRootPath,
+      query,
+      resultMode,
+      results,
+      stats: {
+        indexedFiles: stats?.fileCount ?? 0,
+        resultCount: results.length,
+        scannedFiles: stats?.latestIndexEvent?.scannedFiles ?? stats?.fileCount ?? 0,
+        searchMs: Math.round(performance.now() - startedAt),
+      },
+    };
+  }
+
+  public async search(
+    projectRootPath: string,
+    query: string,
+    mode: SearchMode,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<SearchResponse> {
+    return parseStructuredQuery(query)
+      ? this.searchStructuredQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode)
+      : this.searchPlainQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode);
+  }
+
+  public async findDefinitions(
+    projectRootPath: string,
+    query: string,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<DefinitionSearchResponse> {
+    const startedAt = performance.now();
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
+
+    const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
+    const normalizedFilters = normalizeSearchFilters(filters);
+    const definitions = mergeDefinitionMatches(
+      this.store.findDefinitions(project.project_id, query, Math.max(topK * 3, SEARCH_FANOUT_LIMIT), normalizedFilters),
+    ).slice(0, topK);
+    const hydratedDefinitions =
+      resultMode === "full"
+        ? await expandDefinitionSnippets(projectRootPath, definitions, normalizedIncludeContextLines)
+        : definitions;
+
+    return {
+      notes: definitions.length > 0 ? [] : ["No definitions matched the requested symbol query."],
+      projectRootPath,
+      query,
+      resultMode,
+      results: applyDefinitionResultMode(hydratedDefinitions, resultMode),
+      stats: {
+        resultCount: definitions.length,
+        searchMs: Math.round(performance.now() - startedAt),
+      },
+    };
+  }
+
+  public async findReferences(
+    projectRootPath: string,
+    query: string,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<ReferenceSearchResponse> {
+    const startedAt = performance.now();
+    const definitionResponse = await this.findDefinitions(projectRootPath, query, topK, includeContextLines, filters, resultMode);
+    const primaryDefinition = definitionResponse.results[0] ?? null;
+    const notes = [...definitionResponse.notes];
+
+    if (!primaryDefinition) {
+      return {
+        definition: null,
+        definitions: definitionResponse.results,
+        notes,
+        projectRootPath,
+        query,
+        resultMode,
+        results: [],
+        stats: {
+          definitionCount: 0,
+          referenceCount: 0,
+          searchMs: Math.round(performance.now() - startedAt),
+        },
+      };
+    }
+
+    if (definitionResponse.results.length > 1) {
+      notes.push("Multiple definition candidates matched; references are ranked against the top definition.");
+    }
+
+    const referenceQueries = [...new Set([primaryDefinition.name, primaryDefinition.fullName].filter(Boolean))];
+    const referenceResults = mergeResults(
+      await Promise.all(
+        referenceQueries.map(async (referenceQuery) => {
+          const response = await this.searchPlainQuery(
+            projectRootPath,
+            referenceQuery,
+            "lexical",
+            Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
+            0,
+            filters,
+            "metadata",
+          );
+          return response.results;
+        }),
+      ),
+    ).filter(
+      (result) =>
+        result.filePath !== primaryDefinition.filePath ||
+        result.startLine > primaryDefinition.line ||
+        result.endLine < primaryDefinition.line,
+    );
+
+    const analysis = analyzeQuery(referenceQueries.join(" "));
+    const rerankedResults = rerankResults(referenceResults, analysis, topK);
+    const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
+    const hydratedResults =
+      resultMode === "full"
+        ? await expandResultSnippets(projectRootPath, rerankedResults, normalizedIncludeContextLines)
+        : rerankedResults;
+
+    return {
+      definition: primaryDefinition,
+      definitions: definitionResponse.results,
+      notes,
+      projectRootPath,
+      query,
+      resultMode,
+      results: applyResultMode(hydratedResults, resultMode),
+      stats: {
+        definitionCount: definitionResponse.results.length,
+        referenceCount: rerankedResults.length,
+        searchMs: Math.round(performance.now() - startedAt),
+      },
+    };
+  }
+
+  public async evaluateSearchQuality(
+    projectRootPath: string,
+    cases: SearchQualityCaseInput[],
+  ): Promise<SearchQualityEvaluation> {
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
+
+    const results: SearchQualityCaseResult[] = [];
+    for (const testCase of cases) {
+      const mode = testCase.mode ?? "auto";
+      const response = await this.search(
+        projectRootPath,
+        testCase.query,
+        mode,
+        testCase.topK ?? this.settings.defaultTopK,
+        0,
+        normalizeSearchFilters({
+          excludePathPrefix: testCase.excludePathPrefix,
+          languages: testCase.languages,
+          pathContains: testCase.pathContains,
+          pathPrefix: testCase.pathPrefix,
+        }),
+        "metadata",
+      );
+
+      const actualFiles = [...new Set(response.results.map((result) => result.filePath))];
+      const expectedFiles = testCase.expectedFiles ?? [];
+      const reasons: string[] = [];
+      for (const expectedFile of expectedFiles) {
+        if (!actualFiles.includes(expectedFile)) {
+          reasons.push(`Missing expected file: ${expectedFile}`);
+        }
+      }
+
+      if (testCase.expectedTopFile && actualFiles[0] !== testCase.expectedTopFile) {
+        reasons.push(`Top result mismatch: expected ${testCase.expectedTopFile}, got ${actualFiles[0] ?? "none"}`);
+      }
+
+      results.push({
+        actualFiles,
+        expectedFiles,
+        expectedTopFile: testCase.expectedTopFile,
+        mode,
+        name: testCase.name,
+        passed: reasons.length === 0,
+        query: testCase.query,
+        reasons,
+        topFile: actualFiles[0],
+      });
+    }
+
+    const passed = results.filter((result) => result.passed).length;
+    const total = results.length;
+    return {
+      cases: results,
+      projectRootPath,
+      summary: {
+        failed: total - passed,
+        passRate: total === 0 ? 1 : passed / total,
+        passed,
+        total,
+      },
+    };
   }
 }
