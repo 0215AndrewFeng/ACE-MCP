@@ -1,0 +1,21 @@
+package.json
+  s_bbe410e7a85a88::t_678e5979cbbc75 3
+package-lock.json
+  ai_agent 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "6ea641157c4372bcee8644df1e283626682a6978",
+  "prompts": {},
+  "sessions": {
+    "s_bbe410e7a85a88": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "7f000074-9e08-4ac4-b471-81fb11ebcf8c",
+        "model": "unknown"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
