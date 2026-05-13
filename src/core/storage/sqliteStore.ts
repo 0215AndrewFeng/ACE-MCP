@@ -5,6 +5,7 @@ import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { buildSemanticFtsQuery, buildSemanticText } from "../search/semanticText.js";
 import type {
   ChunkRecord,
+  DefinitionMatch,
   IndexEventSummary,
   IndexFailure,
   IndexTimingStats,
@@ -483,6 +484,44 @@ export class SQLiteStore {
     }));
   }
 
+  public getFilePreviewResults(projectId: string, relativePaths: string[]): SearchResult[] {
+    if (relativePaths.length === 0) {
+      return [];
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS start_line,
+           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS end_line,
+           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), '') AS content
+         FROM file f
+         WHERE f.project_id = ?
+           AND f.relative_path IN (${relativePaths.map(() => "?").join(", ")})
+         ORDER BY LENGTH(f.relative_path) ASC, f.relative_path ASC`,
+      )
+      .all(projectId, ...relativePaths) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      relative_path: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row, index) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      reason: "path",
+      score: 0.3 - index * 0.01,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+    }));
+  }
+
   public recordIndexEvent(projectId: string, payload: IndexEventPayload): void {
     const eventId = buildStableId([
       projectId,
@@ -629,6 +668,94 @@ export class SQLiteStore {
       language: row.language,
       reason: "path",
       score: 0.65 - index * 0.05,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+    }));
+  }
+
+  public findDefinitions(projectId: string, query: string, limit: number, filters?: SearchFilters): DefinitionMatch[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.length === 0) {
+      return [];
+    }
+
+    const filterClause = buildSearchFilterClause(filters);
+    const fullNameSuffix = `%.${normalizedQuery}`;
+    const partialPattern = `%${normalizedQuery}%`;
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           s.name,
+           s.full_name,
+           s.kind,
+           s.line,
+           s.signature,
+           COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS start_line,
+           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
+           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content,
+           CASE
+             WHEN LOWER(s.full_name) = ? THEN 1.0
+             WHEN LOWER(s.name) = ? THEN 0.95
+             WHEN LOWER(s.full_name) LIKE ? THEN 0.88
+             WHEN LOWER(s.full_name) LIKE ? THEN 0.8
+             WHEN LOWER(s.name) LIKE ? THEN 0.72
+             ELSE 0.55
+           END AS score
+         FROM symbol s
+         JOIN file f ON f.file_id = s.file_id
+         WHERE f.project_id = ?
+           AND (
+             LOWER(s.full_name) = ?
+             OR LOWER(s.name) = ?
+             OR LOWER(s.full_name) LIKE ?
+             OR LOWER(s.full_name) LIKE ?
+             OR LOWER(s.name) LIKE ?
+           )
+           ${filterClause.sql}
+         ORDER BY score DESC, LENGTH(s.full_name) ASC, s.line ASC
+         LIMIT ?`,
+      )
+      .all(
+        normalizedQuery,
+        normalizedQuery,
+        fullNameSuffix,
+        partialPattern,
+        partialPattern,
+        projectId,
+        normalizedQuery,
+        normalizedQuery,
+        fullNameSuffix,
+        partialPattern,
+        partialPattern,
+        ...filterClause.parameters,
+        limit,
+      ) as Array<{
+      content: string;
+      end_line: number;
+      full_name: string;
+      kind: DefinitionMatch["kind"];
+      language: Language;
+      line: number;
+      name: string;
+      relative_path: string;
+      score: number;
+      signature: string;
+      start_line: number;
+    }>;
+
+    return rows.map((row) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      fullName: row.full_name,
+      kind: row.kind,
+      language: row.language,
+      line: row.line,
+      name: row.name,
+      score: row.score,
+      signature: row.signature,
       snippet: row.content,
       snippetIncluded: true,
       startLine: row.start_line,

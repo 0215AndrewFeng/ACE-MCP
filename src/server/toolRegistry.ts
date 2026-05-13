@@ -5,6 +5,9 @@ import type { Settings } from "../core/common/types.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
+import { registerEvaluateSearchQualityTool } from "./tools/evaluateSearchQuality.js";
+import { registerFindDefinitionTool } from "./tools/findDefinition.js";
+import { registerFindReferencesTool } from "./tools/findReferences.js";
 import { registerGetFileSnippetTool } from "./tools/getFileSnippet.js";
 import { registerIndexProjectTool } from "./tools/indexProject.js";
 import { registerProjectStatsTool } from "./tools/projectStats.js";
@@ -21,6 +24,9 @@ export interface ToolDependencies {
 export function registerTools(server: McpServer, dependencies: ToolDependencies): void {
   registerIndexProjectTool(server, dependencies);
   registerSearchContextTool(server, dependencies);
+  registerFindDefinitionTool(server, dependencies);
+  registerFindReferencesTool(server, dependencies);
+  registerEvaluateSearchQualityTool(server, dependencies);
   registerGetFileSnippetTool(server, dependencies);
   registerProjectStatsTool(server, dependencies);
 }
