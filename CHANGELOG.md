@@ -2,6 +2,25 @@
 
 本项目的重要版本变更记录如下。
 
+## [3.6.0] - 2026-05-14
+
+### 新增
+
+- **语言级符号解析**：索引阶段新增 `imports` / `usages` / `canonicalName` / `modulePath` 持久化，并在增量索引后解析 symbol graph，definition/reference 查找优先走已解析符号关系。
+- **调用关系工具**：新增 `find_callers` 与 `find_callees` MCP 工具及对应 Web API，支持返回 caller/callee 命中、owner symbol、resolved symbol 和统一 envelope 结构。
+- **质量指标化**：`evaluate_search_quality` 摘要新增 `top1Recall`、`top5Recall`、`meanReciprocalRank`，可直接用于回归对比。
+
+### 改进
+
+- JavaScript/TypeScript AST 分析扩展到 import/usage 解析，并为 Java / Python / .NET 适配器补齐轻量调用与类型推断。
+- `find_references` 现在优先返回已解析 symbol usage，只有图中无命中时才回退到 lexical 搜索，结果更稳定。
+- Web 调试面板工具目录与 HTTP 端点扩展到 callers/callees，MCP 与 Web 调试入口继续保持一致。
+
+### 测试
+
+- 新增 Python 语言级 reference/call graph 回归测试。
+- 新增 callers/callees Web API 集成测试，并补充质量指标断言。
+
 ## [3.5.0] - 2026-05-12
 
 ### 新增

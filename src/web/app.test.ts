@@ -180,7 +180,7 @@ test("watch API endpoints return correct state", async () => {
   }
 });
 
-test("web definition reference and evaluation APIs return structured payloads", async () => {
+test("web definition reference call graph and evaluation APIs return structured payloads", async () => {
   const environment = await createTestProjectEnvironment({
     "package.json": JSON.stringify({ name: "fixture" }),
     "src/refund/RefundService.ts": `
@@ -252,6 +252,47 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
       };
       assert.equal(referencePayload.data.results.some((result) => result.filePath === "src/refund/refundController.ts"), true);
 
+      const callersResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-callers`, {
+        body: JSON.stringify({
+          projectRootPath: environment.projectRootPath,
+          query: "RefundService.processRefund",
+          resultMode: "metadata",
+          topK: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(callersResponse.status, 200);
+      const callersPayload = (await callersResponse.json()) as {
+        data: {
+          direction: string;
+          results: Array<{ filePath: string; ownerSymbol?: string }>;
+        };
+      };
+      assert.equal(callersPayload.data.direction, "callers");
+      assert.equal(callersPayload.data.results.some((result) => result.filePath === "src/refund/refundController.ts"), true);
+      assert.equal(callersPayload.data.results.some((result) => result.ownerSymbol === "handleRefund"), true);
+
+      const calleesResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-callees`, {
+        body: JSON.stringify({
+          projectRootPath: environment.projectRootPath,
+          query: "handleRefund",
+          resultMode: "metadata",
+          topK: 5,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(calleesResponse.status, 200);
+      const calleesPayload = (await calleesResponse.json()) as {
+        data: {
+          direction: string;
+          results: Array<{ resolvedSymbol?: string }>;
+        };
+      };
+      assert.equal(calleesPayload.data.direction, "callees");
+      assert.equal(calleesPayload.data.results.some((result) => result.resolvedSymbol === "RefundService.processRefund"), true);
+
       const evaluationResponse = await fetch(`http://127.0.0.1:${handle.port}/api/evaluate-search-quality`, {
         body: JSON.stringify({
           cases: [
@@ -273,12 +314,18 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
         data: {
           summary: {
             failed: number;
+            meanReciprocalRank: number;
             passed: number;
+            top1Recall: number;
+            top5Recall: number;
           };
         };
       };
       assert.equal(evaluationPayload.data.summary.failed, 0);
       assert.equal(evaluationPayload.data.summary.passed, 1);
+      assert.equal(evaluationPayload.data.summary.top1Recall, 1);
+      assert.equal(evaluationPayload.data.summary.top5Recall, 1);
+      assert.equal(evaluationPayload.data.summary.meanReciprocalRank, 1);
     } finally {
       await handle.close();
     }

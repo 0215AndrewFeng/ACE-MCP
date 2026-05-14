@@ -3,6 +3,8 @@ import { performance } from "node:perf_hooks";
 
 import type { Logger } from "../common/logger.js";
 import {
+  type CallGraphMatch,
+  type CallGraphSearchResponse,
   DEFAULT_INCLUDE_CONTEXT_LINES,
   type DefinitionMatch,
   type DefinitionSearchResponse,
@@ -570,6 +572,49 @@ async function expandDefinitionSnippets(
 }
 
 function applyDefinitionResultMode(results: DefinitionMatch[], resultMode: SearchResultMode): DefinitionMatch[] {
+  if (resultMode === "full") {
+    return results.map((result) => ({
+      ...result,
+      snippetIncluded: true,
+    }));
+  }
+
+  return results.map((result) => ({
+    ...result,
+    snippet: "",
+    snippetIncluded: false,
+  }));
+}
+
+async function expandCallGraphSnippets(
+  projectRootPath: string,
+  results: CallGraphMatch[],
+  includeContextLines: number,
+): Promise<CallGraphMatch[]> {
+  if (includeContextLines === DEFAULT_INCLUDE_CONTEXT_LINES) {
+    return results;
+  }
+
+  return Promise.all(
+    results.map(async (result) => {
+      const snippet = await readFileSnippet(
+        projectRootPath,
+        result.filePath,
+        result.startLine - includeContextLines,
+        result.endLine + includeContextLines,
+      );
+
+      return {
+        ...result,
+        endLine: snippet.endLine,
+        snippet: snippet.snippet,
+        startLine: snippet.startLine,
+      };
+    }),
+  );
+}
+
+function applyCallGraphResultMode(results: CallGraphMatch[], resultMode: SearchResultMode): CallGraphMatch[] {
   if (resultMode === "full") {
     return results.map((result) => ({
       ...result,
@@ -1152,6 +1197,10 @@ export class SearchService {
     resultMode: SearchResultMode = "full",
   ): Promise<ReferenceSearchResponse> {
     const startedAt = performance.now();
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
     const definitionResponse = await this.findDefinitions(projectRootPath, query, topK, includeContextLines, filters, resultMode);
     const primaryDefinition = definitionResponse.results[0] ?? null;
     const notes = [...definitionResponse.notes];
@@ -1177,30 +1226,43 @@ export class SearchService {
       notes.push("Multiple definition candidates matched; references are ranked against the top definition.");
     }
 
-    const referenceQueries = [...new Set([primaryDefinition.name, primaryDefinition.fullName].filter(Boolean))];
-    const referenceResults = mergeResults(
-      await Promise.all(
-        referenceQueries.map(async (referenceQuery) => {
-          const response = await this.searchPlainQuery(
-            projectRootPath,
-            referenceQuery,
-            "lexical",
-            Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
-            0,
-            filters,
-            "metadata",
-          );
-          return response.results;
-        }),
-      ),
-    ).filter(
-      (result) =>
-        result.filePath !== primaryDefinition.filePath ||
-        result.startLine > primaryDefinition.line ||
-        result.endLine < primaryDefinition.line,
+    let referenceResults = this.store.findResolvedReferences(
+      project.project_id,
+      [primaryDefinition.symbolId],
+      Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
+      normalizeSearchFilters(filters),
     );
+    if (referenceResults.length === 0) {
+      const referenceQueries = [...new Set(
+        [primaryDefinition.name, primaryDefinition.fullName, primaryDefinition.canonicalName].filter(
+          (value): value is string => Boolean(value),
+        ),
+      )];
+      referenceResults = mergeResults(
+        await Promise.all(
+          referenceQueries.map(async (referenceQuery) => {
+            const response = await this.searchPlainQuery(
+              projectRootPath,
+              referenceQuery,
+              "lexical",
+              Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
+              0,
+              filters,
+              "metadata",
+            );
+            return response.results;
+          }),
+        ),
+      ).filter(
+        (result) =>
+          result.filePath !== primaryDefinition.filePath ||
+          result.startLine > primaryDefinition.line ||
+          result.endLine < primaryDefinition.line,
+      );
+      notes.push("Reference lookup fell back to lexical matching because no resolved graph matches were available.");
+    }
 
-    const analysis = analyzeQuery(referenceQueries.join(" "));
+    const analysis = analyzeQuery([primaryDefinition.name, primaryDefinition.fullName, primaryDefinition.canonicalName].filter(Boolean).join(" "));
     const rerankedResults = rerankResults(referenceResults, analysis, topK);
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const hydratedResults =
@@ -1222,6 +1284,99 @@ export class SearchService {
         searchMs: Math.round(performance.now() - startedAt),
       },
     };
+  }
+
+  private async findCallGraphDirection(
+    projectRootPath: string,
+    query: string,
+    direction: "callers" | "callees",
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<CallGraphSearchResponse> {
+    const startedAt = performance.now();
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
+    }
+
+    const definitionResponse = await this.findDefinitions(projectRootPath, query, topK, includeContextLines, filters, resultMode);
+    const primaryDefinition = definitionResponse.results[0] ?? null;
+    const notes = [...definitionResponse.notes];
+    if (!primaryDefinition) {
+      return {
+        definition: null,
+        definitions: definitionResponse.results,
+        direction,
+        notes,
+        projectRootPath,
+        query,
+        resultMode,
+        results: [],
+        stats: {
+          definitionCount: 0,
+          resultCount: 0,
+          searchMs: Math.round(performance.now() - startedAt),
+        },
+      };
+    }
+
+    const normalizedFilters = normalizeSearchFilters(filters);
+    const graphResults = this.store.findCallGraph(
+      project.project_id,
+      [primaryDefinition.symbolId],
+      direction,
+      Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
+      normalizedFilters,
+    );
+    const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
+    const hydratedResults =
+      resultMode === "full"
+        ? await expandCallGraphSnippets(projectRootPath, graphResults.slice(0, topK), normalizedIncludeContextLines)
+        : graphResults.slice(0, topK);
+
+    if (graphResults.length === 0) {
+      notes.push(`No ${direction} were resolved from the indexed call graph for this symbol.`);
+    }
+
+    return {
+      definition: primaryDefinition,
+      definitions: definitionResponse.results,
+      direction,
+      notes,
+      projectRootPath,
+      query,
+      resultMode,
+      results: applyCallGraphResultMode(hydratedResults, resultMode),
+      stats: {
+        definitionCount: definitionResponse.results.length,
+        resultCount: Math.min(graphResults.length, topK),
+        searchMs: Math.round(performance.now() - startedAt),
+      },
+    };
+  }
+
+  public async findCallers(
+    projectRootPath: string,
+    query: string,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<CallGraphSearchResponse> {
+    return this.findCallGraphDirection(projectRootPath, query, "callers", topK, includeContextLines, filters, resultMode);
+  }
+
+  public async findCallees(
+    projectRootPath: string,
+    query: string,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+  ): Promise<CallGraphSearchResponse> {
+    return this.findCallGraphDirection(projectRootPath, query, "callees", topK, includeContextLines, filters, resultMode);
   }
 
   public async evaluateSearchQuality(
@@ -1264,10 +1419,18 @@ export class SearchService {
         reasons.push(`Top result mismatch: expected ${testCase.expectedTopFile}, got ${actualFiles[0] ?? "none"}`);
       }
 
+      const firstRelevantRank =
+        expectedFiles.length > 0
+          ? actualFiles.findIndex((filePath) => expectedFiles.includes(filePath)) + 1 || undefined
+          : testCase.expectedTopFile
+            ? (actualFiles[0] === testCase.expectedTopFile ? 1 : undefined)
+            : undefined;
+
       results.push({
         actualFiles,
         expectedFiles,
         expectedTopFile: testCase.expectedTopFile,
+        firstRelevantRank,
         mode,
         name: testCase.name,
         passed: reasons.length === 0,
@@ -1279,13 +1442,19 @@ export class SearchService {
 
     const passed = results.filter((result) => result.passed).length;
     const total = results.length;
+    const top1Recall = total === 0 ? 1 : results.filter((result) => (result.firstRelevantRank ?? Number.POSITIVE_INFINITY) <= 1).length / total;
+    const top5Recall = total === 0 ? 1 : results.filter((result) => (result.firstRelevantRank ?? Number.POSITIVE_INFINITY) <= 5).length / total;
+    const meanReciprocalRank = total === 0 ? 1 : results.reduce((sum, result) => sum + (result.firstRelevantRank ? 1 / result.firstRelevantRank : 0), 0) / total;
     return {
       cases: results,
       projectRootPath,
       summary: {
         failed: total - passed,
+        meanReciprocalRank,
         passRate: total === 0 ? 1 : passed / total,
         passed,
+        top1Recall,
+        top5Recall,
         total,
       },
     };
