@@ -563,6 +563,74 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
   }
 });
 
+test("findReferences and call graph resolve Python imports and method calls", async () => {
+  const environment = await createTestProjectEnvironment({
+    "pyproject.toml": "[project]\nname = 'fixture'\n",
+    "refund_service.py": `
+class RefundService:
+    def process_refund(self, order_id: str) -> str:
+        return order_id.strip()
+`,
+    "refund_controller.py": `
+from refund_service import RefundService
+
+service = RefundService()
+
+def handle_refund(order_id: str) -> str:
+    return service.process_refund(order_id)
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const definitionResponse = await environment.searchService.findDefinitions(
+      environment.projectRootPath,
+      "RefundService.process_refund",
+      5,
+      0,
+      { languages: ["python"] },
+      "metadata",
+    );
+    assert.equal(definitionResponse.results[0]?.filePath, "refund_service.py");
+
+    const referenceResponse = await environment.searchService.findReferences(
+      environment.projectRootPath,
+      "RefundService.process_refund",
+      5,
+      0,
+      { languages: ["python"] },
+      "metadata",
+    );
+    assert.equal(referenceResponse.results.some((result) => result.filePath === "refund_controller.py"), true);
+
+    const callerResponse = await environment.searchService.findCallers(
+      environment.projectRootPath,
+      "RefundService.process_refund",
+      5,
+      0,
+      { languages: ["python"] },
+      "metadata",
+    );
+    assert.equal(callerResponse.direction, "callers");
+    assert.equal(callerResponse.results.some((result) => result.filePath === "refund_controller.py"), true);
+    assert.equal(callerResponse.results.some((result) => result.ownerSymbol === "handle_refund"), true);
+
+    const calleeResponse = await environment.searchService.findCallees(
+      environment.projectRootPath,
+      "handle_refund",
+      5,
+      0,
+      { languages: ["python"] },
+      "metadata",
+    );
+    assert.equal(calleeResponse.direction, "callees");
+    assert.equal(calleeResponse.results.some((result) => result.resolvedSymbol === "RefundService.process_refund"), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("evaluateSearchQuality summarizes expected file assertions", async () => {
   const environment = await createTestProjectEnvironment({
     "package.json": JSON.stringify({ name: "fixture" }),
@@ -592,6 +660,9 @@ test("evaluateSearchQuality summarizes expected file assertions", async () => {
 
     assert.equal(evaluation.summary.failed, 0);
     assert.equal(evaluation.summary.passed, 2);
+    assert.equal(evaluation.summary.top1Recall, 1);
+    assert.equal(evaluation.summary.top5Recall, 1);
+    assert.equal(evaluation.summary.meanReciprocalRank, 1);
     assert.equal(evaluation.cases.every((testCase) => testCase.passed), true);
   } finally {
     await environment.cleanup();

@@ -16,7 +16,7 @@ import type {
 } from "../common/types.js";
 import { buildChunks } from "./chunker.js";
 import { buildStableId, computeSha256, hasFileChanged } from "./fileFingerprint.js";
-import { extractSymbols } from "./symbolExtractor.js";
+import { analyzeSource } from "./symbolExtractor.js";
 import { AppError } from "../common/errors.js";
 import { collectSourceFiles } from "../project/fileCollector.js";
 import { IgnoreManager } from "../project/ignoreManager.js";
@@ -186,8 +186,8 @@ export class IndexCoordinator {
         const buffer = await readFile(file.absolutePath);
         const { content, encoding } = decodeSourceBuffer(buffer);
         const fileId = buildStableId([projectId, file.relativePath]);
-        const symbols = extractSymbols(fileId, file.language, content);
-        const chunks = buildChunks(fileId, file.relativePath, content, symbols, this.settings.maxLinesPerChunk);
+        const analysis = analyzeSource(fileId, file.relativePath, file.language, content);
+        const chunks = buildChunks(fileId, file.relativePath, content, analysis.symbols, this.settings.maxLinesPerChunk);
         const indexedFile: IndexedFileRecord = {
           encoding,
           fileId,
@@ -199,7 +199,7 @@ export class IndexCoordinator {
           size: file.size,
         };
 
-        this.store.writeFileIndex(projectId, indexedFile, chunks, symbols, timestamp);
+        this.store.writeFileIndex(projectId, indexedFile, chunks, analysis.symbols, analysis.imports, analysis.usages, timestamp);
         let vectorChunkCount = 0;
         if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager" && chunks.length > 0) {
           const provider = this.embeddingProvider;
@@ -256,6 +256,9 @@ export class IndexCoordinator {
     }
 
     const totalMs = Math.round(performance.now() - startedAtMs);
+    if (changedFiles > 0 || deletedFiles.length > 0) {
+      this.store.resolveSymbolGraph(projectId);
+    }
     const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
     this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion);
     this.store.recordIndexEvent(projectId, {

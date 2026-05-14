@@ -1,11 +1,15 @@
+import path from "node:path";
+
 import Database from "better-sqlite3";
 
 import { buildStableId } from "../indexing/fileFingerprint.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { buildSemanticFtsQuery, buildSemanticText } from "../search/semanticText.js";
 import type {
+  CallGraphMatch,
   ChunkRecord,
   DefinitionMatch,
+  ImportInfo,
   IndexEventSummary,
   IndexFailure,
   IndexTimingStats,
@@ -18,6 +22,8 @@ import type {
   ProjectStatus,
   SearchFilters,
   SearchResult,
+  SymbolUsageInfo,
+  SymbolUsageKind,
   SupportedLanguage,
   SymbolInfo,
   VectorEntry,
@@ -92,6 +98,20 @@ interface IndexEventRow {
   scanned_files: number;
 }
 
+interface SymbolRow {
+  canonical_name: string | null;
+  container_name: string | null;
+  file_id: string;
+  full_name: string;
+  kind: SymbolInfo["kind"];
+  line: number;
+  module_path: string | null;
+  name: string;
+  relative_path: string;
+  signature: string;
+  symbol_id: string;
+}
+
 function normalizeComparablePath(value: string): string {
   return value.toLowerCase().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
 }
@@ -161,6 +181,36 @@ function buildSearchFilterClause(filters: SearchFilters | undefined): {
   };
 }
 
+function normalizeModulePath(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value
+    .replace(/\\/g, "/")
+    .replace(/\.[^.]+$/, "")
+    .replace(/\/index$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function resolveImportSourceModule(filePath: string, sourceModule: string, language: Language): string | null {
+  if (!sourceModule) {
+    return null;
+  }
+
+  if (language === "javascript" && sourceModule.startsWith(".")) {
+    const directory = path.posix.dirname(filePath.replace(/\\/g, "/"));
+    return normalizeModulePath(path.posix.normalize(path.posix.join(directory, sourceModule)));
+  }
+
+  if (language === "python") {
+    return sourceModule.toLowerCase();
+  }
+
+  return normalizeModulePath(sourceModule);
+}
+
 const VECTOR_CACHE_MAX_PROJECTS = 10;
 
 export class SQLiteStore {
@@ -218,7 +268,9 @@ export class SQLiteStore {
 
     const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
     const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
+    const deleteImports = this.db.prepare("DELETE FROM import_alias WHERE file_id = ?");
     const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
+    const deleteUsages = this.db.prepare("DELETE FROM symbol_usage WHERE file_id = ?");
     const deleteFile = this.db.prepare("DELETE FROM file WHERE file_id = ?");
     const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id = ?");
     const deleteChunks = this.db.prepare("DELETE FROM chunk WHERE file_id = ?");
@@ -231,7 +283,9 @@ export class SQLiteStore {
           deleteChunkSemanticFts.run(chunkId.chunk_id);
         }
 
+        deleteImports.run(fileId);
         deleteSymbols.run(fileId);
+        deleteUsages.run(fileId);
         deleteChunks.run(fileId);
         deleteFile.run(fileId);
       }
@@ -398,6 +452,30 @@ export class SQLiteStore {
         FOREIGN KEY(file_id) REFERENCES file(file_id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS import_alias (
+        import_id TEXT PRIMARY KEY,
+        file_id TEXT NOT NULL,
+        alias TEXT NOT NULL,
+        imported_name TEXT NOT NULL,
+        source_module TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        resolved_symbol_id TEXT,
+        FOREIGN KEY(file_id) REFERENCES file(file_id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS symbol_usage (
+        usage_id TEXT PRIMARY KEY,
+        file_id TEXT NOT NULL,
+        owner_symbol_id TEXT,
+        owner_symbol_name TEXT,
+        raw_name TEXT NOT NULL,
+        candidate_names TEXT NOT NULL,
+        usage_kind TEXT NOT NULL,
+        line INTEGER NOT NULL,
+        resolved_symbol_id TEXT,
+        FOREIGN KEY(file_id) REFERENCES file(file_id) ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS index_event (
         event_id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
@@ -425,6 +503,12 @@ export class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_index_event_failure_event_id ON index_event_failure(event_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbol(name);
       CREATE INDEX IF NOT EXISTS idx_symbol_full_name ON symbol(full_name);
+      CREATE INDEX IF NOT EXISTS idx_import_alias_file_id ON import_alias(file_id);
+      CREATE INDEX IF NOT EXISTS idx_import_alias_resolved_symbol_id ON import_alias(resolved_symbol_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_file_id ON symbol_usage(file_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_owner_symbol_id ON symbol_usage(owner_symbol_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_resolved_symbol_id ON symbol_usage(resolved_symbol_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_kind ON symbol_usage(usage_kind);
 
       CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
         chunk_id UNINDEXED,
@@ -449,6 +533,9 @@ export class SQLiteStore {
       );
     `);
     this.ensureColumn("index_event", "metadata_json", "TEXT NOT NULL DEFAULT '{}'");
+    this.ensureColumn("symbol", "canonical_name", "TEXT");
+    this.ensureColumn("symbol", "container_name", "TEXT");
+    this.ensureColumn("symbol", "module_path", "TEXT");
     this.db.prepare("DELETE FROM chunk_vector WHERE chunk_id IS NULL").run();
 
     this.logger.info("sqlite store initialized");
@@ -628,7 +715,252 @@ export class SQLiteStore {
         hydratedChunkCount: 0,
         mode: "lazy",
       },
+      };
+  }
+
+  private listProjectSymbols(projectId: string): SymbolRow[] {
+    return this.db
+      .prepare(
+        `SELECT
+           s.symbol_id,
+           s.file_id,
+           s.name,
+           s.full_name,
+           s.canonical_name,
+           s.container_name,
+           s.module_path,
+           s.kind,
+           s.line,
+           s.signature,
+           f.relative_path
+         FROM symbol s
+         JOIN file f ON f.file_id = s.file_id
+         WHERE f.project_id = ?`,
+      )
+      .all(projectId) as SymbolRow[];
+  }
+
+  public resolveSymbolGraph(projectId: string): void {
+    const symbols = this.listProjectSymbols(projectId);
+    const byCanonical = new Map<string, SymbolRow[]>();
+    const byFullName = new Map<string, SymbolRow[]>();
+    const byName = new Map<string, SymbolRow[]>();
+    const byModuleAndName = new Map<string, SymbolRow[]>();
+    const byFile = new Map<string, SymbolRow[]>();
+
+    const pushMap = (map: Map<string, SymbolRow[]>, key: string | null | undefined, row: SymbolRow) => {
+      if (!key) {
+        return;
+      }
+      const normalizedKey = key.toLowerCase();
+      const current = map.get(normalizedKey) ?? [];
+      current.push(row);
+      map.set(normalizedKey, current);
     };
+
+    for (const symbol of symbols) {
+      pushMap(byCanonical, symbol.canonical_name, symbol);
+      pushMap(byFullName, symbol.full_name, symbol);
+      pushMap(byName, symbol.name, symbol);
+      pushMap(byName, symbol.full_name.split(".").pop(), symbol);
+      if (symbol.module_path) {
+        pushMap(byModuleAndName, `${symbol.module_path}::${symbol.name}`, symbol);
+        pushMap(byModuleAndName, `${symbol.module_path}::${symbol.full_name}`, symbol);
+      }
+      const fileSymbols = byFile.get(symbol.file_id) ?? [];
+      fileSymbols.push(symbol);
+      byFile.set(symbol.file_id, fileSymbols);
+    }
+
+    const importRows = this.db
+      .prepare(
+        `SELECT
+           ia.import_id,
+           ia.file_id,
+           ia.alias,
+           ia.imported_name,
+           ia.source_module,
+           f.language,
+           f.relative_path
+         FROM import_alias ia
+         JOIN file f ON f.file_id = ia.file_id
+         WHERE f.project_id = ?`,
+      )
+      .all(projectId) as Array<{
+      alias: string;
+      file_id: string;
+      import_id: string;
+      imported_name: string;
+      language: Language;
+      relative_path: string;
+      source_module: string;
+    }>;
+
+    const aliasMapByFile = new Map<string, Map<string, SymbolRow[]>>();
+    const updateImportResolution = this.db.prepare("UPDATE import_alias SET resolved_symbol_id = ? WHERE import_id = ?");
+    const updateUsageResolution = this.db.prepare("UPDATE symbol_usage SET owner_symbol_id = ?, resolved_symbol_id = ? WHERE usage_id = ?");
+
+    const resolveRows = (
+      candidateNames: string[],
+      fileId: string,
+      filePath: string,
+      language: Language,
+      ownerSymbolName?: string,
+    ): SymbolRow[] => {
+      const scored = new Map<string, { row: SymbolRow; score: number }>();
+      const aliasMap = aliasMapByFile.get(fileId);
+      const ownerSymbol = ownerSymbolName
+        ? (byFile.get(fileId) ?? []).find((symbol) => symbol.full_name === ownerSymbolName || symbol.canonical_name === ownerSymbolName)
+        : undefined;
+
+      const addCandidate = (row: SymbolRow | undefined, score: number) => {
+        if (!row) {
+          return;
+        }
+        const existing = scored.get(row.symbol_id);
+        if (!existing || score > existing.score) {
+          scored.set(row.symbol_id, { row, score });
+        }
+      };
+
+      for (const candidate of candidateNames) {
+        const normalizedCandidate = candidate.trim().toLowerCase();
+        if (!normalizedCandidate) {
+          continue;
+        }
+
+        for (const row of byCanonical.get(normalizedCandidate) ?? []) {
+          addCandidate(row, 1);
+        }
+        for (const row of byFullName.get(normalizedCandidate) ?? []) {
+          addCandidate(row, 0.98);
+        }
+        for (const row of byName.get(normalizedCandidate) ?? []) {
+          addCandidate(row, 0.72);
+        }
+
+        const moduleCandidateMatch = normalizedCandidate.match(/^(.+)\.([^.]+)$/);
+        if (moduleCandidateMatch) {
+          const [, containerOrModule, name] = moduleCandidateMatch;
+          for (const row of byFullName.get(normalizedCandidate) ?? []) {
+            addCandidate(row, 0.96);
+          }
+          for (const row of symbols.filter((symbol) => symbol.full_name.toLowerCase().endsWith(`.${normalizedCandidate}`))) {
+            addCandidate(row, 0.82);
+          }
+          for (const row of byModuleAndName.get(`${containerOrModule}::${name}`) ?? []) {
+            addCandidate(row, 0.92);
+          }
+        }
+
+        const bareName = normalizedCandidate.split(".").pop() ?? normalizedCandidate;
+        if (ownerSymbol?.container_name) {
+          for (const row of symbols.filter(
+            (symbol) =>
+              symbol.container_name?.toLowerCase() === ownerSymbol.container_name?.toLowerCase() &&
+              symbol.name.toLowerCase() === bareName,
+          )) {
+            addCandidate(row, 0.9);
+          }
+        }
+
+        const aliasEntry = aliasMap?.get(normalizedCandidate);
+        if (aliasEntry) {
+          for (const row of aliasEntry) {
+            addCandidate(row, 0.99);
+          }
+        }
+
+        const leftPart = normalizedCandidate.split(".")[0];
+        const rightPart = normalizedCandidate.split(".").slice(1).join(".");
+        if (leftPart && rightPart && aliasMap?.has(leftPart)) {
+          for (const importedSymbol of aliasMap.get(leftPart) ?? []) {
+            for (const row of symbols.filter(
+              (symbol) =>
+                symbol.full_name.toLowerCase() === `${importedSymbol.name.toLowerCase()}.${rightPart}` ||
+                symbol.full_name.toLowerCase().endsWith(`.${importedSymbol.name.toLowerCase()}.${rightPart}`),
+            )) {
+              addCandidate(row, 0.97);
+            }
+          }
+        }
+      }
+
+      if (scored.size === 0) {
+        return [];
+      }
+
+      return [...scored.values()]
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            left.row.relative_path.localeCompare(right.row.relative_path) ||
+            left.row.line - right.row.line,
+        )
+        .map((entry) => entry.row);
+    };
+
+    const importTx = this.db.transaction(() => {
+      for (const row of importRows) {
+        const resolvedSourceModule = resolveImportSourceModule(row.relative_path, row.source_module, row.language);
+        let candidates: SymbolRow[] = [];
+        if (row.imported_name !== "*") {
+          candidates = [
+            ...(resolvedSourceModule ? byModuleAndName.get(`${resolvedSourceModule}::${row.imported_name.toLowerCase()}`) ?? [] : []),
+            ...(resolvedSourceModule ? byFullName.get(`${resolvedSourceModule}.${row.imported_name}`.toLowerCase()) ?? [] : []),
+            ...(byName.get(row.imported_name.toLowerCase()) ?? []),
+          ];
+        }
+
+        const deduped = [...new Map(candidates.map((candidate) => [candidate.symbol_id, candidate])).values()];
+        const best = deduped[0];
+        updateImportResolution.run(best?.symbol_id ?? null, row.import_id);
+        if (best) {
+          const aliases = aliasMapByFile.get(row.file_id) ?? new Map<string, SymbolRow[]>();
+          aliases.set(row.alias.toLowerCase(), deduped);
+          aliasMapByFile.set(row.file_id, aliases);
+        }
+      }
+    });
+
+    importTx();
+
+    const usageRows = this.db
+      .prepare(
+        `SELECT
+           su.usage_id,
+           su.file_id,
+           su.owner_symbol_name,
+           su.raw_name,
+           su.candidate_names,
+           f.language,
+           f.relative_path
+         FROM symbol_usage su
+         JOIN file f ON f.file_id = su.file_id
+         WHERE f.project_id = ?`,
+      )
+      .all(projectId) as Array<{
+      candidate_names: string;
+      file_id: string;
+      language: Language;
+      owner_symbol_name: string | null;
+      raw_name: string;
+      relative_path: string;
+      usage_id: string;
+    }>;
+
+    const usageTx = this.db.transaction(() => {
+      for (const row of usageRows) {
+        const ownerSymbol = row.owner_symbol_name
+          ? (byFile.get(row.file_id) ?? []).find((symbol) => symbol.full_name === row.owner_symbol_name)
+          : undefined;
+        const candidateNames = JSON.parse(row.candidate_names) as string[];
+        const resolved = resolveRows([row.raw_name, ...candidateNames], row.file_id, row.relative_path, row.language, row.owner_symbol_name ?? undefined);
+        updateUsageResolution.run(ownerSymbol?.symbol_id ?? null, resolved[0]?.symbol_id ?? null, row.usage_id);
+      }
+    });
+
+    usageTx();
   }
 
   public searchByPath(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): SearchResult[] {
@@ -688,74 +1020,203 @@ export class SQLiteStore {
         `SELECT
            f.relative_path,
            f.language,
-           s.name,
-           s.full_name,
-           s.kind,
-           s.line,
-           s.signature,
-           COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content,
-           CASE
-             WHEN LOWER(s.full_name) = ? THEN 1.0
-             WHEN LOWER(s.name) = ? THEN 0.95
-             WHEN LOWER(s.full_name) LIKE ? THEN 0.88
-             WHEN LOWER(s.full_name) LIKE ? THEN 0.8
-             WHEN LOWER(s.name) LIKE ? THEN 0.72
-             ELSE 0.55
-           END AS score
+           s.symbol_id,
+            s.name,
+            s.full_name,
+            s.canonical_name,
+           s.module_path,
+            s.kind,
+            s.line,
+            s.signature,
+            COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS start_line,
+            COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
+            COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content,
+            CASE
+             WHEN LOWER(s.canonical_name) = ? THEN 1.05
+              WHEN LOWER(s.full_name) = ? THEN 1.0
+              WHEN LOWER(s.name) = ? THEN 0.95
+              WHEN LOWER(s.canonical_name) LIKE ? THEN 0.9
+              WHEN LOWER(s.full_name) LIKE ? THEN 0.88
+              WHEN LOWER(s.full_name) LIKE ? THEN 0.8
+              WHEN LOWER(s.name) LIKE ? THEN 0.72
+              ELSE 0.55
+            END AS score
          FROM symbol s
          JOIN file f ON f.file_id = s.file_id
-         WHERE f.project_id = ?
-           AND (
-             LOWER(s.full_name) = ?
-             OR LOWER(s.name) = ?
-             OR LOWER(s.full_name) LIKE ?
-             OR LOWER(s.full_name) LIKE ?
-             OR LOWER(s.name) LIKE ?
-           )
-           ${filterClause.sql}
+          WHERE f.project_id = ?
+            AND (
+             LOWER(COALESCE(s.canonical_name, '')) = ?
+               OR
+               LOWER(s.full_name) = ?
+               OR LOWER(s.name) = ?
+              OR LOWER(COALESCE(s.canonical_name, '')) LIKE ?
+              OR LOWER(s.full_name) LIKE ?
+              OR LOWER(s.full_name) LIKE ?
+              OR LOWER(s.name) LIKE ?
+            )
+            ${filterClause.sql}
          ORDER BY score DESC, LENGTH(s.full_name) ASC, s.line ASC
          LIMIT ?`,
       )
       .all(
         normalizedQuery,
         normalizedQuery,
+        normalizedQuery,
+        partialPattern,
         fullNameSuffix,
         partialPattern,
         partialPattern,
         projectId,
         normalizedQuery,
         normalizedQuery,
+        normalizedQuery,
+        partialPattern,
         fullNameSuffix,
         partialPattern,
         partialPattern,
         ...filterClause.parameters,
         limit,
       ) as Array<{
+      canonical_name: string | null;
       content: string;
       end_line: number;
       full_name: string;
       kind: DefinitionMatch["kind"];
       language: Language;
       line: number;
+      module_path: string | null;
       name: string;
       relative_path: string;
       score: number;
       signature: string;
       start_line: number;
+      symbol_id: string;
     }>;
 
     return rows.map((row) => ({
+      canonicalName: row.canonical_name ?? undefined,
       endLine: row.end_line,
       filePath: row.relative_path,
       fullName: row.full_name,
       kind: row.kind,
       language: row.language,
       line: row.line,
+      modulePath: row.module_path ?? undefined,
       name: row.name,
       score: row.score,
       signature: row.signature,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+      symbolId: row.symbol_id,
+    }));
+  }
+
+  public findResolvedReferences(projectId: string, symbolIds: string[], limit: number, filters?: SearchFilters): SearchResult[] {
+    if (symbolIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = symbolIds.map(() => "?").join(", ");
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           su.raw_name,
+           su.line AS start_line,
+           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.line) AS end_line,
+           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.raw_name) AS content,
+           su.usage_kind,
+           su.owner_symbol_name
+         FROM symbol_usage su
+         JOIN file f ON f.file_id = su.file_id
+         WHERE f.project_id = ?
+           AND su.resolved_symbol_id IN (${placeholders})
+           ${filterClause.sql}
+         ORDER BY su.line ASC, f.relative_path ASC
+         LIMIT ?`,
+      )
+      .all(projectId, ...symbolIds, ...filterClause.parameters, limit) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      owner_symbol_name: string | null;
+      raw_name: string;
+      relative_path: string;
+      start_line: number;
+      usage_kind: SymbolUsageKind;
+    }>;
+
+    return rows.map((row, index) => ({
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      reason: "symbol",
+      score: (row.owner_symbol_name ? 0.98 : 0.9) - index * 0.01,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+      symbol: row.raw_name,
+    }));
+  }
+
+  public findCallGraph(projectId: string, symbolIds: string[], direction: "callers" | "callees", limit: number, filters?: SearchFilters): CallGraphMatch[] {
+    if (symbolIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = symbolIds.map(() => "?").join(", ");
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           su.line AS start_line,
+           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.line) AS end_line,
+           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.raw_name) AS content,
+           su.raw_name,
+           su.usage_kind,
+           owner.full_name AS owner_symbol,
+           resolved.full_name AS resolved_symbol
+         FROM symbol_usage su
+         JOIN file f ON f.file_id = su.file_id
+         LEFT JOIN symbol owner ON owner.symbol_id = su.owner_symbol_id
+         LEFT JOIN symbol resolved ON resolved.symbol_id = su.resolved_symbol_id
+         WHERE f.project_id = ?
+           AND ${
+             direction === "callers"
+               ? `su.resolved_symbol_id IN (${placeholders}) AND su.owner_symbol_id IS NOT NULL`
+               : `su.owner_symbol_id IN (${placeholders}) AND su.resolved_symbol_id IS NOT NULL`
+           }
+           ${filterClause.sql}
+         ORDER BY su.line ASC, f.relative_path ASC
+         LIMIT ?`,
+      )
+      .all(projectId, ...symbolIds, ...filterClause.parameters, limit) as Array<{
+      content: string;
+      end_line: number;
+      language: Language;
+      owner_symbol: string | null;
+      raw_name: string;
+      relative_path: string;
+      resolved_symbol: string | null;
+      start_line: number;
+      usage_kind: SymbolUsageKind;
+    }>;
+
+    return rows.map((row, index) => ({
+      callKind: row.usage_kind,
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      language: row.language,
+      line: row.start_line,
+      ownerSymbol: row.owner_symbol ?? undefined,
+      rawName: row.raw_name,
+      resolvedSymbol: row.resolved_symbol ?? undefined,
+      score: 0.95 - index * 0.01,
       snippet: row.content,
       snippetIncluded: true,
       startLine: row.start_line,
@@ -1123,11 +1584,15 @@ export class SQLiteStore {
     indexedFile: IndexedFileRecord,
     chunks: ChunkRecord[],
     symbols: SymbolInfo[],
+    imports: ImportInfo[],
+    usages: SymbolUsageInfo[],
     indexedAt: string,
   ): void {
     const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
     const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
+    const deleteImports = this.db.prepare("DELETE FROM import_alias WHERE file_id = ?");
     const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
+    const deleteUsages = this.db.prepare("DELETE FROM symbol_usage WHERE file_id = ?");
     const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id = ?");
     const deleteChunks = this.db.prepare("DELETE FROM chunk WHERE file_id = ?");
     const upsertFile = this.db.prepare(
@@ -1156,8 +1621,16 @@ export class SQLiteStore {
        VALUES (?, ?, ?, ?)`,
     );
     const insertSymbol = this.db.prepare(
-      `INSERT INTO symbol (symbol_id, file_id, name, full_name, kind, line, signature)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO symbol (symbol_id, file_id, name, full_name, canonical_name, container_name, module_path, kind, line, signature)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const insertImport = this.db.prepare(
+      `INSERT INTO import_alias (import_id, file_id, alias, imported_name, source_module, line, resolved_symbol_id)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+    );
+    const insertUsage = this.db.prepare(
+      `INSERT INTO symbol_usage (usage_id, file_id, owner_symbol_id, owner_symbol_name, raw_name, candidate_names, usage_kind, line, resolved_symbol_id)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NULL)`,
     );
 
     const tx = this.db.transaction(() => {
@@ -1167,7 +1640,9 @@ export class SQLiteStore {
         deleteChunkSemanticFts.run(chunkId.chunk_id);
       }
 
+      deleteImports.run(indexedFile.fileId);
       deleteSymbols.run(indexedFile.fileId);
+      deleteUsages.run(indexedFile.fileId);
       deleteChunks.run(indexedFile.fileId);
 
       upsertFile.run(
@@ -1213,9 +1688,43 @@ export class SQLiteStore {
           symbol.fileId,
           symbol.name,
           symbol.fullName,
+          symbol.canonicalName ?? null,
+          symbol.containerName ?? null,
+          symbol.modulePath ?? null,
           symbol.kind,
           symbol.line,
           symbol.signature,
+        );
+      }
+
+      for (const [index, imported] of imports.entries()) {
+        insertImport.run(
+          buildStableId([indexedFile.fileId, String(index), imported.alias, imported.importedName, imported.sourceModule, String(imported.line)]),
+          indexedFile.fileId,
+          imported.alias,
+          imported.importedName,
+          imported.sourceModule,
+          imported.line,
+        );
+      }
+
+      for (const [index, usage] of usages.entries()) {
+        insertUsage.run(
+          buildStableId([
+            indexedFile.fileId,
+            String(index),
+            usage.ownerSymbol ?? "",
+            usage.rawName,
+            usage.kind,
+            String(usage.line),
+            JSON.stringify(usage.candidateNames),
+          ]),
+          indexedFile.fileId,
+          usage.ownerSymbol ?? null,
+          usage.rawName,
+          JSON.stringify(usage.candidateNames),
+          usage.kind,
+          usage.line,
         );
       }
     });

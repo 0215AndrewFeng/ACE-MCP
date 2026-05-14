@@ -47,6 +47,7 @@ export interface AppRuntimeInfo {
 }
 
 export interface LanguageAdapter {
+  analyzeSource?: (fileId: string, relativePath: string, content: string) => SourceAnalysis;
   extractSymbols(fileId: string, content: string): SymbolInfo[];
   language: SupportedLanguage;
   projectMarkerPatterns: RegExp[];
@@ -89,13 +90,39 @@ export interface ChunkRecord {
 }
 
 export interface SymbolInfo {
+  canonicalName?: string;
+  containerName?: string;
   fileId: string;
   fullName: string;
   kind: "class" | "enum" | "function" | "interface" | "method" | "record";
   line: number;
+  modulePath?: string;
   name: string;
   signature: string;
   symbolId: string;
+}
+
+export type SymbolUsageKind = "call" | "import" | "instantiation" | "type" | "usage";
+
+export interface ImportInfo {
+  alias: string;
+  importedName: string;
+  line: number;
+  sourceModule: string;
+}
+
+export interface SymbolUsageInfo {
+  candidateNames: string[];
+  kind: SymbolUsageKind;
+  line: number;
+  ownerSymbol?: string;
+  rawName: string;
+}
+
+export interface SourceAnalysis {
+  imports: ImportInfo[];
+  symbols: SymbolInfo[];
+  usages: SymbolUsageInfo[];
 }
 
 export interface IndexProjectResult {
@@ -202,18 +229,21 @@ export interface SearchResponse {
 }
 
 export interface DefinitionMatch {
+  canonicalName?: string;
   endLine: number;
   filePath: string;
   fullName: string;
   kind: SymbolInfo["kind"];
   language: Language;
   line: number;
+  modulePath?: string;
   name: string;
   score: number;
   signature: string;
   snippet: string;
   snippetIncluded: boolean;
   startLine: number;
+  symbolId: string;
 }
 
 export interface DefinitionSearchResponse {
@@ -239,6 +269,37 @@ export interface ReferenceSearchResponse {
   stats: {
     definitionCount: number;
     referenceCount: number;
+    searchMs: number;
+  };
+}
+
+export interface CallGraphMatch {
+  callKind: SymbolUsageKind;
+  endLine: number;
+  filePath: string;
+  language: Language;
+  line: number;
+  ownerSymbol?: string;
+  rawName: string;
+  resolvedSymbol?: string;
+  score: number;
+  snippet: string;
+  snippetIncluded: boolean;
+  startLine: number;
+}
+
+export interface CallGraphSearchResponse {
+  definition: DefinitionMatch | null;
+  definitions: DefinitionMatch[];
+  direction: "callers" | "callees";
+  notes: string[];
+  projectRootPath: string;
+  query: string;
+  resultMode: SearchResultMode;
+  results: CallGraphMatch[];
+  stats: {
+    definitionCount: number;
+    resultCount: number;
     searchMs: number;
   };
 }
@@ -346,6 +407,18 @@ export interface FindReferencesInput {
   topK?: number;
 }
 
+export interface FindCallGraphInput {
+  excludePathPrefix?: string;
+  includeContextLines?: number;
+  languages?: SupportedLanguage[];
+  pathContains?: string;
+  pathPrefix?: string;
+  projectRootPath: string;
+  query: string;
+  resultMode?: SearchResultMode;
+  topK?: number;
+}
+
 export interface SearchQualityCaseInput {
   excludePathPrefix?: string;
   expectedFiles?: string[];
@@ -363,6 +436,7 @@ export interface SearchQualityCaseResult {
   actualFiles: string[];
   expectedFiles: string[];
   expectedTopFile?: string;
+  firstRelevantRank?: number;
   mode: SearchMode;
   name: string;
   passed: boolean;
@@ -376,8 +450,11 @@ export interface SearchQualityEvaluation {
   projectRootPath: string;
   summary: {
     failed: number;
+    meanReciprocalRank: number;
     passRate: number;
     passed: number;
+    top1Recall: number;
+    top5Recall: number;
     total: number;
   };
 }
