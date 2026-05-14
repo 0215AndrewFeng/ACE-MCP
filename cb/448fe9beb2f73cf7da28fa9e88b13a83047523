@@ -1,0 +1,43 @@
+src/server/toolRegistry.ts
+  s_1ab825fb559c6f::t_7acc63be66a4e4 9-10,31-32
+README.md
+  ai_agent 5,17,19-21,212,224-253,256,354,372-373,380,382,384,388
+CHANGELOG.md
+  s_1ab825fb559c6f::t_ffcc047fb42b50 5-22
+src/version.ts
+  ai_agent 2
+src/adapters/javascript/index.ts
+  s_1ab825fb559c6f::t_cdfb73f13e982f 331-332
+src/web/app.ts
+  s_1ab825fb559c6f::t_0c357efddc4b3a 64-65,457-582
+src/web/app.test.ts
+  s_1ab825fb559c6f::t_1f5f213efdd50f 183,255-295,317,319-320,326-328
+package.json
+  s_1ab825fb559c6f::t_a6659a794f140d 3
+src/server/tools/findCallees.ts
+  s_1ab825fb559c6f::t_43266238714954 1-97
+src/core/storage/sqliteStore.ts
+  s_1ab825fb559c6f::t_a1e6f0ef11788c 1700-1715
+src/server/tools/findCallers.ts
+  s_1ab825fb559c6f::t_bfe3d0e91289ec 1-97
+src/test/search-workflow.test.ts
+  s_1ab825fb559c6f::t_d1a953fd3cfdc2 566-633,663-665
+package-lock.json
+  ai_agent 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "cb448fe9beb2f73cf7da28fa9e88b13a83047523",
+  "prompts": {},
+  "sessions": {
+    "s_1ab825fb559c6f": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "7f000074-9e08-4ac4-b471-81fb11ebcf8c",
+        "model": "gpt-5.4"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
