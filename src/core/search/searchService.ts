@@ -5,9 +5,11 @@ import type { Logger } from "../common/logger.js";
 import {
   type CallGraphMatch,
   type CallGraphSearchResponse,
+  DEFAULT_CALL_GRAPH_DEPTH,
   DEFAULT_INCLUDE_CONTEXT_LINES,
   type DefinitionMatch,
   type DefinitionSearchResponse,
+  MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
   type IndexedFileRecord,
   type QueryAnalysis,
@@ -374,6 +376,14 @@ function normalizeIncludeContextLines(includeContextLines: number | undefined): 
     MAX_INCLUDE_CONTEXT_LINES,
     Math.max(DEFAULT_INCLUDE_CONTEXT_LINES, Math.trunc(includeContextLines)),
   );
+}
+
+function normalizeCallGraphDepth(depth: number | undefined): number {
+  if (depth === undefined || Number.isNaN(depth)) {
+    return DEFAULT_CALL_GRAPH_DEPTH;
+  }
+
+  return Math.min(MAX_CALL_GRAPH_DEPTH, Math.max(DEFAULT_CALL_GRAPH_DEPTH, Math.trunc(depth)));
 }
 
 function normalizePathPrefix(pathPrefix: string | undefined): string | undefined {
@@ -1294,6 +1304,7 @@ export class SearchService {
     includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
     filters?: SearchFilters,
     resultMode: SearchResultMode = "full",
+    depth = DEFAULT_CALL_GRAPH_DEPTH,
   ): Promise<CallGraphSearchResponse> {
     const startedAt = performance.now();
     const project = this.store.getProjectByRoot(projectRootPath);
@@ -1304,6 +1315,7 @@ export class SearchService {
     const definitionResponse = await this.findDefinitions(projectRootPath, query, topK, includeContextLines, filters, resultMode);
     const primaryDefinition = definitionResponse.results[0] ?? null;
     const notes = [...definitionResponse.notes];
+    const normalizedDepth = normalizeCallGraphDepth(depth);
     if (!primaryDefinition) {
       return {
         definition: null,
@@ -1315,6 +1327,8 @@ export class SearchService {
         resultMode,
         results: [],
         stats: {
+          depthReached: 0,
+          depthRequested: normalizedDepth,
           definitionCount: 0,
           resultCount: 0,
           searchMs: Math.round(performance.now() - startedAt),
@@ -1327,6 +1341,7 @@ export class SearchService {
       project.project_id,
       [primaryDefinition.symbolId],
       direction,
+      normalizedDepth,
       Math.max(topK * 4, SEARCH_FANOUT_LIMIT),
       normalizedFilters,
     );
@@ -1350,6 +1365,8 @@ export class SearchService {
       resultMode,
       results: applyCallGraphResultMode(hydratedResults, resultMode),
       stats: {
+        depthReached: graphResults.reduce((max, result) => Math.max(max, result.hopCount), 0),
+        depthRequested: normalizedDepth,
         definitionCount: definitionResponse.results.length,
         resultCount: Math.min(graphResults.length, topK),
         searchMs: Math.round(performance.now() - startedAt),
@@ -1364,8 +1381,9 @@ export class SearchService {
     includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
     filters?: SearchFilters,
     resultMode: SearchResultMode = "full",
+    depth = DEFAULT_CALL_GRAPH_DEPTH,
   ): Promise<CallGraphSearchResponse> {
-    return this.findCallGraphDirection(projectRootPath, query, "callers", topK, includeContextLines, filters, resultMode);
+    return this.findCallGraphDirection(projectRootPath, query, "callers", topK, includeContextLines, filters, resultMode, depth);
   }
 
   public async findCallees(
@@ -1375,8 +1393,9 @@ export class SearchService {
     includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
     filters?: SearchFilters,
     resultMode: SearchResultMode = "full",
+    depth = DEFAULT_CALL_GRAPH_DEPTH,
   ): Promise<CallGraphSearchResponse> {
-    return this.findCallGraphDirection(projectRootPath, query, "callees", topK, includeContextLines, filters, resultMode);
+    return this.findCallGraphDirection(projectRootPath, query, "callees", topK, includeContextLines, filters, resultMode, depth);
   }
 
   public async evaluateSearchQuality(

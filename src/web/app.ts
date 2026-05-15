@@ -3,7 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEFAULT_CALL_GRAPH_DEPTH,
   DEFAULT_INCLUDE_CONTEXT_LINES,
+  MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
   type AppRuntimeInfo,
   type Settings,
@@ -61,8 +63,8 @@ function toolCatalog(): Array<{ description: string; name: string }> {
     { description: "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query.", name: "search_context" },
     { description: "Incrementally index the project and locate symbol definitions with signatures and snippets.", name: "find_definition" },
     { description: "Incrementally index the project, resolve the best definition, and return likely references.", name: "find_references" },
-    { description: "Incrementally index the project, resolve the target symbol, and return indexed caller relationships.", name: "find_callers" },
-    { description: "Incrementally index the project, resolve the target symbol, and return indexed callee relationships.", name: "find_callees" },
+    { description: "Incrementally index the project, resolve the target symbol, and return indexed caller relationships with optional multi-hop depth.", name: "find_callers" },
+    { description: "Incrementally index the project, resolve the target symbol, and return indexed callee relationships with optional multi-hop depth.", name: "find_callees" },
     { description: "Run expected-result search cases to measure retrieval quality on an indexed project.", name: "evaluate_search_quality" },
     { description: "Read a range of lines from a project file.", name: "get_file_snippet" },
     { description: "Return indexing stats for a local project.", name: "project_stats" },
@@ -456,7 +458,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
   app.post("/api/find-callers", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
+      const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
       const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
       const response = await dependencies.searchService.findCallers(
@@ -471,10 +473,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           pathPrefix: normalizePathPrefix(pathPrefix),
         },
         normalizedResultMode,
+        clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
       );
       res.json(
         buildEnvelope(
           {
+            depth: clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
             excludePathPrefix: normalizePathPrefix(excludePathPrefix),
             includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
             languages: normalizeSupportedLanguages(languages),
@@ -508,6 +512,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
               vectorIndex: indexResult.vectorIndex,
             },
             lookup: {
+              depthReached: response.stats.depthReached,
+              depthRequested: response.stats.depthRequested,
               definitionCount: response.stats.definitionCount,
               resultCount: response.stats.resultCount,
               searchMs: response.stats.searchMs,
@@ -526,7 +532,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
   app.post("/api/find-callees", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
+      const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
       const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
       const response = await dependencies.searchService.findCallees(
@@ -541,10 +547,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           pathPrefix: normalizePathPrefix(pathPrefix),
         },
         normalizedResultMode,
+        clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
       );
       res.json(
         buildEnvelope(
           {
+            depth: clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
             excludePathPrefix: normalizePathPrefix(excludePathPrefix),
             includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
             languages: normalizeSupportedLanguages(languages),
@@ -578,6 +586,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
               vectorIndex: indexResult.vectorIndex,
             },
             lookup: {
+              depthReached: response.stats.depthReached,
+              depthRequested: response.stats.depthRequested,
               definitionCount: response.stats.definitionCount,
               resultCount: response.stats.resultCount,
               searchMs: response.stats.searchMs,

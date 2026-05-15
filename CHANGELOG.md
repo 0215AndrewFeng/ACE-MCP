@@ -21,6 +21,23 @@
 - 新增 Python 语言级 reference/call graph 回归测试。
 - 新增 callers/callees Web API 集成测试，并补充质量指标断言。
 
+## [3.7.0] - 2026-05-15
+
+### 新增
+
+- **多跳调用图**：`find_callers` 与 `find_callees` 新增 `depth` 参数，支持最多 5 层的 caller/callee 展开，并在结果中返回 `hopCount` 与 `symbolPath`。
+
+### 改进
+
+- **跨文件引用精度提升**：namespace import、模块别名、wildcard/module import 的解析优先级提高，同名跨文件符号会优先按导入上下文和模块路径收敛。
+- **调用图遍历**：调用图查询改为循环安全的逐层遍历，结果按 hop 优先级稳定排序，避免深层节点把直连关系挤掉。
+- **Web / MCP 对齐**：`find_callers` / `find_callees` 的 MCP 工具与 Web API 同步支持多跳参数，并暴露深度统计信息。
+
+### 测试
+
+- 新增 JavaScript namespace import + 同名符号歧义场景下的 reference 精度回归测试。
+- 新增多跳 caller/callee 遍历的搜索服务与 Web API 集成测试。
+
 ## [3.5.0] - 2026-05-12
 
 ### 新增

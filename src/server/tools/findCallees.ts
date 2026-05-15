@@ -1,7 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES } from "../../core/common/types.js";
+import {
+  DEFAULT_CALL_GRAPH_DEPTH,
+  DEFAULT_INCLUDE_CONTEXT_LINES,
+  MAX_CALL_GRAPH_DEPTH,
+  MAX_INCLUDE_CONTEXT_LINES,
+} from "../../core/common/types.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
@@ -15,6 +20,7 @@ export function registerFindCalleesTool(server: McpServer, dependencies: ToolDep
       description: "Incrementally index the project, resolve the target symbol, and return indexed callee relationships.",
       inputSchema: {
         excludePathPrefix: z.string().min(1).optional(),
+        depth: z.number().int().min(DEFAULT_CALL_GRAPH_DEPTH).max(MAX_CALL_GRAPH_DEPTH).default(DEFAULT_CALL_GRAPH_DEPTH),
         includeContextLines: z
           .number()
           .int()
@@ -31,7 +37,7 @@ export function registerFindCalleesTool(server: McpServer, dependencies: ToolDep
       },
       title: "Find Callees",
     },
-    async ({ excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
+    async ({ depth, excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
       const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
       const response = await dependencies.searchService.findCallees(
         indexResult.projectRootPath,
@@ -45,9 +51,11 @@ export function registerFindCalleesTool(server: McpServer, dependencies: ToolDep
           pathPrefix,
         },
         resultMode,
+        depth,
       );
       const payload = buildEnvelope(
         {
+          depth,
           excludePathPrefix,
           includeContextLines,
           languages,
@@ -81,6 +89,8 @@ export function registerFindCalleesTool(server: McpServer, dependencies: ToolDep
             vectorIndex: indexResult.vectorIndex,
           },
           lookup: {
+            depthReached: response.stats.depthReached,
+            depthRequested: response.stats.depthRequested,
             definitionCount: response.stats.definitionCount,
             resultCount: response.stats.resultCount,
             searchMs: response.stats.searchMs,

@@ -7,6 +7,8 @@ export type ProjectStatus = "ready" | "indexing" | "error";
 export type VectorIndexingMode = "lazy" | "eager";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
+export const DEFAULT_CALL_GRAPH_DEPTH = 1;
+export const MAX_CALL_GRAPH_DEPTH = 5;
 
 export type EmbeddingProviderType = "memory" | "remote";
 
@@ -277,6 +279,7 @@ export interface CallGraphMatch {
   callKind: SymbolUsageKind;
   endLine: number;
   filePath: string;
+  hopCount: number;
   language: Language;
   line: number;
   ownerSymbol?: string;
@@ -286,6 +289,7 @@ export interface CallGraphMatch {
   snippet: string;
   snippetIncluded: boolean;
   startLine: number;
+  symbolPath: string[];
 }
 
 export interface CallGraphSearchResponse {
@@ -298,6 +302,8 @@ export interface CallGraphSearchResponse {
   resultMode: SearchResultMode;
   results: CallGraphMatch[];
   stats: {
+    depthReached: number;
+    depthRequested: number;
     definitionCount: number;
     resultCount: number;
     searchMs: number;
@@ -408,6 +414,7 @@ export interface FindReferencesInput {
 }
 
 export interface FindCallGraphInput {
+  depth?: number;
   excludePathPrefix?: string;
   includeContextLines?: number;
   languages?: SupportedLanguage[];

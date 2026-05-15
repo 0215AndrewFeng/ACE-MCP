@@ -112,6 +112,21 @@ interface SymbolRow {
   symbol_id: string;
 }
 
+interface CallGraphRow {
+  content: string;
+  end_line: number;
+  language: Language;
+  owner_symbol: string | null;
+  owner_symbol_id: string | null;
+  raw_name: string;
+  relative_path: string;
+  resolved_symbol: string | null;
+  resolved_symbol_id: string | null;
+  start_line: number;
+  usage_id: string;
+  usage_kind: SymbolUsageKind;
+}
+
 function normalizeComparablePath(value: string): string {
   return value.toLowerCase().replace(/\\/g, "/").replace(/^\.\//, "").replace(/^\/+/, "");
 }
@@ -745,7 +760,9 @@ export class SQLiteStore {
     const byCanonical = new Map<string, SymbolRow[]>();
     const byFullName = new Map<string, SymbolRow[]>();
     const byName = new Map<string, SymbolRow[]>();
+    const byModule = new Map<string, SymbolRow[]>();
     const byModuleAndName = new Map<string, SymbolRow[]>();
+    const byContainerAndName = new Map<string, SymbolRow[]>();
     const byFile = new Map<string, SymbolRow[]>();
 
     const pushMap = (map: Map<string, SymbolRow[]>, key: string | null | undefined, row: SymbolRow) => {
@@ -763,9 +780,13 @@ export class SQLiteStore {
       pushMap(byFullName, symbol.full_name, symbol);
       pushMap(byName, symbol.name, symbol);
       pushMap(byName, symbol.full_name.split(".").pop(), symbol);
+      pushMap(byModule, symbol.module_path, symbol);
       if (symbol.module_path) {
         pushMap(byModuleAndName, `${symbol.module_path}::${symbol.name}`, symbol);
         pushMap(byModuleAndName, `${symbol.module_path}::${symbol.full_name}`, symbol);
+      }
+      if (symbol.container_name) {
+        pushMap(byContainerAndName, `${symbol.container_name}::${symbol.name}`, symbol);
       }
       const fileSymbols = byFile.get(symbol.file_id) ?? [];
       fileSymbols.push(symbol);
@@ -809,6 +830,7 @@ export class SQLiteStore {
     ): SymbolRow[] => {
       const scored = new Map<string, { row: SymbolRow; score: number }>();
       const aliasMap = aliasMapByFile.get(fileId);
+      const normalizedFileModule = normalizeModulePath(filePath);
       const ownerSymbol = ownerSymbolName
         ? (byFile.get(fileId) ?? []).find((symbol) => symbol.full_name === ownerSymbolName || symbol.canonical_name === ownerSymbolName)
         : undefined;
@@ -854,12 +876,19 @@ export class SQLiteStore {
         }
 
         const bareName = normalizedCandidate.split(".").pop() ?? normalizedCandidate;
+        if (ownerSymbol?.module_path) {
+          for (const row of byModuleAndName.get(`${ownerSymbol.module_path}::${bareName}`) ?? []) {
+            addCandidate(row, 0.94);
+          }
+        }
+        if (normalizedFileModule) {
+          for (const row of byModuleAndName.get(`${normalizedFileModule}::${bareName}`) ?? []) {
+            addCandidate(row, 0.86);
+          }
+        }
+
         if (ownerSymbol?.container_name) {
-          for (const row of symbols.filter(
-            (symbol) =>
-              symbol.container_name?.toLowerCase() === ownerSymbol.container_name?.toLowerCase() &&
-              symbol.name.toLowerCase() === bareName,
-          )) {
+          for (const row of byContainerAndName.get(`${ownerSymbol.container_name}::${bareName}`) ?? []) {
             addCandidate(row, 0.9);
           }
         }
@@ -867,20 +896,35 @@ export class SQLiteStore {
         const aliasEntry = aliasMap?.get(normalizedCandidate);
         if (aliasEntry) {
           for (const row of aliasEntry) {
-            addCandidate(row, 0.99);
+            addCandidate(row, 1.04);
           }
         }
 
         const leftPart = normalizedCandidate.split(".")[0];
         const rightPart = normalizedCandidate.split(".").slice(1).join(".");
         if (leftPart && rightPart && aliasMap?.has(leftPart)) {
+          const rightBareName = rightPart.split(".").pop() ?? rightPart;
           for (const importedSymbol of aliasMap.get(leftPart) ?? []) {
-            for (const row of symbols.filter(
-              (symbol) =>
-                symbol.full_name.toLowerCase() === `${importedSymbol.name.toLowerCase()}.${rightPart}` ||
-                symbol.full_name.toLowerCase().endsWith(`.${importedSymbol.name.toLowerCase()}.${rightPart}`),
-            )) {
-              addCandidate(row, 0.97);
+            if (
+              importedSymbol.name.toLowerCase() === rightPart ||
+              importedSymbol.name.toLowerCase() === rightBareName ||
+              importedSymbol.full_name.toLowerCase() === rightPart ||
+              importedSymbol.full_name.toLowerCase().endsWith(`.${rightPart}`) ||
+              importedSymbol.full_name.toLowerCase().endsWith(`.${rightBareName}`)
+            ) {
+              addCandidate(importedSymbol, 1.12);
+            }
+
+            for (const row of byFullName.get(`${importedSymbol.full_name}.${rightPart}`.toLowerCase()) ?? []) {
+              addCandidate(row, 1.08);
+            }
+            for (const row of byFullName.get(`${importedSymbol.name}.${rightPart}`.toLowerCase()) ?? []) {
+              addCandidate(row, 1.04);
+            }
+            if (importedSymbol.module_path) {
+              for (const row of byModuleAndName.get(`${importedSymbol.module_path}::${rightBareName}`) ?? []) {
+                addCandidate(row, 1.1);
+              }
             }
           }
         }
@@ -904,18 +948,28 @@ export class SQLiteStore {
       for (const row of importRows) {
         const resolvedSourceModule = resolveImportSourceModule(row.relative_path, row.source_module, row.language);
         let candidates: SymbolRow[] = [];
-        if (row.imported_name !== "*") {
+        if (row.imported_name === "*") {
+          candidates = resolvedSourceModule ? [...(byModule.get(resolvedSourceModule) ?? [])] : [];
+        } else {
           candidates = [
             ...(resolvedSourceModule ? byModuleAndName.get(`${resolvedSourceModule}::${row.imported_name.toLowerCase()}`) ?? [] : []),
             ...(resolvedSourceModule ? byFullName.get(`${resolvedSourceModule}.${row.imported_name}`.toLowerCase()) ?? [] : []),
             ...(byName.get(row.imported_name.toLowerCase()) ?? []),
           ];
+          if (candidates.length === 0 && resolvedSourceModule && row.language === "javascript" && row.imported_name === "default") {
+            candidates = [...(byModule.get(resolvedSourceModule) ?? [])].sort(
+              (left, right) =>
+                Number(Boolean(left.container_name)) - Number(Boolean(right.container_name)) ||
+                left.line - right.line ||
+                left.full_name.localeCompare(right.full_name),
+            );
+          }
         }
 
         const deduped = [...new Map(candidates.map((candidate) => [candidate.symbol_id, candidate])).values()];
         const best = deduped[0];
-        updateImportResolution.run(best?.symbol_id ?? null, row.import_id);
-        if (best) {
+        updateImportResolution.run(row.imported_name === "*" ? null : best?.symbol_id ?? null, row.import_id);
+        if (deduped.length > 0) {
           const aliases = aliasMapByFile.get(row.file_id) ?? new Map<string, SymbolRow[]>();
           aliases.set(row.alias.toLowerCase(), deduped);
           aliasMapByFile.set(row.file_id, aliases);
@@ -952,7 +1006,9 @@ export class SQLiteStore {
     const usageTx = this.db.transaction(() => {
       for (const row of usageRows) {
         const ownerSymbol = row.owner_symbol_name
-          ? (byFile.get(row.file_id) ?? []).find((symbol) => symbol.full_name === row.owner_symbol_name)
+          ? (byFile.get(row.file_id) ?? []).find(
+              (symbol) => symbol.full_name === row.owner_symbol_name || symbol.canonical_name === row.owner_symbol_name,
+            )
           : undefined;
         const candidateNames = JSON.parse(row.candidate_names) as string[];
         const resolved = resolveRows([row.raw_name, ...candidateNames], row.file_id, row.relative_path, row.language, row.owner_symbol_name ?? undefined);
@@ -1162,65 +1218,128 @@ export class SQLiteStore {
     }));
   }
 
-  public findCallGraph(projectId: string, symbolIds: string[], direction: "callers" | "callees", limit: number, filters?: SearchFilters): CallGraphMatch[] {
-    if (symbolIds.length === 0) {
+  public findCallGraph(
+    projectId: string,
+    symbolIds: string[],
+    direction: "callers" | "callees",
+    depth: number,
+    limit: number,
+    filters?: SearchFilters,
+  ): CallGraphMatch[] {
+    if (symbolIds.length === 0 || depth <= 0) {
       return [];
     }
 
-    const placeholders = symbolIds.map(() => "?").join(", ");
     const filterClause = buildSearchFilterClause(filters);
-    const rows = this.db
-      .prepare(
-        `SELECT
-           f.relative_path,
-           f.language,
-           su.line AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.line) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.raw_name) AS content,
-           su.raw_name,
-           su.usage_kind,
-           owner.full_name AS owner_symbol,
-           resolved.full_name AS resolved_symbol
-         FROM symbol_usage su
-         JOIN file f ON f.file_id = su.file_id
-         LEFT JOIN symbol owner ON owner.symbol_id = su.owner_symbol_id
-         LEFT JOIN symbol resolved ON resolved.symbol_id = su.resolved_symbol_id
-         WHERE f.project_id = ?
-           AND ${
-             direction === "callers"
-               ? `su.resolved_symbol_id IN (${placeholders}) AND su.owner_symbol_id IS NOT NULL`
-               : `su.owner_symbol_id IN (${placeholders}) AND su.resolved_symbol_id IS NOT NULL`
-           }
-           ${filterClause.sql}
-         ORDER BY su.line ASC, f.relative_path ASC
-         LIMIT ?`,
-      )
-      .all(projectId, ...symbolIds, ...filterClause.parameters, limit) as Array<{
-      content: string;
-      end_line: number;
-      language: Language;
-      owner_symbol: string | null;
-      raw_name: string;
-      relative_path: string;
-      resolved_symbol: string | null;
-      start_line: number;
-      usage_kind: SymbolUsageKind;
-    }>;
+    const perHopLimit = Math.max(limit * 2, 50);
+    const rootPlaceholders = symbolIds.map(() => "?").join(", ");
+    const rootSymbols = this.db
+      .prepare(`SELECT symbol_id, full_name FROM symbol WHERE symbol_id IN (${rootPlaceholders})`)
+      .all(...symbolIds) as Array<{ full_name: string; symbol_id: string }>;
+    const symbolPathById = new Map(rootSymbols.map((row) => [row.symbol_id, [row.full_name]]));
+    const visitedSymbols = new Set(symbolIds);
+    const seenUsageIds = new Set<string>();
+    const matches: CallGraphMatch[] = [];
+    let frontier = [...symbolIds];
+    let hopCount = 0;
 
-    return rows.map((row, index) => ({
-      callKind: row.usage_kind,
-      endLine: row.end_line,
-      filePath: row.relative_path,
-      language: row.language,
-      line: row.start_line,
-      ownerSymbol: row.owner_symbol ?? undefined,
-      rawName: row.raw_name,
-      resolvedSymbol: row.resolved_symbol ?? undefined,
-      score: 0.95 - index * 0.01,
-      snippet: row.content,
-      snippetIncluded: true,
-      startLine: row.start_line,
-    }));
+    const queryRows = (frontierIds: string[]): CallGraphRow[] => {
+      const placeholders = frontierIds.map(() => "?").join(", ");
+      return this.db
+        .prepare(
+          `SELECT
+             su.usage_id,
+             f.relative_path,
+             f.language,
+             su.line AS start_line,
+             COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.line) AS end_line,
+             COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.raw_name) AS content,
+             su.raw_name,
+             su.usage_kind,
+             owner.symbol_id AS owner_symbol_id,
+             owner.full_name AS owner_symbol,
+             resolved.symbol_id AS resolved_symbol_id,
+             resolved.full_name AS resolved_symbol
+           FROM symbol_usage su
+           JOIN file f ON f.file_id = su.file_id
+           LEFT JOIN symbol owner ON owner.symbol_id = su.owner_symbol_id
+           LEFT JOIN symbol resolved ON resolved.symbol_id = su.resolved_symbol_id
+           WHERE f.project_id = ?
+             AND ${
+               direction === "callers"
+                 ? `su.resolved_symbol_id IN (${placeholders}) AND su.owner_symbol_id IS NOT NULL`
+                 : `su.owner_symbol_id IN (${placeholders}) AND su.resolved_symbol_id IS NOT NULL`
+             }
+             ${filterClause.sql}
+           ORDER BY
+             CASE su.usage_kind
+               WHEN 'call' THEN 0
+               WHEN 'instantiation' THEN 1
+               WHEN 'type' THEN 2
+               WHEN 'usage' THEN 3
+               ELSE 4
+             END,
+             f.relative_path ASC,
+             su.line ASC
+           LIMIT ?`,
+        )
+        .all(projectId, ...frontierIds, ...filterClause.parameters, perHopLimit) as CallGraphRow[];
+    };
+
+    while (frontier.length > 0 && hopCount < depth && matches.length < limit) {
+      hopCount += 1;
+      const rows = queryRows(frontier);
+      const nextFrontier: string[] = [];
+
+      for (const row of rows) {
+        const previousSymbolId = direction === "callers" ? row.resolved_symbol_id : row.owner_symbol_id;
+        const nextSymbolId = direction === "callers" ? row.owner_symbol_id : row.resolved_symbol_id;
+        const nextSymbolName = direction === "callers" ? row.owner_symbol : row.resolved_symbol;
+        if (!previousSymbolId || !nextSymbolId || !nextSymbolName) {
+          continue;
+        }
+
+        const basePath = symbolPathById.get(previousSymbolId) ?? [nextSymbolName];
+        const symbolPath = [...basePath, nextSymbolName];
+        if (!seenUsageIds.has(row.usage_id)) {
+          matches.push({
+            callKind: row.usage_kind,
+            endLine: row.end_line,
+            filePath: row.relative_path,
+            hopCount,
+            language: row.language,
+            line: row.start_line,
+            ownerSymbol: row.owner_symbol ?? undefined,
+            rawName: row.raw_name,
+            resolvedSymbol: row.resolved_symbol ?? undefined,
+            score: Math.max(0.2, 1 - (hopCount - 1) * 0.12 - matches.length * 0.005),
+            snippet: row.content,
+            snippetIncluded: true,
+            startLine: row.start_line,
+            symbolPath,
+          });
+          seenUsageIds.add(row.usage_id);
+        }
+
+        if (!visitedSymbols.has(nextSymbolId)) {
+          visitedSymbols.add(nextSymbolId);
+          symbolPathById.set(nextSymbolId, symbolPath);
+          nextFrontier.push(nextSymbolId);
+        }
+      }
+
+      frontier = [...new Set(nextFrontier)].slice(0, perHopLimit);
+    }
+
+    return matches
+      .sort(
+        (left, right) =>
+          left.hopCount - right.hopCount ||
+          right.score - left.score ||
+          left.filePath.localeCompare(right.filePath) ||
+          left.startLine - right.startLine,
+      )
+      .slice(0, limit);
   }
 
   public ensureSemanticIndex(projectId: string): void {
