@@ -1,0 +1,38 @@
+src/core/search/searchService.ts
+  s_1ab825fb559c6f::t_3a9efef2ea51e3 8,12,381-388,1307,1318,1330-1331,1344,1368-1369,1384,1386,1396,1398
+src/core/storage/sqliteStore.ts
+  s_1ab825fb559c6f::t_4a558bcf60bd90 899,915,919,922,926
+  s_1ab825fb559c6f::t_af2b67c4312be4 115-129,763,765,783,788-790,833,879-889,891,906,908-914,916-918,920-921,923-925,927,951-953,959-966,971-972,1009-1011,1221-1229,1234-1287,1289-1342
+src/server/tools/findCallers.ts
+  s_1ab825fb559c6f::t_4d9a9201678c85 4-9,23,40,54,58,92-93
+src/server/tools/findCallees.ts
+  s_1ab825fb559c6f::t_4d9a9201678c85 4-9,23,40,54,58,92-93
+src/web/app.ts
+  s_1ab825fb559c6f::t_667a1c4eecc73b 6,8,66-67,461,476,481,515-516,535,550,555,589-590
+src/test/search-workflow.test.ts
+  s_1ab825fb559c6f::t_bf50f3169f55fb 634-713
+src/web/app.test.ts
+  s_1ab825fb559c6f::t_24c458f079ec6f 199-202,262,275,281,285,287,298,302-310
+package.json
+  s_1ab825fb559c6f::t_aa3fe05f846a93 3
+package-lock.json
+  ai_agent 3,9
+src/core/common/types.ts
+  s_1ab825fb559c6f::t_f547071808afc4 10-11,282,292,305-306,417
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "f6f6b70e5b68640d45238ef07de0ea1d61f75d81",
+  "prompts": {},
+  "sessions": {
+    "s_1ab825fb559c6f": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "7f000074-9e08-4ac4-b471-81fb11ebcf8c",
+        "model": "gpt-5.4"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
