@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v3.6.0`
+当前版本：`v3.7.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -16,7 +16,7 @@
 - 文件监听自动重新索引（2500ms 防抖）
 - JavaScript/TypeScript AST 级分析，Java / Python / .NET 增强轻量符号、import、usage 抽取
 - 结构化查询语言：`AND` / `OR` / `NOT` + `symbol:` / `path:` / `content:`
-- 语言级 definition/reference 解析与轻量调用关系图
+- 语言级 definition/reference 解析、跨文件引用精度提升与多跳调用关系图
 - `search_context` / `find_definition` / `find_references` / `find_callers` / `find_callees` / `evaluate_search_quality` / `index_project` / `get_file_snippet` / `project_stats`
 - 搜索质量指标：`passRate` / `top1Recall` / `top5Recall` / `meanReciprocalRank`
 - 统一的 `meta / request / data / stats / notes` 返回结构
@@ -209,7 +209,7 @@ npm start -- --web-port 8787
 
 ### `find_references`
 
-自动执行增量索引，先解析最可能的定义，再优先基于语言级 symbol graph 返回 reference 命中；若图中无结果，再回退到词法匹配。
+自动执行增量索引，先解析最可能的定义，再优先基于语言级 symbol graph 返回 reference 命中；对 namespace import、模块别名和同名跨文件符号会优先按导入上下文收敛；若图中无结果，再回退到词法匹配。
 
 输入示例：
 
@@ -223,7 +223,7 @@ npm start -- --web-port 8787
 
 ### `find_callers`
 
-自动执行增量索引，解析目标定义后返回已解析调用图中的 caller 结果。
+自动执行增量索引，解析目标定义后返回已解析调用图中的 caller 结果，支持按 `depth` 做多跳展开，并返回每条命中的 `hopCount` / `symbolPath`。
 
 输入示例：
 
@@ -231,14 +231,17 @@ npm start -- --web-port 8787
 {
   "projectRootPath": "/path/to/project",
   "query": "RefundService.processRefund",
+  "depth": 2,
   "topK": 8,
   "resultMode": "metadata"
 }
 ```
 
+其中 `depth` 为可选参数，默认 `1`，最大 `5`。
+
 ### `find_callees`
 
-自动执行增量索引，解析目标定义后返回该符号内部已解析调用到的 callee 结果。
+自动执行增量索引，解析目标定义后返回该符号内部已解析调用到的 callee 结果，支持按 `depth` 做多跳展开，并返回每条命中的 `hopCount` / `symbolPath`。
 
 输入示例：
 
@@ -246,6 +249,7 @@ npm start -- --web-port 8787
 {
   "projectRootPath": "/path/to/project",
   "query": "handleRefund",
+  "depth": 2,
   "topK": 8,
   "resultMode": "metadata"
 }
@@ -377,15 +381,15 @@ ace-mcp --web-port 8787
 
 ## 路线图
 
-### v3.7.0（规划中）
+### v3.8.0（规划中）
 
-- 更深的多跳调用关系图与跨文件引用精度提升
+- 更深的多跳调用关系图与路径压缩/去噪
 - `sqlite-vss` / ANN 等更高效的向量后端
 - 更丰富的 Web 结果分析、质量回放与对比界面
 
 ## 开发建议
 
-当前版本已经补齐性能、诊断、结构化查询、语言级基础导航、调用关系和质量评估指标。如果继续增强，建议按以下顺序推进：
+当前版本已经补齐性能、诊断、结构化查询、语言级基础导航、多跳调用关系和质量评估指标。如果继续增强，建议按以下顺序推进：
 
 1. 更深的调用关系与引用精度
 2. 更细的语言适配器拆分

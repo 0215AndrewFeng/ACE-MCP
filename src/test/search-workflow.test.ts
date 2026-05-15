@@ -631,6 +631,86 @@ def handle_refund(order_id: str) -> str:
   }
 });
 
+test("findReferences and call graph support namespace imports and multi-hop traversal", async () => {
+  const environment = await createTestProjectEnvironment({
+    "package.json": JSON.stringify({ name: "fixture" }),
+    "src/refund/api.ts": `
+export function processRefund(orderId: string) {
+  return orderId.trim();
+}
+`,
+    "src/orders/api.ts": `
+export function processRefund(orderId: string) {
+  return orderId.toUpperCase();
+}
+`,
+    "src/refund/controller.ts": `
+import * as refundApi from "./api";
+
+export function handleRefund(orderId: string) {
+  return refundApi.processRefund(orderId);
+}
+`,
+    "src/refund/workflow.ts": `
+import { handleRefund } from "./controller";
+
+export function runWorkflow(orderId: string) {
+  return handleRefund(orderId);
+}
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const referenceResponse = await environment.searchService.findReferences(
+      environment.projectRootPath,
+      "src/refund/api#processRefund",
+      10,
+      0,
+      { languages: ["javascript"] },
+      "metadata",
+    );
+    assert.equal(referenceResponse.definition?.filePath, "src/refund/api.ts");
+    assert.equal(referenceResponse.results.some((result) => result.filePath === "src/refund/controller.ts"), true);
+    assert.equal(referenceResponse.results.some((result) => result.filePath === "src/orders/api.ts"), false);
+
+    const callerResponse = await environment.searchService.findCallers(
+      environment.projectRootPath,
+      "src/refund/api#processRefund",
+      10,
+      0,
+      { languages: ["javascript"] },
+      "metadata",
+      2,
+    );
+    const directCaller = callerResponse.results.find((result) => result.filePath === "src/refund/controller.ts");
+    const transitiveCaller = callerResponse.results.find((result) => result.filePath === "src/refund/workflow.ts");
+    assert.equal(directCaller?.hopCount, 1);
+    assert.deepEqual(directCaller?.symbolPath, ["processRefund", "handleRefund"]);
+    assert.equal(transitiveCaller?.hopCount, 2);
+    assert.deepEqual(transitiveCaller?.symbolPath, ["processRefund", "handleRefund", "runWorkflow"]);
+
+    const calleeResponse = await environment.searchService.findCallees(
+      environment.projectRootPath,
+      "runWorkflow",
+      10,
+      0,
+      { languages: ["javascript"] },
+      "metadata",
+      2,
+    );
+    const directCallee = calleeResponse.results.find((result) => result.resolvedSymbol === "handleRefund");
+    const transitiveCallee = calleeResponse.results.find((result) => result.resolvedSymbol === "processRefund");
+    assert.equal(directCallee?.hopCount, 1);
+    assert.deepEqual(directCallee?.symbolPath, ["runWorkflow", "handleRefund"]);
+    assert.equal(transitiveCallee?.hopCount, 2);
+    assert.deepEqual(transitiveCallee?.symbolPath, ["runWorkflow", "handleRefund", "processRefund"]);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
 test("evaluateSearchQuality summarizes expected file assertions", async () => {
   const environment = await createTestProjectEnvironment({
     "package.json": JSON.stringify({ name: "fixture" }),

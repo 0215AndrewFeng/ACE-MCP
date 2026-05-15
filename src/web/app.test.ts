@@ -196,6 +196,11 @@ import { RefundService } from "./RefundService";
 const service = new RefundService();
 export const handleRefund = (orderId: string) => service.processRefund(orderId);
 `,
+    "src/refund/refundWorkflow.ts": `
+import { handleRefund } from "./refundController";
+
+export const runWorkflow = (orderId: string) => handleRefund(orderId);
+`,
   });
 
   try {
@@ -254,6 +259,7 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
 
       const callersResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-callers`, {
         body: JSON.stringify({
+          depth: 2,
           projectRootPath: environment.projectRootPath,
           query: "RefundService.processRefund",
           resultMode: "metadata",
@@ -266,17 +272,19 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
       const callersPayload = (await callersResponse.json()) as {
         data: {
           direction: string;
-          results: Array<{ filePath: string; ownerSymbol?: string }>;
+          results: Array<{ filePath: string; hopCount: number; ownerSymbol?: string }>;
         };
       };
       assert.equal(callersPayload.data.direction, "callers");
       assert.equal(callersPayload.data.results.some((result) => result.filePath === "src/refund/refundController.ts"), true);
       assert.equal(callersPayload.data.results.some((result) => result.ownerSymbol === "handleRefund"), true);
+      assert.equal(callersPayload.data.results.some((result) => result.filePath === "src/refund/refundWorkflow.ts" && result.hopCount === 2), true);
 
       const calleesResponse = await fetch(`http://127.0.0.1:${handle.port}/api/find-callees`, {
         body: JSON.stringify({
+          depth: 2,
           projectRootPath: environment.projectRootPath,
-          query: "handleRefund",
+          query: "runWorkflow",
           resultMode: "metadata",
           topK: 5,
         }),
@@ -287,11 +295,19 @@ export const handleRefund = (orderId: string) => service.processRefund(orderId);
       const calleesPayload = (await calleesResponse.json()) as {
         data: {
           direction: string;
-          results: Array<{ resolvedSymbol?: string }>;
+          results: Array<{ hopCount: number; resolvedSymbol?: string; symbolPath: string[] }>;
         };
       };
       assert.equal(calleesPayload.data.direction, "callees");
-      assert.equal(calleesPayload.data.results.some((result) => result.resolvedSymbol === "RefundService.processRefund"), true);
+      assert.equal(
+        calleesPayload.data.results.some(
+          (result) =>
+            result.resolvedSymbol === "RefundService.processRefund" &&
+            result.hopCount === 2 &&
+            result.symbolPath.join(" > ") === "runWorkflow > handleRefund > RefundService.processRefund",
+        ),
+        true,
+      );
 
       const evaluationResponse = await fetch(`http://127.0.0.1:${handle.port}/api/evaluate-search-quality`, {
         body: JSON.stringify({
