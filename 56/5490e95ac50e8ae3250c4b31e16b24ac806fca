@@ -1,0 +1,95 @@
+package.json
+  s_0f8113dba42c56::t_598c5c4874459a 3
+src/server/toolRegistry.ts
+  s_0f8113dba42c56::t_b72e8e71ff77dd 17-19
+  s_0f8113dba42c56::t_4e3ac67e9bc3d4 39-41
+src/test/helpers.ts
+  s_0f8113dba42c56::t_cf25f732a0265b 61-66
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_879bcb24e096a7 401-403
+  s_0f8113dba42c56::t_5669268ec8e4a2 87-93,105-148
+  s_0f8113dba42c56::t_23a8d23d471aef 372-376
+  s_0f8113dba42c56::t_78894480ba8363 166-168
+  s_0f8113dba42c56::t_6ccbffad483969 316-322
+src/server/tools/findCallers.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 41
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_cab1e16384b042 1552,1573-1581,1583,1593-1594
+  s_0f8113dba42c56::t_475ca82952537f 856-868
+  s_0f8113dba42c56::t_5d81221359a766 818
+  s_0f8113dba42c56::t_db98b00f229659 1074-1097,1099-1103
+  s_0f8113dba42c56::t_9140726a774a9e 55-107
+  s_0f8113dba42c56::t_5857761a10c914 288,294-297
+  s_0f8113dba42c56::t_edf1a1f6311362 871-894,896-900
+  s_0f8113dba42c56::t_260a97aa1e2b13 960
+  s_0f8113dba42c56::t_6f1667a44aebb0 315
+CHANGELOG.md
+  s_0f8113dba42c56::t_2f67692b539a3a 41-60
+src/core/search/structuredQuery.ts
+  s_0f8113dba42c56::t_54f3aacf53a62b 117
+  s_0f8113dba42c56::t_6f3f86ffa3379d 169,181
+  s_0f8113dba42c56::t_f1652d2b5b74bc 106,172,192,279,284
+  s_0f8113dba42c56::t_3aa7932e2b61c4 54
+  s_0f8113dba42c56::t_aec62cb4188bf9 2
+README.md
+  s_0f8113dba42c56::t_31a5206c171e9e 384-394
+src/server/tools/findReferences.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 35
+src/server/tools/listSymbols.ts
+  s_0f8113dba42c56::t_6afba26bbe8e86 1-76
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_47679d96d147c4 801
+  s_0f8113dba42c56::t_4b2e51ce5a90f0 651-661
+  s_0f8113dba42c56::t_3d6ef70ab0bee8 678-682
+  s_0f8113dba42c56::t_5754f197baa1f1 718-727
+  s_0f8113dba42c56::t_0675b4532ed868 1023-1028
+  s_0f8113dba42c56::t_c9d04dfad00796 730-733,739
+  s_0f8113dba42c56::t_dca600831b12d9 642-643
+  s_0f8113dba42c56::t_db1680df54bbc6 784-788
+  s_0f8113dba42c56::t_940e6450cb5968 687-697,701-713
+src/core/common/errors.ts
+  s_0f8113dba42c56::t_d24394f31521f1 3-5,7-11,15-31
+src/core/common/types.ts
+  s_0f8113dba42c56::t_05e75ae99b5044 8
+  s_0f8113dba42c56::t_dd2cdd6a7998b2 36-41
+src/web/app.ts
+  s_0f8113dba42c56::t_fd6dd5827cc7c4 183,216,230,321,387,456,530,604,644
+  s_0f8113dba42c56::t_ce3645e9e6a38a 244,329,395,464,538,616
+  s_0f8113dba42c56::t_774452c2322be5 5
+src/server/tools/evaluateSearchQuality.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 35
+src/server/tools/cacheStats.ts
+  s_0f8113dba42c56::t_8d255a2d2209ee 1-26
+src/server/tools/searchContext.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 38
+src/test/search-workflow.test.ts
+  s_0f8113dba42c56::t_01ccd86d1cca63 308-311
+src/server/tools/findDefinition.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 35
+src/server/tools/findCallees.ts
+  s_0f8113dba42c56::t_e477cc85d23d7b 41
+src/server/tools/clearProjectIndex.ts
+  s_0f8113dba42c56::t_08700536c7967d 1-47
+src/config/settings.ts
+  s_0f8113dba42c56::t_d52af659e5c241 98-110
+  s_0f8113dba42c56::t_fae25758ce7dd9 17-18,22-24,26
+  s_0f8113dba42c56::t_9fb25856dca5f1 143
+  s_0f8113dba42c56::t_c9c5c19c8426ee 178-189
+  s_0f8113dba42c56::t_ae3b977b8144a0 54-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "565490e95ac50e8ae3250c4b31e16b24ac806fca",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
