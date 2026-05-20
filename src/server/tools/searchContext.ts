@@ -35,7 +35,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
       title: "Search Context",
     },
     async ({ excludePathPrefix, includeContextLines, languages, mode, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.search(
         indexResult.projectRootPath,
         query,

@@ -305,8 +305,10 @@ test("semantic search lazily hydrates vectors and reuses cached project vectors"
     assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), true);
 
     const secondResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
-    assert.equal(secondResponse.diagnostics.vectorIndex.hydratedChunkCount, 0);
-    assert.equal(secondResponse.diagnostics.vectorIndex.cacheHit, true);
+    // With search-level caching enabled for semantic mode (v3.8.0),
+    // the second call returns a cached response with "Cache hit" note.
+    // The diagnostics reflect the original (first) search execution.
+    assert.equal(secondResponse.notes.some((note) => note.includes("Cache hit")), true);
     assert.equal(secondResponse.diagnostics.executedStrategies.some((phase) => phase.name === "rerank"), true);
   } finally {
     await environment.cleanup();

@@ -58,6 +58,12 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     settingsFilePath: path.join(tempDir, "settings.toml"),
     textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
     vectorIndexingMode: "lazy",
+    indexFreshness: "always",
+    indexFreshnessSeconds: 30,
+    searchCacheTtlMs: 60_000,
+    searchCacheMaxSize: 100,
+    vectorCacheMaxProjects: 10,
+    searchFanoutLimit: 50,
   };
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);

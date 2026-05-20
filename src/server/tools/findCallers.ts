@@ -38,7 +38,7 @@ export function registerFindCallersTool(server: McpServer, dependencies: ToolDep
       title: "Find Callers",
     },
     async ({ depth, excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findCallers(
         indexResult.projectRootPath,
         query,

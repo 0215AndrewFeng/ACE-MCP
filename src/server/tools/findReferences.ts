@@ -32,7 +32,7 @@ export function registerFindReferencesTool(server: McpServer, dependencies: Tool
       title: "Find References",
     },
     async ({ excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findReferences(
         indexResult.projectRootPath,
         query,

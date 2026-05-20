@@ -52,6 +52,59 @@ function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array
   return denom === 0 ? 0 : dotProduct / denom;
 }
 
+/**
+ * Min-heap for maintaining top-K highest-scoring items.
+ * Uses a min-heap so the smallest score is always at the root,
+ * making it O(1) to check and O(log K) to replace.
+ */
+class TopKHeap {
+  private readonly heap: Array<{ id: string; score: number }> = [];
+
+  constructor(private readonly k: number) {}
+
+  push(id: string, score: number): void {
+    if (this.heap.length < this.k) {
+      this.heap.push({ id, score });
+      this.bubbleUp(this.heap.length - 1);
+    } else if (score > this.heap[0].score) {
+      this.heap[0] = { id, score };
+      this.sinkDown(0);
+    }
+  }
+
+  /** Returns items sorted descending by score */
+  drain(): Array<{ id: string; score: number }> {
+    return this.heap.sort((a, b) => b.score - a.score);
+  }
+
+  get size(): number {
+    return this.heap.length;
+  }
+
+  private bubbleUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.heap[parent].score <= this.heap[i].score) break;
+      [this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]];
+      i = parent;
+    }
+  }
+
+  private sinkDown(i: number): void {
+    const n = this.heap.length;
+    while (true) {
+      let smallest = i;
+      const left = 2 * i + 1;
+      const right = 2 * i + 2;
+      if (left < n && this.heap[left].score < this.heap[smallest].score) smallest = left;
+      if (right < n && this.heap[right].score < this.heap[smallest].score) smallest = right;
+      if (smallest === i) break;
+      [this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]];
+      i = smallest;
+    }
+  }
+}
+
 interface ProjectRow {
   index_version: number;
   languages: string;
@@ -232,9 +285,16 @@ export class SQLiteStore {
   private readonly db: Database.Database;
   private readonly vectorCache = new Map<string, { indexVersion: number; modelName: string; vectors: VectorEntry[] }>();
   private readonly vectorCacheOrder: string[] = [];
+  private vectorCacheMaxProjects = VECTOR_CACHE_MAX_PROJECTS;
 
   public constructor(databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
+  }
+
+  /** Allow external configuration of vector cache size */
+  public setVectorCacheMaxProjects(max: number): void {
+    this.vectorCacheMaxProjects = max;
+    this.evictVectorCache();
   }
 
   private clearVectorCache(projectId?: string): void {
@@ -252,7 +312,7 @@ export class SQLiteStore {
   }
 
   private evictVectorCache(): void {
-    while (this.vectorCache.size > VECTOR_CACHE_MAX_PROJECTS && this.vectorCacheOrder.length > 0) {
+    while (this.vectorCache.size > this.vectorCacheMaxProjects && this.vectorCacheOrder.length > 0) {
       const oldest = this.vectorCacheOrder.shift()!;
       this.vectorCache.delete(oldest);
     }
@@ -755,7 +815,7 @@ export class SQLiteStore {
       .all(projectId) as SymbolRow[];
   }
 
-  public resolveSymbolGraph(projectId: string): void {
+  public resolveSymbolGraph(projectId: string, changedFileIds?: Set<string>): void {
     const symbols = this.listProjectSymbols(projectId);
     const byCanonical = new Map<string, SymbolRow[]>();
     const byFullName = new Map<string, SymbolRow[]>();
@@ -793,21 +853,51 @@ export class SQLiteStore {
       byFile.set(symbol.file_id, fileSymbols);
     }
 
+    // Build suffix index for "X.Y" lookups — keyed by last segment(s) of full_name
+    // Replaces O(n) symbols.filter() scan
+    const byFullNameSuffix = new Map<string, SymbolRow[]>();
+    for (const symbol of symbols) {
+      const parts = symbol.full_name.toLowerCase().split(".");
+      for (let i = 1; i < parts.length; i++) {
+        const suffix = parts.slice(i).join(".");
+        const existing = byFullNameSuffix.get(suffix) ?? [];
+        existing.push(symbol);
+        byFullNameSuffix.set(suffix, existing);
+      }
+    }
+
     const importRows = this.db
       .prepare(
-        `SELECT
-           ia.import_id,
-           ia.file_id,
-           ia.alias,
-           ia.imported_name,
-           ia.source_module,
-           f.language,
-           f.relative_path
-         FROM import_alias ia
-         JOIN file f ON f.file_id = ia.file_id
-         WHERE f.project_id = ?`,
+        changedFileIds && changedFileIds.size > 0
+          ? `SELECT
+               ia.import_id,
+               ia.file_id,
+               ia.alias,
+               ia.imported_name,
+               ia.source_module,
+               f.language,
+               f.relative_path
+             FROM import_alias ia
+             JOIN file f ON f.file_id = ia.file_id
+             WHERE f.project_id = ?
+               AND ia.file_id IN (${[...changedFileIds].map(() => "?").join(", ")})`
+          : `SELECT
+               ia.import_id,
+               ia.file_id,
+               ia.alias,
+               ia.imported_name,
+               ia.source_module,
+               f.language,
+               f.relative_path
+             FROM import_alias ia
+             JOIN file f ON f.file_id = ia.file_id
+             WHERE f.project_id = ?`,
       )
-      .all(projectId) as Array<{
+      .all(
+        ...(changedFileIds && changedFileIds.size > 0
+          ? [projectId, ...changedFileIds]
+          : [projectId]),
+      ) as Array<{
       alias: string;
       file_id: string;
       import_id: string;
@@ -867,7 +957,7 @@ export class SQLiteStore {
           for (const row of byFullName.get(normalizedCandidate) ?? []) {
             addCandidate(row, 0.96);
           }
-          for (const row of symbols.filter((symbol) => symbol.full_name.toLowerCase().endsWith(`.${normalizedCandidate}`))) {
+          for (const row of byFullNameSuffix.get(normalizedCandidate) ?? []) {
             addCandidate(row, 0.82);
           }
           for (const row of byModuleAndName.get(`${containerOrModule}::${name}`) ?? []) {
@@ -981,19 +1071,36 @@ export class SQLiteStore {
 
     const usageRows = this.db
       .prepare(
-        `SELECT
-           su.usage_id,
-           su.file_id,
-           su.owner_symbol_name,
-           su.raw_name,
-           su.candidate_names,
-           f.language,
-           f.relative_path
-         FROM symbol_usage su
-         JOIN file f ON f.file_id = su.file_id
-         WHERE f.project_id = ?`,
+        changedFileIds && changedFileIds.size > 0
+          ? `SELECT
+               su.usage_id,
+               su.file_id,
+               su.owner_symbol_name,
+               su.raw_name,
+               su.candidate_names,
+               f.language,
+               f.relative_path
+             FROM symbol_usage su
+             JOIN file f ON f.file_id = su.file_id
+             WHERE f.project_id = ?
+               AND su.file_id IN (${[...changedFileIds].map(() => "?").join(", ")})`
+          : `SELECT
+               su.usage_id,
+               su.file_id,
+               su.owner_symbol_name,
+               su.raw_name,
+               su.candidate_names,
+               f.language,
+               f.relative_path
+             FROM symbol_usage su
+             JOIN file f ON f.file_id = su.file_id
+             WHERE f.project_id = ?`,
       )
-      .all(projectId) as Array<{
+      .all(
+        ...(changedFileIds && changedFileIds.size > 0
+          ? [projectId, ...changedFileIds]
+          : [projectId]),
+      ) as Array<{
       candidate_names: string;
       file_id: string;
       language: Language;
@@ -1442,7 +1549,7 @@ export class SQLiteStore {
 
   /**
    * 向量搜索
-   * 使用余弦相似度在内存中进行向量搜索
+   * 使用余弦相似度 + Top-K 堆，避免全量排序
    */
   public searchByVector(
     projectId: string,
@@ -1463,13 +1570,17 @@ export class SQLiteStore {
       };
     }
 
-    const scored = filteredVectors.map((v) => ({
-      chunkId: v.chunkId,
-      score: cosineSimilarity(queryEmbedding, v.embedding),
-    }));
+    // Convert query to Float32Array once for faster cosine similarity
+    const queryVec = queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
 
-    scored.sort((a, b) => b.score - a.score);
-    const topChunkIds = scored.slice(0, limit);
+    // Use min-heap to find top-K without sorting all candidates
+    const heap = new TopKHeap(limit);
+    for (const v of filteredVectors) {
+      const score = cosineSimilarity(queryVec, v.embedding);
+      heap.push(v.chunkId, score);
+    }
+
+    const topChunkIds = heap.drain();
 
     if (topChunkIds.length === 0) {
       return {
@@ -1479,8 +1590,8 @@ export class SQLiteStore {
       };
     }
 
-    const chunkIds = topChunkIds.map((t) => t.chunkId);
-    const scoreMap = new Map(topChunkIds.map((t) => [t.chunkId, t.score]));
+    const chunkIds = topChunkIds.map((t) => t.id);
+    const scoreMap = new Map(topChunkIds.map((t) => [t.id, t.score]));
 
     const placeholders = chunkIds.map(() => "?").join(", ");
 

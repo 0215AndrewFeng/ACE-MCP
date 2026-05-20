@@ -38,7 +38,7 @@ export function registerFindCalleesTool(server: McpServer, dependencies: ToolDep
       title: "Find Callees",
     },
     async ({ depth, excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findCallees(
         indexResult.projectRootPath,
         query,
