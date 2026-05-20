@@ -32,7 +32,7 @@ export function registerEvaluateSearchQualityTool(server: McpServer, dependencie
       title: "Evaluate Search Quality",
     },
     async ({ cases, projectRootPath }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const evaluation = await dependencies.searchService.evaluateSearchQuality(indexResult.projectRootPath, cases);
       const payload = buildEnvelope(
         {

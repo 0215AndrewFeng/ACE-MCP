@@ -14,10 +14,16 @@ type RawSettings = Partial<
     | "defaultTopK"
     | "enableVectorSearch"
     | "excludePatterns"
+    | "indexFreshness"
+    | "indexFreshnessSeconds"
     | "logLevel"
     | "maxFileSizeKb"
     | "maxLinesPerChunk"
+    | "searchCacheMaxSize"
+    | "searchCacheTtlMs"
+    | "searchFanoutLimit"
     | "textExtensions"
+    | "vectorCacheMaxProjects"
     | "vectorIndexingMode"
   >
 >;
@@ -45,6 +51,12 @@ const DEFAULT_PUBLIC_SETTINGS = {
   maxLinesPerChunk: 220,
   textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
   vectorIndexingMode: "lazy",
+  indexFreshness: "stale",
+  indexFreshnessSeconds: 30,
+  searchCacheTtlMs: 60_000,
+  searchCacheMaxSize: 100,
+  vectorCacheMaxProjects: 10,
+  searchFanoutLimit: 50,
 } satisfies RawSettings;
 
 function coerceArray(value: string | undefined): string[] | undefined {
@@ -83,6 +95,19 @@ function coerceVectorIndexingMode(value: string | undefined): Settings["vectorIn
   return value === "eager" ? "eager" : value === "lazy" ? "lazy" : undefined;
 }
 
+function coerceIndexFreshness(value: string | undefined): Settings["indexFreshness"] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const v = value.trim().toLowerCase();
+  if (v === "always" || v === "stale" || v === "manual") {
+    return v;
+  }
+
+  return undefined;
+}
+
 export async function loadSettings(): Promise<Settings> {
   const baseDir = path.join(os.homedir(), ".ace-mcp");
   const dataDir = path.join(baseDir, "data");
@@ -115,6 +140,7 @@ export async function loadSettings(): Promise<Settings> {
   const envVectorIndexingMode = coerceVectorIndexingMode(process.env.ACE_MCP_VECTOR_INDEXING_MODE);
   const envAutoWatch = coerceBoolean(process.env.ACE_MCP_AUTO_WATCH);
   const envEmbeddingProvider = (process.env.ACE_MCP_EMBEDDING_PROVIDER ?? "") === "remote" ? "remote" as const : undefined;
+  const envIndexFreshness = coerceIndexFreshness(process.env.ACE_MCP_INDEX_FRESHNESS);
 
   return {
     autoWatch:
@@ -149,5 +175,17 @@ export async function loadSettings(): Promise<Settings> {
     textExtensions: envExtensions ?? fileSettings.textExtensions ?? DEFAULT_PUBLIC_SETTINGS.textExtensions,
     vectorIndexingMode:
       envVectorIndexingMode ?? fileSettings.vectorIndexingMode ?? DEFAULT_PUBLIC_SETTINGS.vectorIndexingMode,
+    indexFreshness:
+      envIndexFreshness ?? fileSettings.indexFreshness ?? DEFAULT_PUBLIC_SETTINGS.indexFreshness,
+    indexFreshnessSeconds:
+      Number(process.env.ACE_MCP_INDEX_FRESHNESS_SECONDS ?? fileSettings.indexFreshnessSeconds ?? DEFAULT_PUBLIC_SETTINGS.indexFreshnessSeconds),
+    searchCacheTtlMs:
+      Number(process.env.ACE_MCP_SEARCH_CACHE_TTL_MS ?? fileSettings.searchCacheTtlMs ?? DEFAULT_PUBLIC_SETTINGS.searchCacheTtlMs),
+    searchCacheMaxSize:
+      Number(process.env.ACE_MCP_SEARCH_CACHE_MAX_SIZE ?? fileSettings.searchCacheMaxSize ?? DEFAULT_PUBLIC_SETTINGS.searchCacheMaxSize),
+    vectorCacheMaxProjects:
+      Number(process.env.ACE_MCP_VECTOR_CACHE_MAX_PROJECTS ?? fileSettings.vectorCacheMaxProjects ?? DEFAULT_PUBLIC_SETTINGS.vectorCacheMaxProjects),
+    searchFanoutLimit:
+      Number(process.env.ACE_MCP_SEARCH_FANOUT_LIMIT ?? fileSettings.searchFanoutLimit ?? DEFAULT_PUBLIC_SETTINGS.searchFanoutLimit),
   };
 }

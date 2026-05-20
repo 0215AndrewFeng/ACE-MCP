@@ -84,6 +84,13 @@ export class IndexCoordinator {
   private indexingLock = false;
   private debounceTimer?: NodeJS.Timeout;
 
+  /** Per-project last successful index timestamp (epoch ms) */
+  private lastIndexedAtMs = new Map<string, number>();
+  /** Per-project dirty flag set by watcher events */
+  private watcherDirty = new Map<string, boolean>();
+  /** Per-project cached last IndexProjectResult for skipped index calls */
+  private lastIndexResult = new Map<string, IndexProjectResult>();
+
   public constructor(
     private readonly settings: Settings,
     private readonly store: SQLiteStore,
@@ -93,6 +100,52 @@ export class IndexCoordinator {
 
   public isWatching(): boolean {
     return this.watching;
+  }
+
+  /**
+   * Ensure the project index is fresh enough according to the configured freshness policy.
+   * Returns a cached or real IndexProjectResult.
+   *
+   * - "always": always run incremental index (v3.7.0 behavior)
+   * - "stale": skip if last index was within `indexFreshnessSeconds` and no watcher events fired
+   * - "manual": never auto-index; return cached result or a minimal stub
+   */
+  public async ensureFreshIndex(projectRootPath: string): Promise<IndexProjectResult> {
+    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    const policy = this.settings.indexFreshness;
+
+    if (policy === "always") {
+      return this.indexProject(normalizedRoot, "incremental");
+    }
+
+    if (policy === "manual") {
+      const cached = this.lastIndexResult.get(normalizedRoot);
+      if (cached) {
+        return cached;
+      }
+      // No cached result — must do initial index
+      return this.indexProject(normalizedRoot, "incremental");
+    }
+
+    // policy === "stale"
+    const lastMs = this.lastIndexedAtMs.get(normalizedRoot);
+    const dirty = this.watcherDirty.get(normalizedRoot) ?? false;
+    const freshnessMs = this.settings.indexFreshnessSeconds * 1000;
+    const now = performance.now();
+
+    if (lastMs !== undefined && !dirty && (now - lastMs) < freshnessMs) {
+      const cached = this.lastIndexResult.get(normalizedRoot);
+      if (cached) {
+        this.logger.debug("index fresh, skipping incremental scan", {
+          ageMs: Math.round(now - lastMs),
+          freshnessMs,
+          projectRootPath: normalizedRoot,
+        });
+        return cached;
+      }
+    }
+
+    return this.indexProject(normalizedRoot, "incremental");
   }
 
   public startWatching(projectRootPath: string): void {
@@ -109,6 +162,9 @@ export class IndexCoordinator {
       if (this.indexingLock || abortController.signal.aborted) {
         return;
       }
+
+      // Mark project dirty so ensureFreshIndex knows the cache is stale
+      this.watcherDirty.set(normalizedRoot, true);
 
       clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
@@ -257,7 +313,13 @@ export class IndexCoordinator {
 
     const totalMs = Math.round(performance.now() - startedAtMs);
     if (changedFiles > 0 || deletedFiles.length > 0) {
-      this.store.resolveSymbolGraph(projectId);
+      // Collect fileIds of changed files for incremental symbol graph resolution
+      const changedFileIds = new Set(filesToIndex.map((file) => buildStableId([projectId, file.relativePath])));
+      // Also include deleted file IDs (their usages/imports were already removed by deleteFiles)
+      for (const deletedPath of deletedFiles) {
+        changedFileIds.add(buildStableId([projectId, deletedPath]));
+      }
+      this.store.resolveSymbolGraph(projectId, changedFileIds);
     }
     const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
     this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion);
@@ -307,7 +369,11 @@ export class IndexCoordinator {
       this.startWatching(normalizedRoot);
     }
 
-    return {
+    // Update freshness tracking
+    this.lastIndexedAtMs.set(normalizedRoot, performance.now());
+    this.watcherDirty.set(normalizedRoot, false);
+
+    const result: IndexProjectResult = {
       changedFiles,
       chunkCount,
       createdAt: timestamp,
@@ -332,5 +398,8 @@ export class IndexCoordinator {
         mode: this.settings.vectorIndexingMode,
       },
     };
+
+    this.lastIndexResult.set(normalizedRoot, result);
+    return result;
   }
 }

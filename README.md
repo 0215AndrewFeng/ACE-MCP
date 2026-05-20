@@ -381,7 +381,17 @@ ace-mcp --web-port 8787
 
 ## 路线图
 
-### v3.8.0（规划中）
+### v3.8.0（已发布）
+
+- **索引新鲜度策略**（`indexFreshness: always/stale/manual`），搜索前按策略跳过全量扫描
+- **向量搜索优化**：Top-K 堆 + Float32Array 预转换，替代暴力全排序
+- **符号图增量解析**：仅处理变更文件 + suffix 索引替代 O(n) filter
+- **搜索缓存全模式覆盖**：semantic/hybrid 启用缓存 + 嵌套 Map 结构
+- **新增工具**：`cache_stats`、`clear_project_index`、`list_symbols`
+- **配置灵活性**：暴露缓存 TTL、fanout limit 等硬编码参数
+- **错误处理统一**：`AppError` 扩展、Web API 状态码映射
+
+### v3.9.0（规划中）
 
 - 更深的多跳调用关系图与路径压缩/去噪
 - `sqlite-vss` / ANN 等更高效的向量后端

@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { AppError } from "../core/common/errors.js";
 import {
   DEFAULT_CALL_GRAPH_DEPTH,
   DEFAULT_INCLUDE_CONTEXT_LINES,
@@ -179,7 +180,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -212,7 +213,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -226,7 +227,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       dependencies.indexCoordinator.startWatching(String(projectRootPath));
       res.json({ projectRootPath: normalizeAbsolutePath(String(projectRootPath)), watching: true });
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -240,7 +241,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const { projectRootPath, query, mode, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedMode = ["auto", "lexical", "symbol", "semantic", "hybrid"].includes(String(mode ?? "auto")) ? mode : "auto";
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const result = await dependencies.searchService.search(
         indexResult.projectRootPath,
         String(query ?? ""),
@@ -317,7 +318,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -325,7 +326,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const response = await dependencies.searchService.findDefinitions(
         indexResult.projectRootPath,
         String(query ?? ""),
@@ -383,7 +384,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -391,7 +392,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const response = await dependencies.searchService.findReferences(
         indexResult.projectRootPath,
         String(query ?? ""),
@@ -452,7 +453,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -460,7 +461,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const response = await dependencies.searchService.findCallers(
         indexResult.projectRootPath,
         String(query ?? ""),
@@ -526,7 +527,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -534,7 +535,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     try {
       const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
       const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const response = await dependencies.searchService.findCallees(
         indexResult.projectRootPath,
         String(query ?? ""),
@@ -600,7 +601,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
@@ -612,7 +613,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         res.status(400).json({ error: "cases must be a non-empty array" });
         return;
       }
-      const indexResult = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const evaluation = await dependencies.searchService.evaluateSearchQuality(indexResult.projectRootPath, normalizedCases);
       res.json(
         buildEnvelope(
@@ -640,7 +641,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ),
       );
     } catch (error: unknown) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 

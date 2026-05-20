@@ -5,6 +5,7 @@ export type StructuredSearchField = "content" | "path" | "symbol";
 export type StructuredSearchOperator = "AND" | "OR" | "NOT";
 export type ProjectStatus = "ready" | "indexing" | "error";
 export type VectorIndexingMode = "lazy" | "eager";
+export type IndexFreshnessPolicy = "always" | "stale" | "manual";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
 export const DEFAULT_CALL_GRAPH_DEPTH = 1;
@@ -32,6 +33,12 @@ export interface Settings {
   settingsFilePath: string;
   textExtensions: string[];
   vectorIndexingMode: VectorIndexingMode;
+  indexFreshness: IndexFreshnessPolicy;
+  indexFreshnessSeconds: number;
+  searchCacheTtlMs: number;
+  searchCacheMaxSize: number;
+  vectorCacheMaxProjects: number;
+  searchFanoutLimit: number;
 }
 
 export interface CliOptions {

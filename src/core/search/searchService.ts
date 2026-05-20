@@ -639,8 +639,8 @@ function applyCallGraphResultMode(results: CallGraphMatch[], resultMode: SearchR
   }));
 }
 
-const SEARCH_CACHE_MAX_SIZE = 100;
-const SEARCH_CACHE_TTL_MS = 60 * 1000; // 1 minute
+const SEARCH_CACHE_MAX_SIZE_DEFAULT = 100;
+const SEARCH_CACHE_TTL_MS_DEFAULT = 60 * 1000; // 1 minute
 
 interface SearchCacheEntry {
   response: SearchResponse;
@@ -648,7 +648,17 @@ interface SearchCacheEntry {
 }
 
 export class SearchService {
-  private readonly searchCache = new Map<string, SearchCacheEntry>();
+  /** Nested cache: projectId -> (cacheKey -> entry) for efficient per-project eviction */
+  private readonly searchCache = new Map<string, Map<string, SearchCacheEntry>>();
+  private searchCacheSize = 0;
+
+  private get cacheTtlMs(): number {
+    return this.settings.searchCacheTtlMs || SEARCH_CACHE_TTL_MS_DEFAULT;
+  }
+
+  private get cacheMaxSize(): number {
+    return this.settings.searchCacheMaxSize || SEARCH_CACHE_MAX_SIZE_DEFAULT;
+  }
 
   public constructor(
     private readonly store: SQLiteStore,
@@ -665,38 +675,68 @@ export class SearchService {
     topK: number,
     filters?: SearchFilters,
     resultMode?: SearchResultMode,
-  ): string {
-    return JSON.stringify({ filters, indexVersion, mode, projectId, query, resultMode, topK });
+  ): { key: string; projectId: string } {
+    return {
+      key: JSON.stringify({ filters, indexVersion, mode, projectId, query, resultMode, topK }),
+      projectId,
+    };
   }
 
   private evictSearchCache(): void {
     const now = Date.now();
-    for (const [key, entry] of this.searchCache) {
-      if (now - entry.timestamp > SEARCH_CACHE_TTL_MS) {
-        this.searchCache.delete(key);
+    const ttl = this.cacheTtlMs;
+    // Evict expired entries
+    for (const [pid, entries] of this.searchCache) {
+      for (const [key, entry] of entries) {
+        if (now - entry.timestamp > ttl) {
+          entries.delete(key);
+          this.searchCacheSize--;
+        }
+      }
+      if (entries.size === 0) {
+        this.searchCache.delete(pid);
       }
     }
 
-    if (this.searchCache.size > SEARCH_CACHE_MAX_SIZE) {
-      const entries = [...this.searchCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, this.searchCache.size - SEARCH_CACHE_MAX_SIZE);
-      for (const [key] of toDelete) {
-        this.searchCache.delete(key);
+    // Evict oldest if over max
+    if (this.searchCacheSize > this.cacheMaxSize) {
+      const allEntries: Array<[string, string, SearchCacheEntry]> = [];
+      for (const [pid, entries] of this.searchCache) {
+        for (const [key, entry] of entries) {
+          allEntries.push([pid, key, entry]);
+        }
+      }
+      allEntries.sort((a, b) => a[2].timestamp - b[2].timestamp);
+      const toDelete = allEntries.slice(0, this.searchCacheSize - this.cacheMaxSize);
+      for (const [pid, key] of toDelete) {
+        this.searchCache.get(pid)?.delete(key);
+        this.searchCacheSize--;
       }
     }
   }
 
+  /** Return cache diagnostics */
+  public getCacheStats(): { projectCount: number; totalEntries: number; maxSize: number; ttlMs: number } {
+    return {
+      maxSize: this.cacheMaxSize,
+      projectCount: this.searchCache.size,
+      totalEntries: this.searchCacheSize,
+      ttlMs: this.cacheTtlMs,
+    };
+  }
+
   public clearSearchCache(projectId?: string): void {
     if (projectId) {
-      for (const key of this.searchCache.keys()) {
-        if (key.includes(projectId)) {
-          this.searchCache.delete(key);
-        }
+      const entries = this.searchCache.get(projectId);
+      if (entries) {
+        this.searchCacheSize -= entries.size;
+        this.searchCache.delete(projectId);
       }
       return;
     }
 
     this.searchCache.clear();
+    this.searchCacheSize = 0;
   }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
@@ -741,9 +781,11 @@ export class SearchService {
       throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
     }
 
-    const cacheKey = this.buildCacheKey(project.project_id, project.index_version, query, mode, topK, filters, resultMode);
-    const cached = this.searchCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL_MS && mode !== "semantic" && mode !== "hybrid") {
+    const { key: cacheKey, projectId: cacheProjectId } = this.buildCacheKey(project.project_id, project.index_version, query, mode, topK, filters, resultMode);
+    const projectCache = this.searchCache.get(cacheProjectId);
+    const cached = projectCache?.get(cacheKey);
+    // Cache is valid for ALL modes (including semantic/hybrid) when indexVersion matches
+    if (cached && Date.now() - cached.timestamp < this.cacheTtlMs) {
       return {
         ...cached.response,
         notes: [...(cached.response.notes || []), "Cache hit"],
@@ -756,7 +798,7 @@ export class SearchService {
     const executedStrategies: SearchPhaseStat[] = [];
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const normalizedFilters = normalizeSearchFilters(filters);
-    const fanoutLimit = Math.min(SEARCH_FANOUT_LIMIT, Math.max(topK, topK * SEARCH_FANOUT_MULTIPLIER));
+    const fanoutLimit = Math.min(this.settings.searchFanoutLimit || SEARCH_FANOUT_LIMIT, Math.max(topK, topK * SEARCH_FANOUT_MULTIPLIER));
     let vectorCacheHit = false;
     let vectorCandidateCount = 0;
     let vectorHydratedChunkCount = 0;
@@ -978,7 +1020,12 @@ export class SearchService {
       },
     };
 
-    this.searchCache.set(cacheKey, { response, timestamp: Date.now() });
+    // Store in nested cache
+    if (!this.searchCache.has(project.project_id)) {
+      this.searchCache.set(project.project_id, new Map());
+    }
+    this.searchCache.get(project.project_id)!.set(cacheKey, { response, timestamp: Date.now() });
+    this.searchCacheSize++;
     this.evictSearchCache();
 
     return response;

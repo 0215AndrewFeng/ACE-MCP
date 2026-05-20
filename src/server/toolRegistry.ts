@@ -14,6 +14,9 @@ import { registerGetFileSnippetTool } from "./tools/getFileSnippet.js";
 import { registerIndexProjectTool } from "./tools/indexProject.js";
 import { registerProjectStatsTool } from "./tools/projectStats.js";
 import { registerSearchContextTool } from "./tools/searchContext.js";
+import { registerCacheStatsTool } from "./tools/cacheStats.js";
+import { registerClearProjectIndexTool } from "./tools/clearProjectIndex.js";
+import { registerListSymbolsTool } from "./tools/listSymbols.js";
 
 export interface ToolDependencies {
   indexCoordinator: IndexCoordinator;
@@ -33,4 +36,7 @@ export function registerTools(server: McpServer, dependencies: ToolDependencies)
   registerEvaluateSearchQualityTool(server, dependencies);
   registerGetFileSnippetTool(server, dependencies);
   registerProjectStatsTool(server, dependencies);
+  registerCacheStatsTool(server, dependencies);
+  registerClearProjectIndexTool(server, dependencies);
+  registerListSymbolsTool(server, dependencies);
 }

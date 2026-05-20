@@ -1,4 +1,5 @@
 import type { StructuredSearchField, StructuredSearchOperator } from "../common/types.js";
+import { AppError } from "../common/errors.js";
 
 type Token =
   | { type: "AND" | "LPAREN" | "NOT" | "OR" | "RPAREN" }
@@ -50,7 +51,7 @@ function readQuotedValue(input: string, start: number): { end: number; phrase: t
     current += 1;
   }
 
-  throw new Error("Unterminated quoted phrase in structured query.");
+  throw new AppError("INVALID_STRUCTURED_QUERY", "Unterminated quoted phrase in structured query.");
 }
 
 function readBareValue(input: string, start: number): { end: number; phrase: false; value: string } {
@@ -102,7 +103,7 @@ function tokenize(input: string): Token[] {
       field = fieldMatch[1]!.toLowerCase() as StructuredSearchField;
       cursor += fieldMatch[0].length;
       if (cursor >= input.length) {
-        throw new Error(`Missing value for ${field}: clause.`);
+        throw new AppError("INVALID_STRUCTURED_QUERY", `Missing value for ${field}: clause.`);
       }
     }
 
@@ -113,7 +114,7 @@ function tokenize(input: string): Token[] {
     cursor = valueToken.end;
     const value = valueToken.value.trim();
     if (value.length === 0) {
-      throw new Error("Structured query contains an empty clause.");
+      throw new AppError("INVALID_STRUCTURED_QUERY", "Structured query contains an empty clause.");
     }
 
     if (!field && !valueToken.phrase) {
@@ -165,10 +166,10 @@ export function parseStructuredQuery(query: string): ParsedStructuredQuery | nul
   function consume(expected?: Token["type"]): Token {
     const token = tokens[position];
     if (!token) {
-      throw new Error("Unexpected end of structured query.");
+      throw new AppError("INVALID_STRUCTURED_QUERY", "Unexpected end of structured query.");
     }
     if (expected && token.type !== expected) {
-      throw new Error(`Expected ${expected} but found ${token.type}.`);
+      throw new AppError("INVALID_STRUCTURED_QUERY", `Expected ${expected} but found ${token.type}.`);
     }
     position += 1;
     return token;
@@ -177,7 +178,7 @@ export function parseStructuredQuery(query: string): ParsedStructuredQuery | nul
   function parsePrimary(): StructuredQueryNode {
     const token = peek();
     if (!token) {
-      throw new Error("Unexpected end of structured query.");
+      throw new AppError("INVALID_STRUCTURED_QUERY", "Unexpected end of structured query.");
     }
 
     if (token.type === "LPAREN") {
@@ -188,7 +189,7 @@ export function parseStructuredQuery(query: string): ParsedStructuredQuery | nul
     }
 
     if (token.type !== "TERM") {
-      throw new Error(`Unexpected token ${token.type} in structured query.`);
+      throw new AppError("INVALID_STRUCTURED_QUERY", `Unexpected token ${token.type} in structured query.`);
     }
 
     const consumed = consume("TERM") as Extract<Token, { type: "TERM" }>;
@@ -275,12 +276,12 @@ export function parseStructuredQuery(query: string): ParsedStructuredQuery | nul
 
   const root = parseOr();
   if (position !== tokens.length) {
-    throw new Error(`Unexpected token ${tokens[position]!.type} in structured query.`);
+    throw new AppError("INVALID_STRUCTURED_QUERY", `Unexpected token ${tokens[position]!.type} in structured query.`);
   }
 
   for (const term of terms) {
     if (term.field && !FIELD_NAMES.has(term.field)) {
-      throw new Error(`Unsupported structured query field: ${term.field}`);
+      throw new AppError("INVALID_STRUCTURED_QUERY", `Unsupported structured query field: ${term.field}`);
     }
   }
 

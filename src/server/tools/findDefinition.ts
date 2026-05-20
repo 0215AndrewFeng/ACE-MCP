@@ -32,7 +32,7 @@ export function registerFindDefinitionTool(server: McpServer, dependencies: Tool
       title: "Find Definition",
     },
     async ({ excludePathPrefix, includeContextLines, languages, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
-      const indexResult = await dependencies.indexCoordinator.indexProject(projectRootPath, "incremental");
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findDefinitions(
         indexResult.projectRootPath,
         query,
