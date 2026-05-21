@@ -103,7 +103,7 @@ export interface SymbolInfo {
   containerName?: string;
   fileId: string;
   fullName: string;
-  kind: "class" | "enum" | "function" | "interface" | "method" | "record";
+  kind: "class" | "constructor" | "enum" | "field" | "function" | "interface" | "method" | "property" | "record";
   line: number;
   modulePath?: string;
   name: string;

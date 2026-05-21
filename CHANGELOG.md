@@ -2,6 +2,39 @@
 
 本项目的重要版本变更记录如下。
 
+## [3.9.0] - 2026-05-21
+
+### 新增
+
+- **符号类型扩展**：新增 `constructor`、`field`、`property` 符号类型，覆盖更完整的代码结构。
+
+### 改进
+
+- **Java 适配器增强**：
+  - 提取构造函数（constructor）和字段（field）作为独立符号
+  - 追踪 `extends` / `implements` 类型继承关系，生成 type usage
+  - 提取注解使用（`@Autowired`、`@Service` 等），建立 usage 关联
+  - 字段类型推断增强：import-resolved 类型名用于调用图候选
+  - 方法内局部变量类型追踪（非 `new` 赋值）
+  - 跳过注释行，减少误匹配
+  - 静态导入生成额外 usage 记录
+
+- **Python 适配器增强**：
+  - 装饰器使用追踪（`@app.route`、`@classmethod` 等），生成 usage 关联
+  - 基类提取（`class Foo(Base):`），建立 type usage
+  - 参数和返回值类型提示追踪（`def bar(x: int) -> str:`），生成 type usage
+  - 多行 import 支持（括号和反斜杠续行）
+  - 模块级 lambda 赋值识别为 function 符号
+  - import 别名映射用于 usage 候选名解析
+
+- **.NET 适配器增强**：
+  - 提取 `struct`（映射为 class 符号）、`property`、`constructor`、`delegate`、`event`
+  - 支持 `using static`、`using alias`、`global using` 语法
+  - attribute 使用追踪（`[Authorize]` 等），生成 usage 关联
+  - 基类/接口继承关系提取（`class Foo : Bar, IFoo`），建立 type usage
+  - 属性类型推断生成 type usage
+  - 跳过注释行，减少误匹配
+
 ## [3.6.0] - 2026-05-14
 
 ### 新增
