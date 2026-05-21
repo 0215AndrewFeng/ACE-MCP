@@ -1,0 +1,32 @@
+README.md
+  s_0f8113dba42c56::t_9143174d4c3b06 5
+  s_0f8113dba42c56::t_236f5d3ec28619 394,396-403,405
+src/adapters/python/index.ts
+  s_0f8113dba42c56::t_4e055d6ef1b3d2 4-6,10-12,40-44,53-59,68-84,93-110,112-117,119-120,129,137,139,143,147-149,164-180,182,186,190,192,207-241,246,248,252-269,273-278,285,296,311-312,332-357
+src/adapters/java/index.ts
+  s_0f8113dba42c56::t_e14cc1ceffe5f5 1,4-5,7,9-16,24-25,50-74,76,85-90,107-113,119,121-123,135,143-166,170-171,175,181,189,205-222,231-266,270-271,273,297-333,340,348-356,360,362,373,381-385,388-389
+CHANGELOG.md
+  s_0f8113dba42c56::t_7528273b9490f9 5-37
+src/adapters/dotnet/index.ts
+  s_0f8113dba42c56::t_19ddaa7a8c59e2 4-5,8-10,12-17,20-24,26,28,53-62,75,91-117,125,128-142,170-222,227-228,244-259,267-334,338-357,359-361,364,378,380,393
+src/core/common/types.ts
+  s_0f8113dba42c56::t_934655b89c7175 106
+package.json
+  s_0f8113dba42c56::t_69376dc2330368 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "e68cad71e5855b1bc52c9adbccb99a473053463d",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
