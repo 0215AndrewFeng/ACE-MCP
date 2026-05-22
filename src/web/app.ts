@@ -713,40 +713,21 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       const timeout = clampInteger(timeoutSeconds, 10, 300, 60) * 1000;
-
-      // SSE setup
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders?.();
-
-      const sendEvent = (event: string, data: unknown) => {
-        res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-      };
-
-      let aborted = false;
-      req.on("close", () => { aborted = true; });
-
       const startMs = Date.now();
-      const checkTimeout = () => {
+      const checkTimeout = (phase: string) => {
         if (Date.now() - startMs > timeout) {
-          throw new AppError("TIMEOUT", `Timeout: exceeded ${timeout / 1000}s limit`);
-        }
-        if (aborted) {
-          throw new AppError("CLIENT_DISCONNECTED", "Client disconnected");
+          throw new AppError("TIMEOUT", `Timeout at ${phase}: exceeded ${timeout / 1000}s limit`);
         }
       };
 
       // Phase 1: Index
-      sendEvent("progress", { phase: "index", message: "Checking project index freshness..." });
+      const indexStart = Date.now();
       const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
-      const indexMs = Date.now() - startMs;
-      sendEvent("progress", { phase: "index", message: `Index ready (${indexMs}ms)`, doneMs: indexMs });
-      checkTimeout();
+      const indexMs = Date.now() - indexStart;
+      checkTimeout("index");
 
       // Phase 2: Search
       const topK = clampInteger(maxSources, 1, 20, 10);
-      sendEvent("progress", { phase: "search", message: `Searching for top ${topK} relevant code snippets...` });
       const searchStart = Date.now();
       const searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -758,34 +739,25 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         "full",
       );
       const searchMs = Date.now() - searchStart;
-      sendEvent("progress", {
-        phase: "search",
-        message: `Found ${searchResult.results.length} relevant snippets (${searchMs}ms)`,
-        doneMs: searchMs,
-        resultCount: searchResult.results.length,
-      });
-      checkTimeout();
+      checkTimeout("search");
 
       // Phase 3: Load summary
       let summaryContext = "";
+      let hadSummary = false;
       if (includeSummary !== false) {
-        sendEvent("progress", { phase: "summary", message: "Loading project summary..." });
         const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
         if (summary) {
           summaryContext = `## Project Architecture\n\n${summary.architecture}\n\n`;
-          sendEvent("progress", { phase: "summary", message: "Project summary loaded as additional context" });
-        } else {
-          sendEvent("progress", { phase: "summary", message: "No existing summary found, skipping" });
+          hadSummary = true;
         }
       }
-      checkTimeout();
+      checkTimeout("summary");
 
       // Phase 4: LLM
       const sourcesText = searchResult.results
         .map((r, i) => `[${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`\n${r.snippet}\n\`\`\``)
         .join("\n\n");
 
-      sendEvent("progress", { phase: "llm", message: "Sending context to LLM, generating answer..." });
       const llmStart = Date.now();
       const result = await dependencies.llmClient.complete({
         messages: [
@@ -800,11 +772,9 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ],
       });
       const llmMs = Date.now() - llmStart;
-      sendEvent("progress", { phase: "llm", message: `Answer generated (${llmMs}ms)`, doneMs: llmMs });
-
-      // Final result
       const totalMs = Date.now() - startMs;
-      sendEvent("result", {
+
+      res.json({
         answer: result.content,
         sources: searchResult.results.map((r, i) => ({
           index: i + 1,
@@ -816,18 +786,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           snippet: r.snippet.slice(0, 200),
         })),
         usage: result.usage,
+        hadSummary,
         timing: { indexMs, searchMs, llmMs, totalMs },
       });
-
-      res.end();
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
-      try {
-        res.write(`event: error\ndata: ${JSON.stringify({ error: message })}\n\n`);
-        res.end();
-      } catch {
-        // response already closed
-      }
+      res.status(500).json({ error: message });
     }
   });
 

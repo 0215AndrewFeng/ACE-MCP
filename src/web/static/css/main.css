@@ -89,6 +89,11 @@ hr { border: none; border-top: 1px solid #e5e7eb; }
 .qa-stats .qa-stat { display: flex; align-items: center; gap: 6px; }
 .qa-stats .qa-stat-label { font-weight: 600; color: #475569; }
 
+/* ── QA Advanced ── */
+.qa-advanced { margin-top: 4px; }
+.qa-advanced summary { cursor: pointer; font-size: 13px; color: #94a3b8; user-select: none; }
+.qa-advanced summary:hover { color: #64748b; }
+
 /* ── QA Raw JSON ── */
 .qa-raw details { margin-top: 12px; }
 .qa-raw summary { cursor: pointer; font-size: 13px; color: #94a3b8; user-select: none; padding: 6px 0; }
