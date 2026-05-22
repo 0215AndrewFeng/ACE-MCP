@@ -1,0 +1,87 @@
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_61a2520ee2b6f5 64
+src/server/tools/generateSummary.ts
+  s_0f8113dba42c56::t_39c6e4d6900516 1-42
+src/adapters/index.ts
+  s_0f8113dba42c56::t_dae597168f9a01 7,10
+src/web/app.ts
+  s_0f8113dba42c56::t_8606f25060f3d5 35
+  s_0f8113dba42c56::t_3125c4d3534544 243-257
+  s_0f8113dba42c56::t_3ff99ea2ba4250 672-773
+  s_0f8113dba42c56::t_61a2520ee2b6f5 43
+  s_0f8113dba42c56::t_b29cb2db8254e8 22
+  s_0f8113dba42c56::t_90a2527622328a 17
+  s_0f8113dba42c56::t_ed8b02afe89697 29
+src/test/helpers.ts
+  s_0f8113dba42c56::t_2c3b8291b97def 59
+  s_0f8113dba42c56::t_9d399429b4edf2 67-71
+src/server/tools/getSummary.ts
+  s_0f8113dba42c56::t_97ad84eea81627 1-47
+src/server/tools/findCallees.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 13
+src/server/tools/findCallers.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 13
+src/server/tools/findReferences.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 8
+src/server/tools/evaluateSearchQuality.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 7
+src/core/common/types.ts
+  s_0f8113dba42c56::t_bbe014a9aadc4f 1
+  s_0f8113dba42c56::t_987a409bb12a52 42-46
+src/server/tools/findDefinition.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 8
+src/index.ts
+  s_0f8113dba42c56::t_bce8560a72b24d 96
+  s_0f8113dba42c56::t_30a0626962223e 90
+  s_0f8113dba42c56::t_bee95a069e48da 8
+  s_0f8113dba42c56::t_bae118de454b4a 36,41
+  s_0f8113dba42c56::t_c711dd13731161 37,46
+  s_0f8113dba42c56::t_d9c918bba3922a 9
+src/adapters/markdown/index.ts
+  s_0f8113dba42c56::t_006a88194dbe27 1-19
+src/server/tools/searchContext.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 8
+src/core/summary/types.ts
+  s_0f8113dba42c56::t_7727a0ca646495 1-42
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_61a2520ee2b6f5 39
+CHANGELOG.md
+  s_0f8113dba42c56::t_b74196997280e3 5-15
+package.json
+  s_0f8113dba42c56::t_552748980d2927 3
+src/core/summary/summaryGenerator.ts
+  s_0f8113dba42c56::t_f3367626193ec0 1-216
+README.md
+  s_0f8113dba42c56::t_7aa2222e73633f 5
+  s_0f8113dba42c56::t_2ebccc67206c15 394,396-400,402,406
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_2d180c7745b2d0 1-103
+src/web/app.test.ts
+  s_0f8113dba42c56::t_b68a3ef5b89eca 32-33,81-82,159-160,229-230
+  s_0f8113dba42c56::t_9b3a1e66451640 5-6
+src/core/llm/llmClient.ts
+  s_0f8113dba42c56::t_e04de615ea104a 1-99
+src/server/toolRegistry.ts
+  s_0f8113dba42c56::t_68142395353b37 9,22-24,33,49-51
+  s_0f8113dba42c56::t_ce9c3b5aae6ac9 28
+  s_0f8113dba42c56::t_b12bda377eb4cb 6
+src/config/settings.ts
+  s_0f8113dba42c56::t_a77f5046188004 52
+  s_0f8113dba42c56::t_df2e00829abdcc 190-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "85748e9d928d11da2b4476fbd26727f208af467e",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
