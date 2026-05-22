@@ -1,0 +1,26 @@
+package.json
+  s_0f8113dba42c56::t_68243a728b08a8 3
+CHANGELOG.md
+  s_0f8113dba42c56::t_a3643e4d0ce7b1 5-10
+src/version.ts
+  s_0f8113dba42c56::t_a68fba0c69f65a 2
+src/config/settings.ts
+  s_0f8113dba42c56::t_04730fe4f368a5 121-156
+  s_0f8113dba42c56::t_05b32269d9ce7f 180-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "901fd679bebf2b3f1b5537abef8d0652d206cf86",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
