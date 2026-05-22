@@ -16,6 +16,11 @@ type RawSettings = Partial<
     | "excludePatterns"
     | "indexFreshness"
     | "indexFreshnessSeconds"
+    | "llmApiKey"
+    | "llmApiUrl"
+    | "llmMaxTokens"
+    | "llmModel"
+    | "llmTemperature"
     | "logLevel"
     | "maxFileSizeKb"
     | "maxLinesPerChunk"
@@ -57,6 +62,11 @@ const DEFAULT_PUBLIC_SETTINGS = {
   searchCacheMaxSize: 100,
   vectorCacheMaxProjects: 10,
   searchFanoutLimit: 50,
+  llmApiUrl: "",
+  llmApiKey: "",
+  llmModel: "gpt-4o-mini",
+  llmMaxTokens: 2048,
+  llmTemperature: 0.3,
 } satisfies RawSettings;
 
 function coerceArray(value: string | undefined): string[] | undefined {
@@ -187,10 +197,32 @@ export async function loadSettings(): Promise<Settings> {
       Number(process.env.ACE_MCP_VECTOR_CACHE_MAX_PROJECTS ?? fileSettings.vectorCacheMaxProjects ?? DEFAULT_PUBLIC_SETTINGS.vectorCacheMaxProjects),
     searchFanoutLimit:
       Number(process.env.ACE_MCP_SEARCH_FANOUT_LIMIT ?? fileSettings.searchFanoutLimit ?? DEFAULT_PUBLIC_SETTINGS.searchFanoutLimit),
-    llmApiUrl: process.env.ACE_MCP_LLM_API_URL ?? "",
-    llmApiKey: process.env.ACE_MCP_LLM_API_KEY ?? "",
-    llmModel: process.env.ACE_MCP_LLM_MODEL ?? "gpt-4o-mini",
-    llmMaxTokens: Number(process.env.ACE_MCP_LLM_MAX_TOKENS ?? 2048),
-    llmTemperature: Number(process.env.ACE_MCP_LLM_TEMPERATURE ?? 0.3),
+    llmApiUrl: process.env.ACE_MCP_LLM_API_URL ?? (fileSettings.llmApiUrl as string | undefined) ?? "",
+    llmApiKey: process.env.ACE_MCP_LLM_API_KEY ?? (fileSettings.llmApiKey as string | undefined) ?? "",
+    llmModel: process.env.ACE_MCP_LLM_MODEL ?? (fileSettings.llmModel as string | undefined) ?? "gpt-4o-mini",
+    llmMaxTokens: Number(process.env.ACE_MCP_LLM_MAX_TOKENS ?? fileSettings.llmMaxTokens ?? 2048),
+    llmTemperature: Number(process.env.ACE_MCP_LLM_TEMPERATURE ?? fileSettings.llmTemperature ?? 0.3),
   };
+}
+
+/** Persist LLM config fields into settings.toml (merge, not overwrite). */
+export async function saveLlmConfig(
+  settingsFilePath: string,
+  updates: { llmApiKey?: string; llmApiUrl?: string; llmModel?: string; llmMaxTokens?: number; llmTemperature?: number },
+): Promise<void> {
+  let existing: Record<string, unknown> = {};
+  try {
+    const content = await readFile(settingsFilePath, "utf8");
+    existing = TOML.parse(content) as Record<string, unknown>;
+  } catch {
+    // file missing or unparseable — start fresh
+  }
+
+  if (updates.llmApiUrl !== undefined) existing.llmApiUrl = updates.llmApiUrl;
+  if (updates.llmApiKey !== undefined) existing.llmApiKey = updates.llmApiKey;
+  if (updates.llmModel !== undefined) existing.llmModel = updates.llmModel;
+  if (updates.llmMaxTokens !== undefined) existing.llmMaxTokens = updates.llmMaxTokens;
+  if (updates.llmTemperature !== undefined) existing.llmTemperature = updates.llmTemperature;
+
+  await writeFile(settingsFilePath, TOML.stringify(existing as any), "utf8");
 }

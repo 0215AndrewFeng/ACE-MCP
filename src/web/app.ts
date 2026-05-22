@@ -245,13 +245,26 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     res.json(dependencies.llmClient.getConfig());
   });
 
-  app.post("/api/llm/config", (req: Request, res: Response) => {
+  app.post("/api/llm/config", async (req: Request, res: Response) => {
     const { apiUrl, apiKey, model } = req.body;
     if (!apiUrl || !apiKey) {
       res.status(400).json({ error: "apiUrl and apiKey are required" });
       return;
     }
     dependencies.llmClient.updateConfig(String(apiUrl), String(apiKey), model ? String(model) : undefined);
+
+    // Persist to settings.toml
+    try {
+      const { saveLlmConfig } = await import("../config/settings.js");
+      await saveLlmConfig(dependencies.settings.settingsFilePath, {
+        llmApiUrl: String(apiUrl),
+        llmApiKey: String(apiKey),
+        ...(model ? { llmModel: String(model) } : {}),
+      });
+    } catch {
+      // best-effort persist
+    }
+
     res.json(dependencies.llmClient.getConfig());
   });
 
