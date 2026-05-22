@@ -193,3 +193,60 @@ document.getElementById("run-snippet")?.addEventListener("click", () => run(() =
 })));
 
 renderHistory();
+
+// LLM Config
+document.getElementById("load-llm-config")?.addEventListener("click", () => run(() => request("GET", "/api/llm/config")));
+document.getElementById("update-llm-config")?.addEventListener("click", () => run(() => {
+  const body = {};
+  const url = document.getElementById("llm-api-url")?.value?.trim();
+  const key = document.getElementById("llm-api-key")?.value?.trim();
+  const model = document.getElementById("llm-model")?.value?.trim();
+  if (url) body.apiUrl = url;
+  if (key) body.apiKey = key;
+  if (model) body.model = model;
+  return request("POST", "/api/llm/config", body);
+}));
+
+// Summary
+document.getElementById("run-generate-summary")?.addEventListener("click", () => run(() => request("POST", "/api/summary/generate", {
+  projectRootPath: projectRootInput.value
+})));
+document.getElementById("load-summary")?.addEventListener("click", () => run(() => request(
+  "GET",
+  "/api/summary?projectRootPath=" + encodeURIComponent(projectRootInput.value)
+)));
+
+// Ask Codebase (RAG)
+document.getElementById("run-ask")?.addEventListener("click", async () => {
+  const qaAnswerEl = document.getElementById("qa-answer");
+  const question = document.getElementById("qa-question")?.value?.trim();
+  if (!question) return;
+  resultEl.textContent = "Thinking...";
+  resultEl.classList.add("loading");
+  if (qaAnswerEl) { qaAnswerEl.hidden = true; qaAnswerEl.innerHTML = ""; }
+  try {
+    const data = await request("POST", "/api/qa/ask", {
+      projectRootPath: projectRootInput.value,
+      question,
+      maxSources: Number(document.getElementById("qa-max-sources")?.value || 8),
+      includeSummary: document.getElementById("qa-include-summary")?.checked ?? true
+    });
+    render(data);
+    // Show answer in friendly format
+    if (qaAnswerEl && data?.answer) {
+      const sourcesHtml = (data.sources || []).map(s =>
+        `[${s.index}] ${escapeHtml(s.filePath)}:${s.startLine}-${s.endLine} (${s.language}, score: ${s.score?.toFixed(2)})`
+      ).join("\n");
+      const usageHtml = data.usage ? `Tokens: prompt ${data.usage.promptTokens}, completion ${data.usage.completionTokens}` : "";
+      qaAnswerEl.innerHTML =
+        `<h3>Answer</h3>${escapeHtml(data.answer)}` +
+        (sourcesHtml ? `<div class="qa-sources"><strong>Sources:</strong>\n${sourcesHtml}</div>` : "") +
+        (usageHtml ? `<div class="qa-usage">${usageHtml}</div>` : "");
+      qaAnswerEl.hidden = false;
+    }
+  } catch (error) {
+    resultEl.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    resultEl.classList.remove("loading");
+  }
+});

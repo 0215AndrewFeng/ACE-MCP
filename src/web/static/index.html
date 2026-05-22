@@ -80,6 +80,39 @@
         <input id="snippet-end" type="number" min="1" value="40" />
         <button id="run-snippet" type="button">Run get_file_snippet</button>
       </div>
+      <div class="card">
+        <h2>🔑 LLM Config</h2>
+        <p class="hint">View or update LLM API configuration at runtime.</p>
+        <button id="load-llm-config" class="secondary" type="button">Load LLM config</button>
+        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb" />
+        <label for="llm-api-url">API URL</label>
+        <input id="llm-api-url" class="mono" placeholder="https://api.openai.com/v1/chat/completions" />
+        <label for="llm-api-key">API Key</label>
+        <input id="llm-api-key" type="password" class="mono" placeholder="sk-..." />
+        <label for="llm-model">Model</label>
+        <input id="llm-model" class="mono" placeholder="gpt-4o-mini" />
+        <button id="update-llm-config" type="button">Update LLM config</button>
+      </div>
+      <div class="card">
+        <h2>📝 Code Summary</h2>
+        <p class="hint">Generate or view project architecture summary (requires LLM).</p>
+        <button id="run-generate-summary" type="button">Generate summary</button>
+        <button id="load-summary" class="secondary" type="button" style="margin-top:8px">Load existing summary</button>
+      </div>
+      <div class="card wide">
+        <h2>💬 Ask Codebase (RAG)</h2>
+        <p class="hint">Ask a natural language question. Retrieves relevant code + docs, then calls LLM for an answer.</p>
+        <label for="qa-question">Question</label>
+        <textarea id="qa-question" placeholder="这个项目的搜索流程是什么？"></textarea>
+        <label for="qa-max-sources">Max sources</label>
+        <input id="qa-max-sources" type="number" min="1" max="20" value="8" />
+        <label>
+          <input id="qa-include-summary" type="checkbox" checked style="width:auto;margin-right:6px" />
+          Include project summary as context
+        </label>
+        <button id="run-ask" type="button" style="margin-top:8px">Ask codebase</button>
+        <div id="qa-answer" class="qa-answer" hidden></div>
+      </div>
       <div class="card wide">
         <h2>Search History</h2>
         <div id="search-history" class="search-history"></div>
