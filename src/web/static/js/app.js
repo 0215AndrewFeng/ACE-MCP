@@ -222,16 +222,6 @@ function renderMarkdown(text) {
   let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     return `<pre><code class="lang-${lang}">${escapeHtml(code.trimEnd())}</code></pre>`;
   });
-  // Split into blocks by double newline (but not inside <pre>)
-  const parts = [];
-  let inPre = false;
-  for (const line of html.split('\n')) {
-    if (line.includes('<pre>')) inPre = true;
-    if (line.includes('</pre>')) inPre = false;
-    parts.push({ line, inPre });
-  }
-  // Rejoin then process inline elements
-  html = parts.map(p => p.line).join('\n');
   // Headers
   html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
@@ -246,11 +236,8 @@ function renderMarkdown(text) {
   // Unordered list items
   html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
   html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
-  // Ordered list items
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  // Paragraphs: double newline outside pre → <p>
+  // Paragraphs
   html = html.replace(/\n{2,}/g, '</p><p>');
-  // Single newlines → <br> (but not between block elements)
   html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
   return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
 }
@@ -277,12 +264,39 @@ function renderSourceCard(source, maxScore) {
     </div>`;
 }
 
+const PHASE_ICONS = { index: '📂', search: '🔍', summary: '📝', llm: '🤖' };
+const PHASE_LABELS = { index: 'Index', search: 'Search', summary: 'Summary', llm: 'LLM' };
+
+function addStep(stepsEl, phase, message, done) {
+  const icon = done ? '✅' : PHASE_ICONS[phase] || '⏳';
+  const iconClass = done ? '' : 'spinning';
+  // Update existing step for this phase or add new
+  let existing = stepsEl.querySelector(`[data-phase="${phase}"]`);
+  if (existing) {
+    existing.querySelector('.qa-step-icon').textContent = done ? '✅' : icon;
+    existing.querySelector('.qa-step-icon').className = `qa-step-icon${done ? '' : ''}`;
+    existing.querySelector('.qa-step-text').textContent = message;
+    return;
+  }
+  const step = document.createElement('div');
+  step.className = 'qa-step';
+  step.dataset.phase = phase;
+  step.innerHTML = `
+    <div class="qa-step-icon ${iconClass}">${icon}</div>
+    <div class="qa-step-text">${escapeHtml(message)}</div>
+  `;
+  stepsEl.appendChild(step);
+}
+
 let qaTimerInterval = null;
+let qaAbortController = null;
 
 document.getElementById("run-ask")?.addEventListener("click", async () => {
   const askBtn = document.getElementById("run-ask");
+  const progressEl = document.getElementById("qa-progress");
   const loadingEl = document.getElementById("qa-loading");
   const timerEl = document.getElementById("qa-timer");
+  const stepsEl = document.getElementById("qa-steps");
   const answerBodyEl = document.getElementById("qa-answer-body");
   const sourcesListEl = document.getElementById("qa-sources-list");
   const statsEl = document.getElementById("qa-stats");
@@ -291,10 +305,15 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
   const question = document.getElementById("qa-question")?.value?.trim();
   if (!question) return;
 
+  const timeoutSec = Number(document.getElementById("qa-timeout")?.value || 60);
+
   // Reset
   askBtn.disabled = true;
+  askBtn.textContent = 'Thinking...';
   [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
   rawEl.innerHTML = '';
+  stepsEl.innerHTML = '';
+  progressEl.hidden = false;
   loadingEl.hidden = false;
 
   // Timer
@@ -302,56 +321,114 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
   if (qaTimerInterval) clearInterval(qaTimerInterval);
   qaTimerInterval = setInterval(() => {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    timerEl.textContent = `${elapsed}s`;
+    timerEl.textContent = `${elapsed}s / ${timeoutSec}s`;
   }, 100);
 
+  // Client-side timeout
+  if (qaAbortController) qaAbortController.abort();
+  qaAbortController = new AbortController();
+  const clientTimeout = setTimeout(() => qaAbortController.abort(), timeoutSec * 1000);
+
   try {
-    const data = await request("POST", "/api/qa/ask", {
-      projectRootPath: projectRootInput.value,
-      question,
-      maxSources: Number(document.getElementById("qa-max-sources")?.value || 8),
-      includeSummary: document.getElementById("qa-include-summary")?.checked ?? true
+    const response = await fetch("/api/qa/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        projectRootPath: projectRootInput.value,
+        question,
+        maxSources: Number(document.getElementById("qa-max-sources")?.value || 8),
+        includeSummary: document.getElementById("qa-include-summary")?.checked ?? true,
+        timeoutSeconds: timeoutSec,
+      }),
+      signal: qaAbortController.signal,
     });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let resultData = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events from buffer
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // keep incomplete line
+      let currentEvent = null;
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ') && currentEvent) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (currentEvent === 'progress') {
+              const isDone = !!data.doneMs;
+              addStep(stepsEl, data.phase, data.message, isDone);
+            } else if (currentEvent === 'result') {
+              resultData = data;
+            } else if (currentEvent === 'error') {
+              throw new Error(data.error);
+            }
+          } catch (e) {
+            if (e.message !== 'Unexpected end of JSON input') throw e;
+          }
+          currentEvent = null;
+        } else if (line === '') {
+          currentEvent = null;
+        }
+      }
+    }
+
+    if (!resultData) throw new Error('No result received from server');
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    // Answer body (markdown)
-    if (data?.answer) {
-      answerBodyEl.innerHTML = renderMarkdown(data.answer);
+    // Answer body
+    if (resultData.answer) {
+      answerBodyEl.innerHTML = renderMarkdown(resultData.answer);
       answerBodyEl.hidden = false;
     }
 
     // Sources
-    if (data?.sources?.length) {
-      const maxScore = Math.max(...data.sources.map(s => s.score || 0));
-      sourcesListEl.innerHTML = `<h4>Sources (${data.sources.length})</h4>` +
-        data.sources.map(s => renderSourceCard(s, maxScore)).join('');
+    if (resultData.sources?.length) {
+      const maxScore = Math.max(...resultData.sources.map(s => s.score || 0));
+      sourcesListEl.innerHTML = `<h4>Sources (${resultData.sources.length})</h4>` +
+        resultData.sources.map(s => renderSourceCard(s, maxScore)).join('');
       sourcesListEl.hidden = false;
     }
 
     // Stats
     const statItems = [];
-    statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Time:</span> ${elapsed}s</span>`);
-    if (data?.usage) {
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${data.usage.promptTokens} tokens</span>`);
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${data.usage.completionTokens} tokens</span>`);
+    statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Total:</span> ${elapsed}s</span>`);
+    if (resultData.timing) {
+      const t = resultData.timing;
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Index:</span> ${t.indexMs}ms</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Search:</span> ${t.searchMs}ms</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">LLM:</span> ${t.llmMs}ms</span>`);
     }
-    if (data?.sources) {
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Sources:</span> ${data.sources.length} snippets</span>`);
+    if (resultData.usage) {
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${resultData.usage.promptTokens} tok</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${resultData.usage.completionTokens} tok</span>`);
     }
     statsEl.innerHTML = statItems.join('');
     statsEl.hidden = false;
 
     // Raw JSON
-    rawEl.innerHTML = `<details><summary>Show raw JSON response</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+    rawEl.innerHTML = `<details><summary>Show raw JSON response</summary><pre>${escapeHtml(JSON.stringify(resultData, null, 2))}</pre></details>`;
 
   } catch (error) {
-    errorEl.textContent = error instanceof Error ? error.message : String(error);
+    const msg = error.name === 'AbortError' ? `Timeout: no response within ${timeoutSec}s` : (error.message || String(error));
+    errorEl.textContent = msg;
     errorEl.hidden = false;
   } finally {
+    clearTimeout(clientTimeout);
     clearInterval(qaTimerInterval);
     qaTimerInterval = null;
+    qaAbortController = null;
     loadingEl.hidden = true;
     askBtn.disabled = false;
+    askBtn.textContent = 'Ask codebase';
   }
 });
