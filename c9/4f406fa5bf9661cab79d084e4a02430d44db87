@@ -1,0 +1,30 @@
+src/config/settings.ts
+  s_0f8113dba42c56::t_9363ea22184347 207-228
+  s_0f8113dba42c56::t_db70616d5c45f8 19-23
+  s_0f8113dba42c56::t_bffe9e84c86f63 200-204
+  s_0f8113dba42c56::t_e4c0f095d9769f 65-69
+CHANGELOG.md
+  s_0f8113dba42c56::t_2d9ddbf6f3feaf 5-12
+src/version.ts
+  s_0f8113dba42c56::t_efb800e844a449 2
+package.json
+  s_0f8113dba42c56::t_132d30832e7867 3
+src/web/app.ts
+  s_0f8113dba42c56::t_4d8d39809eff5e 248,255-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "c94f406fa5bf9661cab79d084e4a02430d44db87",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
