@@ -118,6 +118,42 @@ function coerceIndexFreshness(value: string | undefined): Settings["indexFreshne
   return undefined;
 }
 
+const LLM_TOML_SECTION = `
+# ── LLM API Configuration ──
+# Used by generate_summary and ask_codebase tools.
+# Supports any OpenAI-compatible API (OpenAI, Azure, OneAI, Ollama, etc.)
+# Priority: environment variable > this file > built-in default
+
+# API endpoint for chat completions (OpenAI-compatible format)
+# Example: "https://api.openai.com/v1/chat/completions"
+# Example: "https://oneai.17usoft.com/v1/chat/completions"
+# Example: "http://localhost:11434/v1/chat/completions" (Ollama)
+llmApiUrl = ""
+
+# API key (Bearer token). Leave empty if your endpoint doesn't require auth.
+llmApiKey = ""
+
+# Model name to use
+# Examples: "gpt-4o-mini", "deepseek-v4-flash", "deepseek-v4-pro"
+llmModel = "gpt-4o-mini"
+
+# Maximum tokens for LLM response
+llmMaxTokens = 2048
+
+# Temperature (0.0 = deterministic, 1.0 = creative)
+llmTemperature = 0.3
+`;
+
+function generateDefaultToml(): string {
+  const base = TOML.stringify(DEFAULT_PUBLIC_SETTINGS);
+  // Remove the LLM fields that stringify added (they'll come from the template)
+  const cleaned = base
+    .split("\n")
+    .filter((line) => !line.startsWith("llmApi") && !line.startsWith("llmM") && !line.startsWith("llmT"))
+    .join("\n");
+  return cleaned.trimEnd() + "\n" + LLM_TOML_SECTION;
+}
+
 export async function loadSettings(): Promise<Settings> {
   const baseDir = path.join(os.homedir(), ".ace-mcp");
   const dataDir = path.join(baseDir, "data");
@@ -141,7 +177,15 @@ export async function loadSettings(): Promise<Settings> {
   }
 
   if (Object.keys(fileSettings).length === 0) {
-    await writeFile(settingsFilePath, TOML.stringify(DEFAULT_PUBLIC_SETTINGS), "utf8");
+    await writeFile(settingsFilePath, generateDefaultToml(), "utf8");
+  } else if (!("llmApiUrl" in fileSettings)) {
+    // Existing file missing LLM section — append it
+    const existing = await readFile(settingsFilePath, "utf8").catch(() => "");
+    await writeFile(settingsFilePath, existing.trimEnd() + "\n" + LLM_TOML_SECTION, "utf8");
+    // Re-read to pick up the appended values
+    try {
+      fileSettings = TOML.parse(await readFile(settingsFilePath, "utf8")) as RawSettings;
+    } catch { /* keep previous */ }
   }
 
   const envExtensions = coerceArray(process.env.ACE_MCP_TEXT_EXTENSIONS);
