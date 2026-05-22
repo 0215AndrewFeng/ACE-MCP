@@ -1,0 +1,23 @@
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_fbef051ac3e40d 196-252
+src/web/static/index.html
+  s_0f8113dba42c56::t_908cd7da316b01 83-115
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_83b1b1f08ca225 31-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "9fd1b1af71c1be403ebf7bf6d73f8a63f67ac6a8",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
