@@ -36,7 +36,7 @@ import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
 import { collectPositiveStructuredTerms, parseStructuredQuery, type ParsedStructuredQuery, type StructuredQueryNode, type StructuredQueryTerm } from "./structuredQuery.js";
 
-const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
+const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python", "markdown"]);
 const SEARCH_FANOUT_LIMIT = 50;
 const SEARCH_FANOUT_MULTIPLIER = 3;
 const STRUCTURED_SEARCH_FANOUT_LIMIT = 250;

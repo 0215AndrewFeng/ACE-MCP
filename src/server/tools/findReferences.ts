@@ -5,7 +5,7 @@ import { DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES } from "../../
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
-const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python"] as const;
+const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python", "markdown"] as const;
 const SEARCH_RESULT_MODES = ["full", "metadata"] as const;
 
 export function registerFindReferencesTool(server: McpServer, dependencies: ToolDependencies): void {

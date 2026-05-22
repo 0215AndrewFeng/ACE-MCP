@@ -5,6 +5,8 @@ import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
 import { IndexCoordinator } from "./core/indexing/indexCoordinator.js";
 import { createEmbeddingProvider } from "./core/search/embedding.js";
+import { LlmClient } from "./core/llm/llmClient.js";
+import { SummaryGenerator } from "./core/summary/summaryGenerator.js";
 import { SearchService } from "./core/search/searchService.js";
 import { SQLiteStore } from "./core/storage/sqliteStore.js";
 import { createMcpServer } from "./server/mcpServer.js";
@@ -31,13 +33,17 @@ async function main(): Promise<void> {
   const embeddingProvider = createEmbeddingProvider(settings);
   const indexCoordinator = new IndexCoordinator(settings, store, logger, embeddingProvider);
   const searchService = new SearchService(store, logger, settings, embeddingProvider);
+  const llmClient = new LlmClient(settings.llmApiUrl, settings.llmApiKey, settings.llmModel, settings.llmMaxTokens, settings.llmTemperature);
+  const summaryGenerator = new SummaryGenerator(store, llmClient, logger);
 
   const server = createMcpServer({
     indexCoordinator,
+    llmClient,
     logger,
     searchService,
     settings,
     store,
+    summaryGenerator,
   });
   const runtime = {
     nodeVersion: process.version,
@@ -81,11 +87,13 @@ async function main(): Promise<void> {
   if (cliOptions.webPort) {
     webAppHandle = await startWebApp(cliOptions.webPort, {
       indexCoordinator,
+      llmClient,
       logger,
       runtime,
       searchService,
       settings,
       store,
+      summaryGenerator,
     });
   }
 

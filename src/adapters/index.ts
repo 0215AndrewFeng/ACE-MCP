@@ -4,9 +4,10 @@ import type { Language, LanguageAdapter, SupportedLanguage } from "../core/commo
 import { dotnetAdapter } from "./dotnet/index.js";
 import { javaAdapter } from "./java/index.js";
 import { javascriptAdapter } from "./javascript/index.js";
+import { markdownAdapter } from "./markdown/index.js";
 import { pythonAdapter } from "./python/index.js";
 
-const ADAPTERS: LanguageAdapter[] = [javaAdapter, javascriptAdapter, dotnetAdapter, pythonAdapter];
+const ADAPTERS: LanguageAdapter[] = [javaAdapter, javascriptAdapter, dotnetAdapter, pythonAdapter, markdownAdapter];
 
 const ADAPTERS_BY_LANGUAGE = new Map<SupportedLanguage, LanguageAdapter>(
   ADAPTERS.map((adapter) => [adapter.language, adapter]),

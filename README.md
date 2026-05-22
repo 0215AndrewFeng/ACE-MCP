@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v3.9.0`
+当前版本：`v4.0.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -391,17 +391,19 @@ ace-mcp --web-port 8787
 - **配置灵活性**：暴露缓存 TTL、fanout limit 等硬编码参数
 - **错误处理统一**：`AppError` 扩展、Web API 状态码映射
 
-### v3.9.0（已发布）
+### v4.0.0（已发布）
 
-- **Java 适配器增强**：提取构造函数、字段、注解使用，追踪 extends/implements 类型关系，增强字段类型推断与导入解析
-- **Python 适配器增强**：装饰器使用追踪，基类提取，参数/返回类型提示追踪，多行 import 支持，lambda 赋值识别
-- **.NET 适配器增强**：提取 struct/property/constructor/delegate/event，支持 using static/alias/global using，attribute 追踪，继承关系提取
-- **符号类型扩展**：新增 `constructor`、`field`、`property` 符号类型
+- **代码知识库**：新增代码摘要生成、语义问答 RAG、文档联合索引三大能力
+- **LLM API 集成**：独立的 LLM 配置（支持 OpenAI 兼容接口），运行时动态配置
+- **文档联合索引**：`.md` 文件纳入搜索管线，与代码统一检索
+- **代码摘要**：`generate_summary` 自动生成项目架构概览和模块摘要，持久化到 `.ace-mcp/summaries/`
+- **语义问答**：`ask_codebase` 基于 RAG 的代码问答，检索代码+文档+摘要后调用 LLM 合成回答
 
-### v3.10.0（规划中）
+### v4.1.0（规划中）
 
 - `sqlite-vss` / ANN 等更高效的向量搜索后端
 - 更丰富的 Web 结果分析、质量回放与对比界面
+- 摘要增量更新优化
 - 搜索质量评估扩展（符号级断言、nDCG@k 指标）
 
 ## 开发建议
