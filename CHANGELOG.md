@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.0.4] - 2026-05-22
+
+### 改进
+
+- **LLM 配置持久化**：LLM 配置（`llmApiUrl`、`llmApiKey`、`llmModel`、`llmMaxTokens`、`llmTemperature`）现在从 `~/.ace-mcp/settings.toml` 读取，优先级为 环境变量 > TOML 配置 > 默认值。
+- **Web 配置写回 TOML**：通过 `POST /api/llm/config` 修改 LLM 配置时，同时更新内存和 `settings.toml`，重启后依然生效，方便切换模型平台。
+- **初始配置完整**：首次运行生成的 `settings.toml` 包含 LLM 配置项模板。
+
 ## [4.0.3] - 2026-05-22
 
 ### 改进
