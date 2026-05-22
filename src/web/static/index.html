@@ -95,30 +95,49 @@
       </div>
       <div class="card">
         <h2>📝 Code Summary</h2>
-        <p class="hint">Generate or view project architecture summary (requires LLM).</p>
+        <p class="hint">
+          Analyze the entire project structure and generate an architecture overview using LLM.
+          The summary describes each module's purpose, key symbols, and inter-module relationships.
+          Once generated, it is persisted to <code>.ace-mcp/summaries/</code> and can be used as
+          additional context for RAG Q&A below.
+        </p>
         <button id="run-generate-summary" type="button">Generate summary</button>
         <button id="load-summary" class="secondary" type="button" style="margin-top:8px">Load existing summary</button>
       </div>
       <div class="card wide">
         <h2>💬 Ask Codebase (RAG)</h2>
-        <p class="hint">Ask a natural language question. Retrieves relevant code + docs, then calls LLM for an answer.</p>
+        <p class="hint">
+          Ask a natural language question about the codebase. The system first searches for the most
+          relevant code snippets and documentation, then sends them as context to the LLM to generate
+          an answer with source citations.
+        </p>
         <label for="qa-question">Question</label>
-        <textarea id="qa-question" placeholder="这个项目的搜索流程是什么？"></textarea>
-        <div style="display:flex;gap:12px;align-items:end">
-          <div style="flex:1">
-            <label for="qa-max-sources">Max sources</label>
+        <textarea id="qa-question" placeholder="这个项目的搜索流程是什么？从用户发起搜索到返回结果经过了哪些步骤？"></textarea>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+          <div style="flex:1;min-width:120px">
+            <label for="qa-max-sources">Max sources
+              <span class="hint" style="display:inline;font-weight:normal"> - number of code snippets retrieved as LLM context (more = richer context but slower)</span>
+            </label>
             <input id="qa-max-sources" type="number" min="1" max="20" value="8" style="margin-bottom:0" />
           </div>
-          <label style="flex:1;display:flex;align-items:center;gap:6px;padding-bottom:2px;font-weight:normal;cursor:pointer">
+          <div style="flex:1;min-width:120px">
+            <label for="qa-timeout">Timeout (seconds)
+              <span class="hint" style="display:inline;font-weight:normal"> - abort if answer takes longer</span>
+            </label>
+            <input id="qa-timeout" type="number" min="10" max="300" value="60" style="margin-bottom:0" />
+          </div>
+          <label style="flex:1;min-width:180px;display:flex;align-items:center;gap:6px;padding-bottom:2px;font-weight:normal;cursor:pointer">
             <input id="qa-include-summary" type="checkbox" checked style="width:auto" />
-            Include project summary
+            Include project summary as context
           </label>
         </div>
         <button id="run-ask" type="button" style="margin-top:12px">Ask codebase</button>
-        <div id="qa-loading" class="qa-loading" hidden>
-          <div class="dots"><span></span><span></span><span></span></div>
-          <span>Searching code & generating answer...</span>
-          <span id="qa-timer" class="qa-timer"></span>
+        <div id="qa-progress" hidden>
+          <div id="qa-loading" class="qa-loading">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <span id="qa-timer" class="qa-timer"></span>
+          </div>
+          <div id="qa-steps" class="qa-steps"></div>
         </div>
         <div id="qa-answer-body" class="qa-answer-body" hidden></div>
         <div id="qa-sources-list" class="qa-sources-list" hidden></div>
