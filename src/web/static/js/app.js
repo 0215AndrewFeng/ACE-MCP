@@ -217,13 +217,94 @@ document.getElementById("load-summary")?.addEventListener("click", () => run(() 
 )));
 
 // Ask Codebase (RAG)
+function renderMarkdown(text) {
+  // Code blocks
+  let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    return `<pre><code class="lang-${lang}">${escapeHtml(code.trimEnd())}</code></pre>`;
+  });
+  // Split into blocks by double newline (but not inside <pre>)
+  const parts = [];
+  let inPre = false;
+  for (const line of html.split('\n')) {
+    if (line.includes('<pre>')) inPre = true;
+    if (line.includes('</pre>')) inPre = false;
+    parts.push({ line, inPre });
+  }
+  // Rejoin then process inline elements
+  html = parts.map(p => p.line).join('\n');
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Inline code (not inside pre)
+  html = html.replace(/(?<!<code[^>]*>)`([^`]+)`(?!<\/code>)/g, '<code>$1</code>');
+  // Blockquote
+  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Unordered list items
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  // Ordered list items
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Paragraphs: double newline outside pre → <p>
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  // Single newlines → <br> (but not between block elements)
+  html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
+  return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
+}
+
+function renderSourceCard(source, maxScore) {
+  const pct = maxScore > 0 ? Math.round((source.score / maxScore) * 100) : 0;
+  const langClass = `lang-${source.language || 'unknown'}`;
+  const snippetPreview = (source.snippet || '').split('\n').slice(0, 3).join('\n').slice(0, 200);
+  return `
+    <div class="qa-source-card">
+      <div class="qa-source-index">${source.index}</div>
+      <div class="qa-source-info">
+        <div class="qa-source-path">${escapeHtml(source.filePath)}</div>
+        <div class="qa-source-meta">
+          <span class="qa-source-badge ${langClass}">${escapeHtml(source.language || '?')}</span>
+          L${source.startLine}-${source.endLine}
+        </div>
+        ${snippetPreview ? `<div class="qa-source-snippet">${escapeHtml(snippetPreview)}</div>` : ''}
+      </div>
+      <div class="qa-source-score">
+        <div class="qa-source-score-bar"><div class="qa-source-score-fill" style="width:${pct}%"></div></div>
+        <div class="qa-source-score-label">${source.score?.toFixed(2) ?? '-'}</div>
+      </div>
+    </div>`;
+}
+
+let qaTimerInterval = null;
+
 document.getElementById("run-ask")?.addEventListener("click", async () => {
-  const qaAnswerEl = document.getElementById("qa-answer");
+  const askBtn = document.getElementById("run-ask");
+  const loadingEl = document.getElementById("qa-loading");
+  const timerEl = document.getElementById("qa-timer");
+  const answerBodyEl = document.getElementById("qa-answer-body");
+  const sourcesListEl = document.getElementById("qa-sources-list");
+  const statsEl = document.getElementById("qa-stats");
+  const errorEl = document.getElementById("qa-error");
+  const rawEl = document.getElementById("qa-raw");
   const question = document.getElementById("qa-question")?.value?.trim();
   if (!question) return;
-  resultEl.textContent = "Thinking...";
-  resultEl.classList.add("loading");
-  if (qaAnswerEl) { qaAnswerEl.hidden = true; qaAnswerEl.innerHTML = ""; }
+
+  // Reset
+  askBtn.disabled = true;
+  [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
+  rawEl.innerHTML = '';
+  loadingEl.hidden = false;
+
+  // Timer
+  const startTime = Date.now();
+  if (qaTimerInterval) clearInterval(qaTimerInterval);
+  qaTimerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    timerEl.textContent = `${elapsed}s`;
+  }, 100);
+
   try {
     const data = await request("POST", "/api/qa/ask", {
       projectRootPath: projectRootInput.value,
@@ -231,22 +312,46 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
       maxSources: Number(document.getElementById("qa-max-sources")?.value || 8),
       includeSummary: document.getElementById("qa-include-summary")?.checked ?? true
     });
-    render(data);
-    // Show answer in friendly format
-    if (qaAnswerEl && data?.answer) {
-      const sourcesHtml = (data.sources || []).map(s =>
-        `[${s.index}] ${escapeHtml(s.filePath)}:${s.startLine}-${s.endLine} (${s.language}, score: ${s.score?.toFixed(2)})`
-      ).join("\n");
-      const usageHtml = data.usage ? `Tokens: prompt ${data.usage.promptTokens}, completion ${data.usage.completionTokens}` : "";
-      qaAnswerEl.innerHTML =
-        `<h3>Answer</h3>${escapeHtml(data.answer)}` +
-        (sourcesHtml ? `<div class="qa-sources"><strong>Sources:</strong>\n${sourcesHtml}</div>` : "") +
-        (usageHtml ? `<div class="qa-usage">${usageHtml}</div>` : "");
-      qaAnswerEl.hidden = false;
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    // Answer body (markdown)
+    if (data?.answer) {
+      answerBodyEl.innerHTML = renderMarkdown(data.answer);
+      answerBodyEl.hidden = false;
     }
+
+    // Sources
+    if (data?.sources?.length) {
+      const maxScore = Math.max(...data.sources.map(s => s.score || 0));
+      sourcesListEl.innerHTML = `<h4>Sources (${data.sources.length})</h4>` +
+        data.sources.map(s => renderSourceCard(s, maxScore)).join('');
+      sourcesListEl.hidden = false;
+    }
+
+    // Stats
+    const statItems = [];
+    statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Time:</span> ${elapsed}s</span>`);
+    if (data?.usage) {
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${data.usage.promptTokens} tokens</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${data.usage.completionTokens} tokens</span>`);
+    }
+    if (data?.sources) {
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Sources:</span> ${data.sources.length} snippets</span>`);
+    }
+    statsEl.innerHTML = statItems.join('');
+    statsEl.hidden = false;
+
+    // Raw JSON
+    rawEl.innerHTML = `<details><summary>Show raw JSON response</summary><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre></details>`;
+
   } catch (error) {
-    resultEl.textContent = error instanceof Error ? error.message : String(error);
+    errorEl.textContent = error instanceof Error ? error.message : String(error);
+    errorEl.hidden = false;
   } finally {
-    resultEl.classList.remove("loading");
+    clearInterval(qaTimerInterval);
+    qaTimerInterval = null;
+    loadingEl.hidden = true;
+    askBtn.disabled = false;
   }
 });
