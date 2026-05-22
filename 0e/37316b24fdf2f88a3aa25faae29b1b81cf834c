@@ -1,0 +1,31 @@
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_7b669112ce611b 92-96
+package.json
+  s_0f8113dba42c56::t_51ef91361ba8e1 3
+CHANGELOG.md
+  s_0f8113dba42c56::t_369f94a83786c2 5-16
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_90baef289c704c 221-222,259-266,268-271,291,307-310,314-331,333-346,349-360,364-366,370-374,379-385,391,394,402
+src/web/app.ts
+  s_0f8113dba42c56::t_3002ab3a3bf964 717,719,724,726-727,742,746,751,754,776-777,789,794
+src/web/static/index.html
+  s_0f8113dba42c56::t_47a6605780c884 110,112-115,117-132,135
+src/version.ts
+  s_0f8113dba42c56::t_da4a0006e349ba 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "0e37316b24fdf2f88a3aa25faae29b1b81cf834c",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
