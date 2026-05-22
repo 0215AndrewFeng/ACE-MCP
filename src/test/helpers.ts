@@ -56,7 +56,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     maxFileSizeKb: 1024,
     maxLinesPerChunk: 80,
     settingsFilePath: path.join(tempDir, "settings.toml"),
-    textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
+    textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py", ".md"],
     vectorIndexingMode: "lazy",
     indexFreshness: "always",
     indexFreshnessSeconds: 30,
@@ -64,6 +64,11 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     searchCacheMaxSize: 100,
     vectorCacheMaxProjects: 10,
     searchFanoutLimit: 50,
+    llmApiUrl: "",
+    llmApiKey: "",
+    llmModel: "gpt-4o-mini",
+    llmMaxTokens: 2048,
+    llmTemperature: 0.3,
   };
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);

@@ -14,21 +14,25 @@ import {
 } from "../core/common/types.js";
 import type { Logger } from "../core/common/logger.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
+import type { LlmClient } from "../core/llm/llmClient.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
+import type { SummaryGenerator } from "../core/summary/summaryGenerator.js";
 import { buildEnvelope } from "../server/tools/responseEnvelope.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface WebAppDependencies {
   indexCoordinator: IndexCoordinator;
+  llmClient: LlmClient;
   logger: Logger;
   runtime: AppRuntimeInfo;
   searchService: SearchService;
   settings: Settings;
   store: SQLiteStore;
+  summaryGenerator: SummaryGenerator;
 }
 
 export interface WebAppHandle {
@@ -36,7 +40,7 @@ export interface WebAppHandle {
   port: number;
 }
 
-const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python"]);
+const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python", "markdown"]);
 
 function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
   const numericValue = Number(value);
@@ -234,6 +238,21 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   app.post("/api/watch/stop", (_req: Request, res: Response) => {
     dependencies.indexCoordinator.stopWatching();
     res.json({ watching: false });
+  });
+
+  // ── LLM config endpoints ──────────────────────────────
+  app.get("/api/llm/config", (_req: Request, res: Response) => {
+    res.json(dependencies.llmClient.getConfig());
+  });
+
+  app.post("/api/llm/config", (req: Request, res: Response) => {
+    const { apiUrl, apiKey, model } = req.body;
+    if (!apiUrl || !apiKey) {
+      res.status(400).json({ error: "apiUrl and apiKey are required" });
+      return;
+    }
+    dependencies.llmClient.updateConfig(String(apiUrl), String(apiKey), model ? String(model) : undefined);
+    res.json(dependencies.llmClient.getConfig());
   });
 
   app.post("/api/search-context", async (req: Request, res: Response) => {
@@ -648,6 +667,108 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   // Serve index.html for root
   app.get("/", (_req: Request, res: Response) => {
     res.sendFile(path.join(staticPath, "index.html"));
+  });
+
+  // ── Summary endpoints ─────────────────────────────────
+  app.post("/api/summary/generate", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath } = req.body;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
+      res.json(buildEnvelope(
+        { projectRootPath: indexResult.projectRootPath },
+        { outputDir: result.outputDir, filesWritten: result.filesWritten, moduleCount: result.moduleCount },
+        { tokensUsed: result.tokensUsed, durationMs: result.durationMs },
+        [],
+      ));
+    } catch (error: unknown) {
+      const message = error instanceof AppError ? error.message : String(error);
+      const status = error instanceof AppError ? error.statusCode : 500;
+      res.status(status).json({ error: message, code: error instanceof AppError ? error.code : "UNKNOWN" });
+    }
+  });
+
+  app.get("/api/summary", async (req: Request, res: Response) => {
+    try {
+      const projectRootPath = String(req.query.projectRootPath ?? "");
+      const normalized = normalizeAbsolutePath(projectRootPath);
+      const summary = await dependencies.summaryGenerator.loadSummary(normalized);
+      if (!summary) {
+        res.json({ found: false, note: "No summary found. Run generate_summary first." });
+        return;
+      }
+      res.json({ found: true, ...summary });
+    } catch (error: unknown) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // ── QA endpoint ────────────────────────────────────────
+  app.post("/api/qa/ask", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath, question, maxSources, includeSummary, languages } = req.body;
+      if (!dependencies.llmClient.isConfigured()) {
+        res.status(400).json({ error: "LLM API not configured" });
+        return;
+      }
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const topK = clampInteger(maxSources, 1, 20, 10);
+
+      // Search for relevant context
+      const searchResult = await dependencies.searchService.search(
+        indexResult.projectRootPath,
+        String(question ?? ""),
+        "auto",
+        topK,
+        0,
+        { languages: normalizeSupportedLanguages(languages) },
+        "full",
+      );
+
+      // Load summary if requested
+      let summaryContext = "";
+      if (includeSummary !== false) {
+        const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
+        if (summary) {
+          summaryContext = `## Project Architecture\n\n${summary.architecture}\n\n`;
+        }
+      }
+
+      // Build RAG prompt
+      const sourcesText = searchResult.results
+        .map((r, i) => `[${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`\n${r.snippet}\n\`\`\``)
+        .join("\n\n");
+
+      const result = await dependencies.llmClient.complete({
+        messages: [
+          {
+            role: "system",
+            content: "You are a code expert. Answer questions based on the provided source code and project context. Cite sources using [N] notation. Be concise and precise.",
+          },
+          {
+            role: "user",
+            content: `${summaryContext}## Relevant Source Code\n\n${sourcesText}\n\n## Question\n\n${question}`,
+          },
+        ],
+      });
+
+      res.json({
+        answer: result.content,
+        sources: searchResult.results.map((r, i) => ({
+          index: i + 1,
+          filePath: r.filePath,
+          startLine: r.startLine,
+          endLine: r.endLine,
+          language: r.language,
+          score: r.score,
+          snippet: r.snippet.slice(0, 200),
+        })),
+        usage: result.usage,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof AppError ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
   });
 
   return new Promise((resolve, reject) => {

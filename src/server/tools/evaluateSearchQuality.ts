@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
-const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python"] as const;
+const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python", "markdown"] as const;
 const SEARCH_MODES = ["auto", "lexical", "symbol", "semantic", "hybrid"] as const;
 
 export function registerEvaluateSearchQualityTool(server: McpServer, dependencies: ToolDependencies): void {

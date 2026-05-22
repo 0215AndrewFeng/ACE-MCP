@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { Logger } from "../core/common/logger.js";
+import { LlmClient } from "../core/llm/llmClient.js";
+import { SummaryGenerator } from "../core/summary/summaryGenerator.js";
 import { createTestProjectEnvironment } from "../test/helpers.js";
 import { APP_VERSION } from "../version.js";
 import { startWebApp } from "./app.js";
@@ -27,6 +29,8 @@ test("web app exposes runtime diagnostics and health metadata", async () => {
       searchService: environment.searchService,
       settings: environment.settings,
       store: environment.store,
+      llmClient: new LlmClient("", "", "test"),
+      summaryGenerator: new SummaryGenerator(environment.store, new LlmClient("", "", "test"), new Logger(environment.settings.logFilePath, "error")),
     });
 
     try {
@@ -74,6 +78,8 @@ test("web search and stats responses return valid data", async () => {
       searchService: environment.searchService,
       settings: environment.settings,
       store: environment.store,
+      llmClient: new LlmClient("", "", "test"),
+      summaryGenerator: new SummaryGenerator(environment.store, new LlmClient("", "", "test"), new Logger(environment.settings.logFilePath, "error")),
     });
 
     try {
@@ -150,6 +156,8 @@ test("watch API endpoints return correct state", async () => {
       searchService: environment.searchService,
       settings: environment.settings,
       store: environment.store,
+      llmClient: new LlmClient("", "", "test"),
+      summaryGenerator: new SummaryGenerator(environment.store, new LlmClient("", "", "test"), new Logger(environment.settings.logFilePath, "error")),
     });
 
     try {
@@ -218,6 +226,8 @@ export const runWorkflow = (orderId: string) => handleRefund(orderId);
       searchService: environment.searchService,
       settings: environment.settings,
       store: environment.store,
+      llmClient: new LlmClient("", "", "test"),
+      summaryGenerator: new SummaryGenerator(environment.store, new LlmClient("", "", "test"), new Logger(environment.settings.logFilePath, "error")),
     });
 
     try {

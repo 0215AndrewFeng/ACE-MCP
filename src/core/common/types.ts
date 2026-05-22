@@ -1,4 +1,4 @@
-export type Language = "java" | "javascript" | "dotnet" | "python" | "unknown";
+export type Language = "java" | "javascript" | "dotnet" | "python" | "markdown" | "unknown";
 export type SupportedLanguage = Exclude<Language, "unknown">;
 export type SearchMode = "auto" | "lexical" | "symbol" | "semantic" | "hybrid";
 export type StructuredSearchField = "content" | "path" | "symbol";
@@ -39,6 +39,11 @@ export interface Settings {
   searchCacheMaxSize: number;
   vectorCacheMaxProjects: number;
   searchFanoutLimit: number;
+  llmApiUrl: string;
+  llmApiKey: string;
+  llmModel: string;
+  llmMaxTokens: number;
+  llmTemperature: number;
 }
 
 export interface CliOptions {

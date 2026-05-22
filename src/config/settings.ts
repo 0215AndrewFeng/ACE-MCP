@@ -49,7 +49,7 @@ const DEFAULT_PUBLIC_SETTINGS = {
   logLevel: "info",
   maxFileSizeKb: 1024,
   maxLinesPerChunk: 220,
-  textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"],
+  textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py", ".md"],
   vectorIndexingMode: "lazy",
   indexFreshness: "stale",
   indexFreshnessSeconds: 30,
@@ -187,5 +187,10 @@ export async function loadSettings(): Promise<Settings> {
       Number(process.env.ACE_MCP_VECTOR_CACHE_MAX_PROJECTS ?? fileSettings.vectorCacheMaxProjects ?? DEFAULT_PUBLIC_SETTINGS.vectorCacheMaxProjects),
     searchFanoutLimit:
       Number(process.env.ACE_MCP_SEARCH_FANOUT_LIMIT ?? fileSettings.searchFanoutLimit ?? DEFAULT_PUBLIC_SETTINGS.searchFanoutLimit),
+    llmApiUrl: process.env.ACE_MCP_LLM_API_URL ?? "",
+    llmApiKey: process.env.ACE_MCP_LLM_API_KEY ?? "",
+    llmModel: process.env.ACE_MCP_LLM_MODEL ?? "gpt-4o-mini",
+    llmMaxTokens: Number(process.env.ACE_MCP_LLM_MAX_TOKENS ?? 2048),
+    llmTemperature: Number(process.env.ACE_MCP_LLM_TEMPERATURE ?? 0.3),
   };
 }

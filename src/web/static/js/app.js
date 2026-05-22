@@ -61,7 +61,7 @@ async function request(method, url, body) {
 }
 
 function parseSearchLanguages(value) {
-  const allowed = new Set(["java", "javascript", "dotnet", "python"]);
+  const allowed = new Set(["java", "javascript", "dotnet", "python", "markdown"]);
   return [...new Set(value.split(",").map(item => item.trim().toLowerCase()).filter(item => allowed.has(item)))];
 }
 
