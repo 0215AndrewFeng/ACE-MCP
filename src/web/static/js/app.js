@@ -289,10 +289,69 @@ function renderMarkdown(text) {
   return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
 }
 
-function renderSourceCard(source, maxScore) {
+function renderSourceCard(source, maxScore, searchTerms = []) {
   const pct = maxScore > 0 ? Math.round((source.score / maxScore) * 100) : 0;
   const langClass = `lang-${source.language || 'unknown'}`;
-  const snippetPreview = (source.snippet || '').split('\n').slice(0, 3).join('\n').slice(0, 200);
+  const snippet = source.snippet || '';
+  const lines = snippet.split('\n');
+  const totalLines = lines.length;
+
+  // Find lines that contain search terms (for highlighting)
+  const searchTermsLower = searchTerms.map(t => t.toLowerCase());
+  const matchedLineIndices = new Set();
+  lines.forEach((line, idx) => {
+    const lineLower = line.toLowerCase();
+    if (searchTermsLower.some(term => lineLower.includes(term))) {
+      matchedLineIndices.add(idx);
+    }
+  });
+
+  // Determine preview lines: show first 3 lines, or lines around matches
+  let previewLines = [];
+  let hasMore = false;
+
+  if (matchedLineIndices.size > 0 && totalLines > 5) {
+    // Show lines around first match with context
+    const firstMatch = Math.min(...matchedLineIndices);
+    const contextStart = Math.max(0, firstMatch - 1);
+    const contextEnd = Math.min(totalLines, firstMatch + 3);
+    previewLines = lines.slice(contextStart, contextEnd).map((line, i) => ({
+      lineNum: source.startLine + contextStart + i,
+      content: line,
+      isMatch: matchedLineIndices.has(contextStart + i)
+    }));
+    hasMore = totalLines > (contextEnd - contextStart);
+  } else if (totalLines > 5) {
+    // No matches found, show first 3 lines
+    previewLines = lines.slice(0, 3).map((line, i) => ({
+      lineNum: source.startLine + i,
+      content: line,
+      isMatch: false
+    }));
+    hasMore = true;
+  } else {
+    // Show all lines if <= 5
+    previewLines = lines.map((line, i) => ({
+      lineNum: source.startLine + i,
+      content: line,
+      isMatch: matchedLineIndices.has(i)
+    }));
+    hasMore = false;
+  }
+
+  // Render preview with line numbers and highlights
+  const previewHtml = previewLines.map(l =>
+    `<div class="snippet-line${l.isMatch ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${l.lineNum}</span>${escapeHtml(l.content)}</div>`
+  ).join('');
+
+  // Render full snippet for expansion
+  const fullHtml = lines.map((line, i) =>
+    `<div class="snippet-line${matchedLineIndices.has(i) ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${source.startLine + i}</span>${escapeHtml(line)}</div>`
+  ).join('');
+
+  const snippetId = `snippet-${source.index}`;
+  const expandBtn = hasMore ? `<button class="snippet-expand-btn" onclick="toggleSnippet('${snippetId}')" title="Expand/Collapse">+${totalLines - previewLines.length} more lines</button>` : '';
+
   return `
     <div class="qa-source-card">
       <div class="qa-source-index">${source.index}</div>
@@ -300,9 +359,14 @@ function renderSourceCard(source, maxScore) {
         <div class="qa-source-path">${escapeHtml(source.filePath)}</div>
         <div class="qa-source-meta">
           <span class="qa-source-badge ${langClass}">${escapeHtml(source.language || '?')}</span>
-          L${source.startLine}-${source.endLine}
+          L${source.startLine}-${source.endLine} (${totalLines} lines)
+          ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
-        ${snippetPreview ? `<div class="qa-source-snippet">${escapeHtml(snippetPreview)}</div>` : ''}
+        <div class="qa-source-snippet-container" id="${snippetId}">
+          <div class="qa-source-snippet-preview">${previewHtml}</div>
+          <div class="qa-source-snippet-full" hidden>${fullHtml}</div>
+          ${expandBtn}
+        </div>
       </div>
       <div class="qa-source-score">
         <div class="qa-source-score-bar"><div class="qa-source-score-fill" style="width:${pct}%"></div></div>
@@ -310,6 +374,33 @@ function renderSourceCard(source, maxScore) {
       </div>
     </div>`;
 }
+
+function toggleSnippet(id) {
+  const container = document.getElementById(id);
+  if (!container) return;
+  const preview = container.querySelector('.qa-source-snippet-preview');
+  const full = container.querySelector('.qa-source-snippet-full');
+  const btn = container.querySelector('.snippet-expand-btn');
+
+  if (full.hidden) {
+    preview.hidden = true;
+    full.hidden = false;
+    btn.textContent = 'Collapse';
+    btn.classList.add('expanded');
+  } else {
+    preview.hidden = false;
+    full.hidden = true;
+    btn.textContent = btn.dataset.originalText || btn.textContent;
+    btn.classList.remove('expanded');
+  }
+}
+
+// Store original button text when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.snippet-expand-btn').forEach(btn => {
+    btn.dataset.originalText = btn.textContent;
+  });
+});
 
 function setStep(stepsEl, phase, icon, text, done) {
   let el = stepsEl.querySelector(`[data-phase="${phase}"]`);
@@ -392,12 +483,14 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
 
     // Show search results immediately as source cards
     const searchResults = searchData?.data?.results || [];
+    // Extract search terms from question for highlighting
+    const searchTerms = question.split(/\s+/).filter(t => t.length > 2);
     if (searchResults.length) {
       const maxScore = Math.max(...searchResults.map(s => s.score || 0));
       const cards = searchResults.map((r, i) => renderSourceCard({
         index: i + 1, filePath: r.filePath, startLine: r.startLine, endLine: r.endLine,
         language: r.language, score: r.score, snippet: r.snippet || '',
-      }, maxScore)).join('');
+      }, maxScore, searchTerms)).join('');
       sourcesListEl.innerHTML = `<h4>Retrieved sources (${searchResults.length})</h4>` + cards;
       sourcesListEl.hidden = false;
     }
@@ -447,7 +540,7 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
     if (qaData?.sources?.length) {
       const maxScore = Math.max(...qaData.sources.map(s => s.score || 0));
       sourcesListEl.innerHTML = `<h4>Sources (${qaData.sources.length})</h4>` +
-        qaData.sources.map(s => renderSourceCard(s, maxScore)).join('');
+        qaData.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
       sourcesListEl.hidden = false;
     }
 
