@@ -606,6 +606,24 @@ export class SQLiteStore {
         model_name TEXT NOT NULL,
         FOREIGN KEY(chunk_id) REFERENCES chunk(chunk_id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS qa_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        project_root TEXT NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        sources_json TEXT,
+        rating TEXT NOT NULL,
+        correction TEXT,
+        prompt_tokens INTEGER,
+        completion_tokens INTEGER,
+        search_ms INTEGER,
+        llm_ms INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_qa_feedback_project_root ON qa_feedback(project_root);
+      CREATE INDEX IF NOT EXISTS idx_qa_feedback_rating ON qa_feedback(rating);
     `);
     this.ensureColumn("index_event", "metadata_json", "TEXT NOT NULL DEFAULT '{}'");
     this.ensureColumn("symbol", "canonical_name", "TEXT");
@@ -2136,5 +2154,74 @@ export class SQLiteStore {
          ORDER BY f.relative_path ASC, c.start_line ASC`,
       )
       .all(modelName, projectId) as Array<{ chunkId: string; content: string }>;
+  }
+
+  // ─── QA Feedback ───────────────────────────────────────────────────────────
+
+  public saveQaFeedback(feedback: {
+    answer: string;
+    completionTokens?: number;
+    correction?: string;
+    llmMs?: number;
+    projectRoot: string;
+    promptTokens?: number;
+    question: string;
+    rating: "positive" | "negative";
+    searchMs?: number;
+    sources?: Array<{ filePath: string; startLine: number; endLine: number; language: string; score: number }>;
+  }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO qa_feedback (
+           project_root, question, answer, sources_json, rating, correction,
+           prompt_tokens, completion_tokens, search_ms, llm_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        feedback.projectRoot,
+        feedback.question,
+        feedback.answer,
+        feedback.sources ? JSON.stringify(feedback.sources) : null,
+        feedback.rating,
+        feedback.correction ?? null,
+        feedback.promptTokens ?? null,
+        feedback.completionTokens ?? null,
+        feedback.searchMs ?? null,
+        feedback.llmMs ?? null,
+      );
+    return result.lastInsertRowid as number;
+  }
+
+  public getQaFeedbackStats(projectRoot?: string): {
+    negativeCount: number;
+    positiveCount: number;
+    totalCount: number;
+    withCorrectionCount: number;
+  } {
+    const whereClause = projectRoot ? "WHERE project_root = ?" : "";
+    const params = projectRoot ? [projectRoot] : [];
+    const row = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total_count,
+           SUM(CASE WHEN rating = 'positive' THEN 1 ELSE 0 END) AS positive_count,
+           SUM(CASE WHEN rating = 'negative' THEN 1 ELSE 0 END) AS negative_count,
+           SUM(CASE WHEN correction IS NOT NULL AND correction != '' THEN 1 ELSE 0 END) AS with_correction_count
+         FROM qa_feedback
+         ${whereClause}`,
+      )
+      .get(...params) as {
+      negative_count: number | null;
+      positive_count: number | null;
+      total_count: number;
+      with_correction_count: number | null;
+    };
+
+    return {
+      negativeCount: row.negative_count ?? 0,
+      positiveCount: row.positive_count ?? 0,
+      totalCount: row.total_count,
+      withCorrectionCount: row.with_correction_count ?? 0,
+    };
   }
 }
