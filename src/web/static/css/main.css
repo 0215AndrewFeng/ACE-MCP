@@ -102,3 +102,10 @@ hr { border: none; border-top: 1px solid #e5e7eb; }
 
 /* ── QA Error ── */
 .qa-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; margin-top: 14px; color: #991b1b; font-size: 14px; }
+
+/* ── Autostart ── */
+.autostart-status { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.autostart-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.autostart-badge.running { background: #dcfce7; color: #166534; }
+.autostart-badge.enabled { background: #dbeafe; color: #1e40af; }
+.autostart-badge.disabled { background: #f3f4f6; color: #6b7280; }

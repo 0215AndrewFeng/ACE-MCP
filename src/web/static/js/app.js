@@ -47,17 +47,27 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-async function request(method, url, body) {
-  const response = await fetch(url, {
-    method,
-    headers: body ? { "content-type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(JSON.stringify(data, null, 2));
+async function request(method, url, body, timeoutMs = 600000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: body ? { "content-type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(JSON.stringify(data, null, 2));
+    }
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error(`Request timed out after ${Math.round(timeoutMs/1000)}s`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return data;
 }
 
 function parseSearchLanguages(value) {
@@ -216,6 +226,51 @@ document.getElementById("load-summary")?.addEventListener("click", () => run(() 
   "/api/summary?projectRootPath=" + encodeURIComponent(projectRootInput.value)
 )));
 
+// Autostart
+const autostartBadge = document.getElementById("autostart-badge");
+const autostartPlatform = document.getElementById("autostart-platform");
+
+async function loadAutostartStatus() {
+  try {
+    const data = await request("GET", "/api/autostart");
+    if (autostartBadge) {
+      autostartBadge.textContent = data.enabled ? (data.running ? "Running" : "Enabled") : "Disabled";
+      autostartBadge.className = "autostart-badge " + (data.enabled ? (data.running ? "running" : "enabled") : "disabled");
+    }
+    if (autostartPlatform) {
+      autostartPlatform.textContent = data.platform + (data.webPort ? ` (port ${data.webPort})` : "");
+    }
+  } catch (err) {
+    if (autostartBadge) {
+      autostartBadge.textContent = "Error";
+      autostartBadge.className = "autostart-badge disabled";
+    }
+  }
+}
+
+document.getElementById("autostart-enable")?.addEventListener("click", async () => {
+  try {
+    await request("POST", "/api/autostart", { action: "enable" });
+    alert("Autostart enabled! Service will start on next system boot.");
+    loadAutostartStatus();
+  } catch (err) {
+    alert("Failed to enable autostart: " + (err.message || err));
+  }
+});
+
+document.getElementById("autostart-disable")?.addEventListener("click", async () => {
+  try {
+    await request("POST", "/api/autostart", { action: "disable" });
+    alert("Autostart disabled.");
+    loadAutostartStatus();
+  } catch (err) {
+    alert("Failed to disable autostart: " + (err.message || err));
+  }
+});
+
+// Load autostart status on page load
+loadAutostartStatus();
+
 // Ask Codebase (RAG)
 function renderMarkdown(text) {
   let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
@@ -312,11 +367,12 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
 
   try {
     // Step 1: Index
-    setStep(stepsEl, 'index', '📂', 'Checking project index...', false);
+    setStep(stepsEl, 'index', '📂', 'Checking project index (first time may take minutes)...', false);
     const indexStart = Date.now();
     await request("POST", "/api/index-project", { mode: "incremental", projectRootPath: projectRoot });
     const indexMs = Date.now() - indexStart;
-    setStep(stepsEl, 'index', '📂', `Index ready (${indexMs}ms)`, true);
+    const indexNote = indexMs > 5000 ? ' (semantic index built)' : '';
+    setStep(stepsEl, 'index', '📂', `Index ready (${indexMs}ms)${indexNote}`, true);
 
     // Step 2: Search
     const maxSources = Number(document.getElementById("qa-max-sources")?.value || 8);
