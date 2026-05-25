@@ -372,7 +372,31 @@ export interface SearchPhaseStat {
   name: string;
   reason?: string;
   skipped?: boolean;
+  timedOut?: boolean;
 }
+
+/**
+ * Search budget controls how much time each phase of search can take.
+ * When a phase exceeds its budget, it will be terminated early and
+ * the search will continue with results from faster phases.
+ */
+export interface SearchBudget {
+  /** Total search time budget in milliseconds (default: 30000) */
+  totalMs: number;
+  /** Vector search phase budget in milliseconds (default: 10000) */
+  vectorMs: number;
+  /** FTS/lexical phase budget in milliseconds (default: 5000) */
+  ftsMs: number;
+  /** Symbol search phase budget in milliseconds (default: 3000) */
+  symbolMs: number;
+}
+
+export const DEFAULT_SEARCH_BUDGET: SearchBudget = {
+  totalMs: 30000,
+  vectorMs: 10000,
+  ftsMs: 5000,
+  symbolMs: 3000,
+};
 
 export interface SearchDiagnostics {
   candidateCount: number;
@@ -385,6 +409,14 @@ export interface SearchDiagnostics {
     enabled: boolean;
     hydratedChunkCount: number;
     mode: VectorIndexingMode;
+    /** True if vector search was skipped because vectors weren't ready */
+    skippedNoVectors?: boolean;
+  };
+  /** Budget tracking for search phases */
+  budget?: {
+    totalMs: number;
+    usedMs: number;
+    timedOutPhases: string[];
   };
 }
 

@@ -5,11 +5,13 @@ import { formatHelpText, parseCliArgs } from "./cli.js";
 
 test("parseCliArgs supports version flag", () => {
   assert.deepEqual(parseCliArgs(["--version"]), {
+    autostart: undefined,
     help: false,
     version: true,
     webPort: undefined,
   });
   assert.deepEqual(parseCliArgs(["-v", "--web-port", "8787"]), {
+    autostart: undefined,
     help: false,
     version: true,
     webPort: 8787,

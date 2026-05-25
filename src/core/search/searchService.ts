@@ -7,6 +7,7 @@ import {
   type CallGraphSearchResponse,
   DEFAULT_CALL_GRAPH_DEPTH,
   DEFAULT_INCLUDE_CONTEXT_LINES,
+  DEFAULT_SEARCH_BUDGET,
   type DefinitionMatch,
   type DefinitionSearchResponse,
   MAX_CALL_GRAPH_DEPTH,
@@ -14,6 +15,7 @@ import {
   type IndexedFileRecord,
   type QueryAnalysis,
   type ReferenceSearchResponse,
+  type SearchBudget,
   type SearchDiagnostics,
   type SearchFilters,
   type SearchMatchSource,
@@ -43,6 +45,39 @@ const STRUCTURED_SEARCH_FANOUT_LIMIT = 250;
 const SEARCH_MATCH_SOURCES = new Set<SearchMatchSource>(["lexical", "path", "symbol", "semantic"]);
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * Execute a promise with a timeout. If the promise takes longer than timeoutMs,
+ * it will be abandoned and the fallback value will be returned.
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+): Promise<{ result: T; timedOut: boolean }> {
+  if (timeoutMs <= 0) {
+    return { result: fallback, timedOut: true };
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<{ result: T; timedOut: true }>((resolve) => {
+    timeoutId = setTimeout(() => {
+      resolve({ result: fallback, timedOut: true });
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([
+      promise.then((r) => ({ result: r, timedOut: false as const })),
+      timeoutPromise,
+    ]);
+    return result;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 function clampSnippet(snippet: string, maxLength = 1200): string {
   if (snippet.length <= maxLength) {
@@ -774,8 +809,11 @@ export class SearchService {
     includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
     filters?: SearchFilters,
     resultMode: SearchResultMode = "full",
+    budget: SearchBudget = DEFAULT_SEARCH_BUDGET,
   ): Promise<SearchResponse> {
     const startedAt = performance.now();
+    const deadline = startedAt + budget.totalMs;
+    const timedOutPhases: string[] = [];
     const project = this.store.getProjectByRoot(projectRootPath);
     if (!project) {
       throw new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`);
@@ -802,12 +840,14 @@ export class SearchService {
     let vectorCacheHit = false;
     let vectorCandidateCount = 0;
     let vectorHydratedChunkCount = 0;
+    let vectorSkippedNoVectors = false;
 
     const runPhase = async (
       name: string,
       enabled: boolean,
       operation: () => SearchResult[] | Promise<SearchResult[]>,
       reason: string,
+      phaseBudgetMs?: number,
     ): Promise<SearchResult[]> => {
       if (!enabled) {
         executedStrategies.push({
@@ -820,13 +860,49 @@ export class SearchService {
         return [];
       }
 
+      // Check if we've exceeded total budget
+      const remainingMs = deadline - performance.now();
+      if (remainingMs <= 0) {
+        executedStrategies.push({
+          candidateCount: 0,
+          durationMs: 0,
+          name,
+          reason: "total-budget-exceeded",
+          skipped: true,
+          timedOut: true,
+        });
+        timedOutPhases.push(name);
+        return [];
+      }
+
       const phaseStartedAt = performance.now();
+      const effectiveBudget = Math.min(remainingMs, phaseBudgetMs ?? remainingMs);
+
       try {
-        const results = await operation();
+        const operationPromise = Promise.resolve(operation());
+        const { result: results, timedOut } = await withTimeout(
+          operationPromise,
+          effectiveBudget,
+          [] as SearchResult[],
+        );
+
+        const durationMs = Math.round(performance.now() - phaseStartedAt);
+        if (timedOut) {
+          timedOutPhases.push(name);
+          this.logger.warn("search phase timed out", {
+            budgetMs: effectiveBudget,
+            durationMs,
+            phase: name,
+            projectRootPath,
+            query,
+          });
+        }
+
         executedStrategies.push({
           candidateCount: results.length,
-          durationMs: Math.round(performance.now() - phaseStartedAt),
+          durationMs,
           name,
+          timedOut,
         });
         return results;
       } catch (error: unknown) {
@@ -855,6 +931,7 @@ export class SearchService {
         lexicalEnabled,
         () => this.store.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
         analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
+        budget.ftsMs,
       ),
     );
 
@@ -875,25 +952,33 @@ export class SearchService {
           return this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters);
         },
         analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
+        budget.ftsMs,
       ),
     );
 
     const provider = this.embeddingProvider;
     const vectorModelName = provider.getModelName();
     const vectorCoverage = this.store.getVectorCoverage(project.project_id, vectorModelName);
-    const vectorEnabled = this.settings.enableVectorSearch && (mode === "semantic" || mode === "hybrid");
+
+    // v4.2.2: Check if vectors are available BEFORE enabling vector search
+    // Do NOT do lazy hydration in the search path - it blocks for minutes
+    const hasVectors = this.store.hasVectorIndex(project.project_id, vectorModelName);
+    const vectorModeRequested = mode === "semantic" || mode === "hybrid";
+    let effectiveVectorEnabled = this.settings.enableVectorSearch && vectorModeRequested && hasVectors;
+
+    // If vectors are requested but not available, add a note and skip
+    if (this.settings.enableVectorSearch && vectorModeRequested && !hasVectors) {
+      vectorSkippedNoVectors = true;
+      notes.push("Vector search skipped: vectors not yet indexed. Run index_project first or enable eager vector indexing.");
+    }
+
     resultSets.push(
       await runPhase(
         "vector",
-        vectorEnabled,
+        effectiveVectorEnabled,
         async () => {
-          if (this.settings.vectorIndexingMode === "lazy") {
-            vectorHydratedChunkCount = await this.ensureProjectVectors(project.project_id, vectorModelName);
-            if (vectorHydratedChunkCount > 0) {
-              notes.push(`Lazy vector hydration indexed ${vectorHydratedChunkCount} chunk vectors for this query.`);
-            }
-          }
-
+          // v4.2.2: REMOVED lazy vector hydration from search path
+          // Vectors should be built during indexing, not during search
           const queryEmbedding = await provider.embed(query);
           const vectorSearch = this.store.searchByVector(
             project.project_id,
@@ -907,7 +992,8 @@ export class SearchService {
           vectorCandidateCount = vectorSearch.candidateCount;
           return vectorSearch.results;
         },
-        this.settings.enableVectorSearch ? "mode-disabled" : "vector-search-disabled",
+        vectorSkippedNoVectors ? "no-vectors-available" : (this.settings.enableVectorSearch ? "mode-disabled" : "vector-search-disabled"),
+        budget.vectorMs,
       ),
     );
 
@@ -924,6 +1010,7 @@ export class SearchService {
             normalizedFilters,
           ),
         containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
+        budget.ftsMs,
       ),
     );
 
@@ -934,6 +1021,7 @@ export class SearchService {
         symbolEnabled,
         () => this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
         "mode-disabled",
+        budget.symbolMs,
       ),
     );
 
@@ -944,6 +1032,7 @@ export class SearchService {
         pathEnabled,
         () => this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
         analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
+        budget.symbolMs,
       ),
     );
 
@@ -982,13 +1071,25 @@ export class SearchService {
         enabled: this.settings.enableVectorSearch,
         hydratedChunkCount: vectorHydratedChunkCount,
         mode: this.settings.vectorIndexingMode,
+        skippedNoVectors: vectorSkippedNoVectors,
+      },
+      budget: {
+        totalMs: budget.totalMs,
+        usedMs: searchMs,
+        timedOutPhases,
       },
     };
 
     if (!this.settings.enableVectorSearch) {
       notes.push("Vector search is disabled in settings; semantic results came from semantic FTS only.");
+    } else if (vectorSkippedNoVectors) {
+      // Note already added above
     } else if (this.settings.vectorIndexingMode === "lazy" && vectorCoverage.missingChunkCount > 0 && vectorHydratedChunkCount === 0) {
       notes.push("Vector coverage was already warm for this query; no lazy hydration was needed.");
+    }
+
+    if (timedOutPhases.length > 0) {
+      notes.push(`Search phases timed out: ${timedOutPhases.join(", ")}. Results may be incomplete.`);
     }
 
     this.logger.info("search completed", {
@@ -999,10 +1100,12 @@ export class SearchService {
       resultCount: results.length,
       resultMode,
       searchMs,
+      timedOutPhases: timedOutPhases.length > 0 ? timedOutPhases : undefined,
       topK,
       vectorCacheHit,
       vectorCandidateCount,
       vectorHydratedChunkCount,
+      vectorSkippedNoVectors,
     });
 
     const response: SearchResponse = {
