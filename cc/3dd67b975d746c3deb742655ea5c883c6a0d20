@@ -1,0 +1,35 @@
+src/web/app.ts
+  s_0f8113dba42c56::t_91e5e74f774cc5 18
+  s_0f8113dba42c56::t_32d150fbdec6ff 789,793,798-807
+  s_0f8113dba42c56::t_26c0ba3d2341b8 831
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_554609abcf75f7 581-585
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_d85ada746710e1 1-67
+package.json
+  s_0f8113dba42c56::t_3d32076a54ae51 3
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_6cde84d2e7c30c 494
+  s_0f8113dba42c56::t_f8634e0b863168 522
+src/version.ts
+  s_0f8113dba42c56::t_9baf7fad673a8f 2
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_43b3f175eebb70 4
+  s_0f8113dba42c56::t_520761768c5680 50,54,58-67,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "cc3dd67b975d746c3deb742655ea5c883c6a0d20",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
