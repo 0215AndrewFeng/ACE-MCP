@@ -1,5 +1,6 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { disableAutostart, enableAutostart, getAutostartStatus } from "./autostart/index.js";
 import { formatHelpText, parseCliArgs } from "./config/cli.js";
 import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
@@ -13,6 +14,33 @@ import { createMcpServer } from "./server/mcpServer.js";
 import { startWebApp } from "./web/app.js";
 import { APP_VERSION } from "./version.js";
 
+async function handleAutostart(action: "enable" | "disable" | "status", webPort?: number): Promise<void> {
+  if (action === "status") {
+    const status = await getAutostartStatus();
+    process.stdout.write(`Autostart Status:\n`);
+    process.stdout.write(`  Platform: ${status.platform}\n`);
+    process.stdout.write(`  Enabled:  ${status.enabled ? "yes" : "no"}\n`);
+    process.stdout.write(`  Running:  ${status.running ? "yes" : "no"}\n`);
+    if (status.webPort) {
+      process.stdout.write(`  Web Port: ${status.webPort}\n`);
+    }
+    return;
+  }
+
+  if (action === "enable") {
+    await enableAutostart({ enabled: true, webPort });
+    process.stdout.write(`✓ Autostart enabled${webPort ? ` (web port: ${webPort})` : ""}\n`);
+    process.stdout.write(`  Service will start automatically on system boot.\n`);
+    return;
+  }
+
+  if (action === "disable") {
+    await disableAutostart();
+    process.stdout.write(`✓ Autostart disabled\n`);
+    return;
+  }
+}
+
 async function main(): Promise<void> {
   const cliOptions = parseCliArgs(process.argv.slice(2));
   if (cliOptions.help) {
@@ -22,6 +50,12 @@ async function main(): Promise<void> {
 
   if (cliOptions.version) {
     process.stdout.write(`${APP_VERSION}\n`);
+    return;
+  }
+
+  // Handle autostart commands (exit after handling)
+  if (cliOptions.autostart) {
+    await handleAutostart(cliOptions.autostart, cliOptions.webPort);
     return;
   }
 

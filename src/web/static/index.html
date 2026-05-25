@@ -21,6 +21,18 @@
         </div>
       </div>
       <div class="card">
+        <h2>🚀 Autostart</h2>
+        <p class="hint">Configure ace-mcp to start automatically on system boot.</p>
+        <div id="autostart-status" class="autostart-status">
+          <span class="autostart-badge" id="autostart-badge">Checking...</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="autostart-enable" type="button" style="flex:1">Enable</button>
+          <button id="autostart-disable" class="secondary" type="button" style="flex:1">Disable</button>
+        </div>
+        <p id="autostart-platform" class="hint" style="margin-top:8px"></p>
+      </div>
+      <div class="card">
         <h2>Index project</h2>
         <label for="project-root">Project root path</label>
         <select id="project-root-select">

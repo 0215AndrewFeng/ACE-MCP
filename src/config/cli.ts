@@ -14,10 +14,13 @@ function parsePort(value: string | undefined): number | undefined {
   return port;
 }
 
-export function parseCliArgs(argv: string[]): CliOptions {
+export type AutostartAction = "enable" | "disable" | "status";
+
+export function parseCliArgs(argv: string[]): CliOptions & { autostart?: AutostartAction } {
   let webPort: number | undefined;
   let help = false;
   let version = false;
+  let autostart: AutostartAction | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -39,10 +42,31 @@ export function parseCliArgs(argv: string[]): CliOptions {
 
     if (arg.startsWith("--web-port=")) {
       webPort = parsePort(arg.slice("--web-port=".length));
+      continue;
+    }
+
+    if (arg === "--autostart") {
+      const action = argv[index + 1];
+      if (action === "enable" || action === "disable" || action === "status") {
+        autostart = action;
+        index += 1;
+      } else {
+        throw new Error(`Invalid --autostart value: ${action}. Must be 'enable', 'disable', or 'status'.`);
+      }
+      continue;
+    }
+
+    if (arg.startsWith("--autostart=")) {
+      const action = arg.slice("--autostart=".length);
+      if (action === "enable" || action === "disable" || action === "status") {
+        autostart = action;
+      } else {
+        throw new Error(`Invalid --autostart value: ${action}. Must be 'enable', 'disable', or 'status'.`);
+      }
     }
   }
 
-  return { help, version, webPort };
+  return { help, version, webPort, autostart };
 }
 
 export function formatHelpText(): string {
@@ -50,11 +74,29 @@ export function formatHelpText(): string {
     APP_NAME,
     "",
     "Usage:",
-    "  node dist/index.js [--web-port 8787] [--version]",
+    "  node dist/index.js [--web-port 8787] [--autostart enable|disable|status] [--version]",
     "",
     "Options:",
-    "  --web-port <port>   Start the HTTP debug panel on the specified port",
-    "  -v, --version       Show version",
-    "  -h, --help          Show help",
+    "  --web-port <port>          Start the HTTP debug panel on the specified port",
+    "  --autostart <action>       Manage autostart on system boot:",
+    "                               enable  - Enable autostart (uses current --web-port)",
+    "                               disable - Disable autostart",
+    "                               status  - Show current autostart status",
+    "  -v, --version              Show version",
+    "  -h, --help                 Show help",
+    "",
+    "Autostart:",
+    "  macOS: Uses launchd (~/Library/LaunchAgents)",
+    "  Linux: Uses systemd user service (~/.config/systemd/user)",
+    "",
+    "Examples:",
+    "  # Enable autostart with web panel on port 8787",
+    "  node dist/index.js --autostart enable --web-port 8787",
+    "",
+    "  # Check autostart status",
+    "  node dist/index.js --autostart status",
+    "",
+    "  # Disable autostart",
+    "  node dist/index.js --autostart disable",
   ].join("\n");
 }
