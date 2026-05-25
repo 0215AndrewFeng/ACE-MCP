@@ -281,7 +281,7 @@ test("semantic mode matches conceptual synonyms in code identifiers", async () =
   }
 });
 
-test("semantic search lazily hydrates vectors and reuses cached project vectors", async () => {
+test("semantic search skips vector phase when vectors not indexed (v4.2.2 behavior)", async () => {
   const environment = await createTestProjectEnvironment({
     "package.json": JSON.stringify({ name: "fixture" }),
     "src/auth/signInHandler.ts": "export const signInHandler = async () => 'ok';\n",
@@ -298,18 +298,19 @@ test("semantic search lazily hydrates vectors and reuses cached project vectors"
     assert.ok(project);
     assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), false);
 
+    // v4.2.2: When vectors are not indexed, semantic search should skip vector phase
+    // and add a note explaining why, rather than blocking to generate vectors
     const firstResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
-    assert.equal(firstResponse.diagnostics.vectorIndex.hydratedChunkCount > 0, true);
-    assert.equal(firstResponse.diagnostics.vectorIndex.cacheHit, false);
-    assert.equal(firstResponse.notes.some((note) => note.includes("Lazy vector hydration indexed")), true);
-    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), true);
+    assert.equal(firstResponse.diagnostics.vectorIndex.skippedNoVectors, true);
+    assert.equal(firstResponse.diagnostics.vectorIndex.hydratedChunkCount, 0); // No lazy hydration in search path
+    assert.equal(firstResponse.notes.some((note) => note.includes("vectors not yet indexed")), true);
 
+    // Vectors should still not be indexed - indexing happens outside search
+    assert.equal(environment.store.hasVectorIndex(project.project_id, "in-memory-hash-vector-v2"), false);
+
+    // Second search should also skip vectors (still not indexed)
     const secondResponse = await environment.searchService.search(environment.projectRootPath, "login handler", "semantic", 5);
-    // With search-level caching enabled for semantic mode (v3.8.0),
-    // the second call returns a cached response with "Cache hit" note.
-    // The diagnostics reflect the original (first) search execution.
-    assert.equal(secondResponse.notes.some((note) => note.includes("Cache hit")), true);
-    assert.equal(secondResponse.diagnostics.executedStrategies.some((phase) => phase.name === "rerank"), true);
+    assert.equal(secondResponse.diagnostics.vectorIndex.skippedNoVectors, true);
   } finally {
     await environment.cleanup();
   }
