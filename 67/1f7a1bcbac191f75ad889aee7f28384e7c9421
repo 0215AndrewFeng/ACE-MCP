@@ -1,0 +1,36 @@
+src/version.ts
+  s_0f8113dba42c56::t_c9ea71c16a5d64 2
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_92643b76d136e2 614
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_c520d0dc5e689f 49-81
+  s_0f8113dba42c56::t_128beb1de3e323 1074-1079,1085-1086,1091-1092
+  s_0f8113dba42c56::t_77b804900c946c 812,815-816,843,850,863-877,879-880,882-900,903,905,934,955,962-974,978,980-981,995-996,1013,1024,1035
+  s_0f8113dba42c56::t_6c12f1956255d8 1103,1108
+  s_0f8113dba42c56::t_92242b31bac221 10,18
+src/core/common/types.ts
+  s_0f8113dba42c56::t_658b8530fd3dd7 375,378-399
+  s_0f8113dba42c56::t_d534314800bc8a 412-419
+package.json
+  s_0f8113dba42c56::t_8cddb6bacab5e5 3
+src/config/cli.test.ts
+  s_0f8113dba42c56::t_fe89b7ecafd9f2 8,14
+src/test/search-workflow.test.ts
+  s_0f8113dba42c56::t_f4bda67718d7a7 284,301-302,304-306,308-311,313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "671f7a1bcbac191f75ad889aee7f28384e7c9421",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
