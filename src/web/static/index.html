@@ -153,6 +153,17 @@
           <div id="qa-steps" class="qa-steps"></div>
         </div>
         <div id="qa-answer-body" class="qa-answer-body" hidden></div>
+        <div id="qa-feedback" class="qa-feedback" hidden>
+          <span class="qa-feedback-label">Was this helpful?</span>
+          <button id="qa-feedback-positive" class="qa-feedback-btn" title="Helpful">👍</button>
+          <button id="qa-feedback-negative" class="qa-feedback-btn" title="Not helpful">👎</button>
+          <div id="qa-correction-form" class="qa-correction-form" hidden>
+            <label for="qa-correction">What would be a better answer?</label>
+            <textarea id="qa-correction" rows="3" placeholder="Provide the correct answer or clarification..."></textarea>
+            <button id="qa-submit-correction" type="button">Submit Feedback</button>
+          </div>
+          <div id="qa-feedback-thanks" class="qa-feedback-thanks" hidden>✓ Thank you for your feedback!</div>
+        </div>
         <div id="qa-sources-list" class="qa-sources-list" hidden></div>
         <div id="qa-stats" class="qa-stats" hidden></div>
         <div id="qa-error" class="qa-error" hidden></div>

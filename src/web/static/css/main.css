@@ -103,6 +103,18 @@ hr { border: none; border-top: 1px solid #e5e7eb; }
 /* ── QA Error ── */
 .qa-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; margin-top: 14px; color: #991b1b; font-size: 14px; }
 
+/* ── QA Feedback ── */
+.qa-feedback { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; background: #f8fafc; border-radius: 8px; flex-wrap: wrap; }
+.qa-feedback-label { font-size: 13px; color: #64748b; }
+.qa-feedback-btn { width: 36px; height: 36px; min-width: 36px; border: 1px solid #e2e8f0; border-radius: 50%; background: white; font-size: 16px; cursor: pointer; transition: all 0.15s; padding: 0; }
+.qa-feedback-btn:hover { background: #f1f5f9; }
+.qa-feedback-btn.selected { background: #dbeafe; border-color: #2563eb; }
+.qa-feedback-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.qa-correction-form { width: 100%; margin-top: 8px; }
+.qa-correction-form textarea { min-height: 72px; }
+.qa-correction-form button { margin-top: 8px; }
+.qa-feedback-thanks { font-size: 13px; color: #059669; font-weight: 500; }
+
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
 .autostart-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }

@@ -421,6 +421,26 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
     if (qaData?.answer) {
       answerBodyEl.innerHTML = renderMarkdown(qaData.answer);
       answerBodyEl.hidden = false;
+      // Show feedback buttons
+      const feedbackEl = document.getElementById('qa-feedback');
+      feedbackEl.hidden = false;
+      // Store QA context for feedback submission
+      feedbackEl.dataset.context = JSON.stringify({
+        projectRootPath: projectRoot,
+        question,
+        answer: qaData.answer,
+        sources: qaData.sources,
+        usage: qaData.usage,
+        timing: qaData.timing,
+      });
+      // Reset feedback UI state
+      document.getElementById('qa-feedback-positive').classList.remove('selected');
+      document.getElementById('qa-feedback-negative').classList.remove('selected');
+      document.getElementById('qa-correction-form').hidden = true;
+      document.getElementById('qa-feedback-thanks').hidden = true;
+      document.getElementById('qa-feedback-positive').disabled = false;
+      document.getElementById('qa-feedback-negative').disabled = false;
+      document.getElementById('qa-correction').value = '';
     }
 
     // Update sources from QA response (may have different snippets)
@@ -456,5 +476,58 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
     loadingEl.hidden = true;
     askBtn.disabled = false;
     askBtn.textContent = 'Ask';
+  }
+});
+
+// ── QA Feedback handlers ─────────────────────────────────────────────────────
+document.getElementById('qa-feedback-positive')?.addEventListener('click', async function() {
+  const feedbackEl = document.getElementById('qa-feedback');
+  const context = JSON.parse(feedbackEl.dataset.context || '{}');
+  if (!context.question) return;
+
+  this.classList.add('selected');
+  document.getElementById('qa-feedback-negative').classList.remove('selected');
+  this.disabled = true;
+  document.getElementById('qa-feedback-negative').disabled = true;
+
+  try {
+    await apiFetch('/api/qa/feedback', {
+      ...context,
+      rating: 'positive',
+    });
+    document.getElementById('qa-feedback-thanks').hidden = false;
+  } catch (error) {
+    console.error('Feedback submission failed:', error);
+  }
+});
+
+document.getElementById('qa-feedback-negative')?.addEventListener('click', function() {
+  this.classList.add('selected');
+  document.getElementById('qa-feedback-positive').classList.remove('selected');
+  document.getElementById('qa-correction-form').hidden = false;
+});
+
+document.getElementById('qa-submit-correction')?.addEventListener('click', async function() {
+  const feedbackEl = document.getElementById('qa-feedback');
+  const context = JSON.parse(feedbackEl.dataset.context || '{}');
+  if (!context.question) return;
+
+  const correction = document.getElementById('qa-correction').value.trim();
+
+  this.disabled = true;
+  document.getElementById('qa-feedback-positive').disabled = true;
+  document.getElementById('qa-feedback-negative').disabled = true;
+
+  try {
+    await apiFetch('/api/qa/feedback', {
+      ...context,
+      rating: 'negative',
+      correction: correction || undefined,
+    });
+    document.getElementById('qa-correction-form').hidden = true;
+    document.getElementById('qa-feedback-thanks').hidden = false;
+  } catch (error) {
+    console.error('Feedback submission failed:', error);
+    this.disabled = false;
   }
 });

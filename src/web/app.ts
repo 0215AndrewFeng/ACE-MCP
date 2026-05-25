@@ -747,6 +747,28 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   });
 
   // ── QA endpoint ────────────────────────────────────────
+  const QA_SYSTEM_PROMPT = `You are a precise code assistant. Your task is to answer questions about a codebase based ONLY on the provided source code snippets and project summary.
+
+## Rules
+1. **Cite sources**: Use [N] notation to cite specific code snippets. Every factual claim MUST have a citation.
+2. **Stay grounded**: Only make claims that are directly supported by the provided code. If the answer is not in the provided context, say "I don't have enough information in the provided code to answer this."
+3. **Be specific**: Reference exact function names, class names, variable names, and line numbers when relevant.
+4. **Structure your answer**:
+   - Start with a direct answer to the question
+   - Provide supporting details with citations
+   - If there are caveats or limitations, mention them
+
+## Output Format
+- Use markdown formatting
+- Code references should use inline code: \`functionName()\`, \`ClassName\`
+- For code examples, use fenced code blocks with language specifier
+
+## What NOT to do
+- Do not invent code that isn't in the sources
+- Do not cite source numbers that don't exist
+- Do not make assumptions about code behavior without evidence
+- Do not include generic programming advice unrelated to this specific codebase`;
+
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
       const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds } = req.body;
@@ -790,28 +812,24 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       if (includeSummary !== false) {
         const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
         if (summary) {
-          summaryContext = `## Project Architecture\n\n${summary.architecture}\n\n`;
+          summaryContext = `## Project Context\n\n${summary.architecture}\n\n`;
           hadSummary = true;
         }
       }
       checkTimeout("summary");
 
-      // Phase 4: LLM
+      // Phase 4: LLM with enhanced prompt
       const sourcesText = searchResult.results
-        .map((r, i) => `[${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`\n${r.snippet}\n\`\`\``)
+        .map((r, i) => `[${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`${r.language}\n${r.snippet}\n\`\`\``)
         .join("\n\n");
+
+      const userPrompt = `${summaryContext}## Source Code Snippets\n\n${sourcesText}\n\n## Question\n\n${question}\n\n## Important\n- Only use information from the source code snippets above\n- Cite sources using [N] notation\n- If unsure, say so rather than guessing`;
 
       const llmStart = Date.now();
       const result = await dependencies.llmClient.complete({
         messages: [
-          {
-            role: "system",
-            content: "You are a code expert. Answer questions based on the provided source code and project context. Cite sources using [N] notation. Be concise and precise.",
-          },
-          {
-            role: "user",
-            content: `${summaryContext}## Relevant Source Code\n\n${sourcesText}\n\n## Question\n\n${question}`,
-          },
+          { role: "system", content: QA_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
         ],
       });
       const llmMs = Date.now() - llmStart;
@@ -835,6 +853,51 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
       res.status(500).json({ error: message });
+    }
+  });
+
+  // ── QA Feedback endpoint ───────────────────────────────────────
+  app.post("/api/qa/feedback", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath, question, answer, sources, rating, correction, usage, timing } = req.body;
+
+      if (!projectRootPath || !question || !answer || !rating) {
+        res.status(400).json({ error: "Missing required fields: projectRootPath, question, answer, rating" });
+        return;
+      }
+
+      if (rating !== "positive" && rating !== "negative") {
+        res.status(400).json({ error: "rating must be 'positive' or 'negative'" });
+        return;
+      }
+
+      const feedbackId = dependencies.store.saveQaFeedback({
+        projectRoot: String(projectRootPath),
+        question: String(question),
+        answer: String(answer),
+        sources: Array.isArray(sources) ? sources : undefined,
+        rating,
+        correction: correction ? String(correction) : undefined,
+        promptTokens: usage?.promptTokens,
+        completionTokens: usage?.completionTokens,
+        searchMs: timing?.searchMs,
+        llmMs: timing?.llmMs,
+      });
+
+      res.json({ success: true, feedbackId });
+    } catch (error: unknown) {
+      res.status(500).json({ error: String(error) });
+    }
+  });
+
+  // ── QA Feedback stats endpoint ─────────────────────────────────
+  app.get("/api/qa/feedback/stats", async (req: Request, res: Response) => {
+    try {
+      const projectRoot = req.query.projectRoot as string | undefined;
+      const stats = dependencies.store.getQaFeedbackStats(projectRoot);
+      res.json(stats);
+    } catch (error: unknown) {
+      res.status(500).json({ error: String(error) });
     }
   });
 
