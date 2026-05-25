@@ -1,0 +1,41 @@
+src/web/static/index.html
+  s_0f8113dba42c56::t_44f6f59a576114 24-34
+package.json
+  s_0f8113dba42c56::t_65f1a208586218 3
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_17504d71b27d5d 50-69
+  s_0f8113dba42c56::t_befa0483fc966c 229-273
+  s_0f8113dba42c56::t_900fc6f6a8890b 370,374-375
+src/index.ts
+  s_0f8113dba42c56::t_72dff2da5c0532 3,17-43,56-58
+src/web/app.ts
+  s_0f8113dba42c56::t_82b4c07d999814 271-300
+src/version.ts
+  s_0f8113dba42c56::t_e1a36bab7a1554 2
+src/config/cli.ts
+  s_0f8113dba42c56::t_a7b9afc74e54a9 17-19,23,45-65,69
+  s_0f8113dba42c56::t_2043bddcb58d49 77,80-100
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_2a4323e6f9d8ca 105-111
+src/autostart/index.ts
+  s_0f8113dba42c56::t_5d2acf97d39da7 29-30
+  s_0f8113dba42c56::t_28100567b24893 151-160,168
+  s_0f8113dba42c56::t_bfdfaf7ee4e672 104-112,123-132,138-142
+  s_0f8113dba42c56::t_dfde976693d8a8 1-28,31-103,113-122,133-137,143-150,161-167,169-324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "378e3bddd36a0bc5d135796ec820cb66b8485016",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
