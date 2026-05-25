@@ -578,6 +578,11 @@ export class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_index_event_failure_event_id ON index_event_failure(event_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_name ON symbol(name);
       CREATE INDEX IF NOT EXISTS idx_symbol_full_name ON symbol(full_name);
+      CREATE INDEX IF NOT EXISTS idx_symbol_file_id ON symbol(file_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_file_line ON symbol(file_id, line);
+      CREATE INDEX IF NOT EXISTS idx_chunk_file_id ON chunk(file_id);
+      CREATE INDEX IF NOT EXISTS idx_chunk_file_lines ON chunk(file_id, start_line, end_line);
+      CREATE INDEX IF NOT EXISTS idx_chunk_vector_model ON chunk_vector(model_name);
       CREATE INDEX IF NOT EXISTS idx_import_alias_file_id ON import_alias(file_id);
       CREATE INDEX IF NOT EXISTS idx_import_alias_resolved_symbol_id ON import_alias(resolved_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_file_id ON symbol_usage(file_id);

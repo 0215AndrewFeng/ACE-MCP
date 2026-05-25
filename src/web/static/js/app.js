@@ -491,7 +491,7 @@ document.getElementById('qa-feedback-positive')?.addEventListener('click', async
   document.getElementById('qa-feedback-negative').disabled = true;
 
   try {
-    await apiFetch('/api/qa/feedback', {
+    await request('POST', '/api/qa/feedback', {
       ...context,
       rating: 'positive',
     });
@@ -519,7 +519,7 @@ document.getElementById('qa-submit-correction')?.addEventListener('click', async
   document.getElementById('qa-feedback-negative').disabled = true;
 
   try {
-    await apiFetch('/api/qa/feedback', {
+    await request('POST', '/api/qa/feedback', {
       ...context,
       rating: 'negative',
       correction: correction || undefined,

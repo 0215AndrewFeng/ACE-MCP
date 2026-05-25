@@ -15,6 +15,7 @@ import {
 import type { Logger } from "../core/common/logger.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
+import { buildQaUserPrompt, QA_SYSTEM_PROMPT } from "../core/llm/qaPrompt.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
@@ -747,28 +748,6 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   });
 
   // ── QA endpoint ────────────────────────────────────────
-  const QA_SYSTEM_PROMPT = `You are a precise code assistant. Your task is to answer questions about a codebase based ONLY on the provided source code snippets and project summary.
-
-## Rules
-1. **Cite sources**: Use [N] notation to cite specific code snippets. Every factual claim MUST have a citation.
-2. **Stay grounded**: Only make claims that are directly supported by the provided code. If the answer is not in the provided context, say "I don't have enough information in the provided code to answer this."
-3. **Be specific**: Reference exact function names, class names, variable names, and line numbers when relevant.
-4. **Structure your answer**:
-   - Start with a direct answer to the question
-   - Provide supporting details with citations
-   - If there are caveats or limitations, mention them
-
-## Output Format
-- Use markdown formatting
-- Code references should use inline code: \`functionName()\`, \`ClassName\`
-- For code examples, use fenced code blocks with language specifier
-
-## What NOT to do
-- Do not invent code that isn't in the sources
-- Do not cite source numbers that don't exist
-- Do not make assumptions about code behavior without evidence
-- Do not include generic programming advice unrelated to this specific codebase`;
-
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
       const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds } = req.body;
@@ -807,23 +786,25 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       checkTimeout("search");
 
       // Phase 3: Load summary
-      let summaryContext = "";
-      let hadSummary = false;
+      let summaryArchitecture: string | undefined;
       if (includeSummary !== false) {
         const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
         if (summary) {
-          summaryContext = `## Project Context\n\n${summary.architecture}\n\n`;
-          hadSummary = true;
+          summaryArchitecture = summary.architecture;
         }
       }
       checkTimeout("summary");
 
-      // Phase 4: LLM with enhanced prompt
-      const sourcesText = searchResult.results
-        .map((r, i) => `[${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`${r.language}\n${r.snippet}\n\`\`\``)
-        .join("\n\n");
-
-      const userPrompt = `${summaryContext}## Source Code Snippets\n\n${sourcesText}\n\n## Question\n\n${question}\n\n## Important\n- Only use information from the source code snippets above\n- Cite sources using [N] notation\n- If unsure, say so rather than guessing`;
+      // Phase 4: LLM with shared prompt template
+      const sources = searchResult.results.map((r) => ({
+        filePath: r.filePath,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        language: r.language,
+        score: r.score,
+        snippet: r.snippet,
+      }));
+      const userPrompt = buildQaUserPrompt(String(question ?? ""), sources, summaryArchitecture);
 
       const llmStart = Date.now();
       const result = await dependencies.llmClient.complete({
@@ -847,7 +828,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           snippet: r.snippet.slice(0, 200),
         })),
         usage: result.usage,
-        hadSummary,
+        hadSummary: Boolean(summaryArchitecture),
         timing: { indexMs, searchMs, llmMs, totalMs },
       });
     } catch (error: unknown) {
