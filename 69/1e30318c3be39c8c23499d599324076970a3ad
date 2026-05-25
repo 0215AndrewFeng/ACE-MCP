@@ -1,0 +1,35 @@
+src/version.ts
+  s_0f8113dba42c56::t_cfb3307b2e0a99 2
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_58ef0fca92818c 106-117
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_cafeaa14006f92 9-30,75,79,81,84-85,89-90
+src/web/app.ts
+  s_0f8113dba42c56::t_30313f0e5b6f3b 750-771,815,821,823,826-827,831-832,859-900
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_a6fbc168d22269 481-533
+  s_0f8113dba42c56::t_8d658b8ea6bc7f 424-443
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_d517e3d8d57491 609-626
+  s_0f8113dba42c56::t_b936311bfc6543 2158-2226
+src/web/static/index.html
+  s_0f8113dba42c56::t_9ea4f88f9d7ff8 156-166
+package.json
+  s_0f8113dba42c56::t_11b5a6f1f6a617 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "691e30318c3be39c8c23499d599324076970a3ad",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
