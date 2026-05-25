@@ -1,0 +1,27 @@
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_2f4aa2c482cf23 543
+  s_0f8113dba42c56::t_44c2d2c524b69a 486-487,493
+  s_0f8113dba42c56::t_2ae56cd205f085 292,295-354,362-368,378-403
+package.json
+  s_0f8113dba42c56::t_54e69f807a8a19 3
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_3f9196252cfb4d 85-97
+src/version.ts
+  s_0f8113dba42c56::t_33d4f0676d3b50 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.0",
+  "base_commit_sha": "1edc06685fb329e830eda2b8923b38f534575b63",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
