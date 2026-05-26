@@ -1,0 +1,56 @@
+src/core/search/embedding.ts
+  s_0f8113dba42c56::t_de0cd0981e29e5 7,10-16,38-42,57-70,79-116
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_f5a9711c872698 1027-1028
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_f44edee74e368a 118-128
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_91c7dc78576360 289-290
+  s_0f8113dba42c56::t_3f661d52afd488 502-506,508-519,522-542
+  s_0f8113dba42c56::t_85bcf6c4543bef 423-424
+  s_0f8113dba42c56::t_42482e58c5aea1 520-521
+  s_0f8113dba42c56::t_7233847e30b736 546-551,553,556-566
+  s_0f8113dba42c56::t_d52e867e9283e3 358
+  s_0f8113dba42c56::t_59f569543c066e 677-707
+package.json
+  s_0f8113dba42c56::t_e8072a493b85b4 3
+src/core/llm/llmClient.ts
+  s_0f8113dba42c56::t_f1da57055f78d7 10-12,16,18-26,37-44,85-90,93-107,109-150,152,154-247
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_b1371ba8c22882 5-6,38-90,123-148
+src/web/static/index.html
+  s_0f8113dba42c56::t_bc826ec8c05761 141-145
+  s_0f8113dba42c56::t_c2ecdccaf562d4 130
+  s_0f8113dba42c56::t_9025c08a8ce8df 137
+src/version.ts
+  s_0f8113dba42c56::t_299d532e8a03d4 2
+src/core/search/remoteEmbedding.ts
+  s_0f8113dba42c56::t_922b260254d449 9-13,17-21,40-53,59-94
+CHANGELOG.md
+  s_0f8113dba42c56::t_41f20833e7a639 5-27
+src/core/search/remoteEmbedding.test.ts
+  s_0f8113dba42c56::t_6714d71977bd9c 123-125,132-135
+  s_0f8113dba42c56::t_ce2bc44a72795c 162-164,171-174
+src/core/summary/summaryGenerator.ts
+  s_0f8113dba42c56::t_bc735ecf30636c 88
+  s_0f8113dba42c56::t_168ef137923738 149
+src/web/app.ts
+  s_0f8113dba42c56::t_a76f540592bd40 19
+  s_0f8113dba42c56::t_3f2b98c6b40738 823,829,844,868,877-889,892,894-896,901-923,945-1095
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "3972ac138ab7c4a4afb5320bcfd562d5664ed533",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
