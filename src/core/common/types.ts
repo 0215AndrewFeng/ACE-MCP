@@ -207,6 +207,8 @@ export interface SearchResultExplanation {
 }
 
 export interface SearchResult {
+  /** v4.2.3: chunk ID for candidate prefiltering in vector search */
+  chunkId?: string;
   endLine: number;
   explanation?: SearchResultExplanation;
   filePath: string;
@@ -411,6 +413,10 @@ export interface SearchDiagnostics {
     mode: VectorIndexingMode;
     /** True if vector search was skipped because vectors weren't ready */
     skippedNoVectors?: boolean;
+    /** v4.2.3: True if vector search used FTS results as candidate set */
+    prefiltered?: boolean;
+    /** v4.2.3: Number of candidates in the prefiltered set */
+    prefilteredCandidates?: number;
   };
   /** Budget tracking for search phases */
   budget?: {

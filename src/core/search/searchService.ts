@@ -925,16 +925,6 @@ export class SearchService {
     };
 
     const lexicalEnabled = (mode === "auto" || mode === "lexical" || mode === "hybrid") && Boolean(analysis.ftsQuery);
-    resultSets.push(
-      await runPhase(
-        "lexical",
-        lexicalEnabled,
-        () => this.store.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
-        analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
-        budget.ftsMs,
-      ),
-    );
-
     const semanticFtsEnabled =
       (mode === "semantic" ||
         mode === "hybrid" ||
@@ -943,8 +933,21 @@ export class SearchService {
           !analysis.isSymbolLike &&
           !analysis.hasIdentifierLikeSegments)) &&
       analysis.semanticTerms.length > 0;
-    resultSets.push(
-      await runPhase(
+    const unicodeEnabled = (mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens);
+    const symbolEnabled = mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike;
+    const pathEnabled = mode === "auto" || mode === "hybrid" || analysis.isPathLike;
+
+    // v4.2.3: Run FTS phases in parallel for better performance
+    const parallelStartedAt = performance.now();
+    const [lexicalResults, semanticFtsResults, unicodeResults, symbolResults, pathResults] = await Promise.all([
+      runPhase(
+        "lexical",
+        lexicalEnabled,
+        () => this.store.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
+        analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
+        budget.ftsMs,
+      ),
+      runPhase(
         "semantic-fts",
         semanticFtsEnabled,
         () => {
@@ -954,7 +957,48 @@ export class SearchService {
         analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
         budget.ftsMs,
       ),
-    );
+      runPhase(
+        "unicode-substring",
+        unicodeEnabled,
+        () =>
+          this.store.searchByTextSubstrings(
+            project.project_id,
+            buildExpandedUnicodeTokens(analysis),
+            fanoutLimit,
+            normalizedFilters,
+          ),
+        containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
+        budget.ftsMs,
+      ),
+      runPhase(
+        "symbol",
+        symbolEnabled,
+        () => this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        "mode-disabled",
+        budget.symbolMs,
+      ),
+      runPhase(
+        "path",
+        pathEnabled,
+        () => this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
+        budget.symbolMs,
+      ),
+    ]);
+    const parallelDurationMs = Math.round(performance.now() - parallelStartedAt);
+    notes.push(`Parallel FTS phases completed in ${parallelDurationMs}ms`);
+
+    resultSets.push(lexicalResults, semanticFtsResults, unicodeResults, symbolResults, pathResults);
+
+    // v4.2.3: Collect chunkIds from FTS results for candidate prefiltering
+    const ftsChunkIds = new Set<string>();
+    for (const results of [lexicalResults, semanticFtsResults, unicodeResults]) {
+      for (const result of results) {
+        if (result.chunkId) {
+          ftsChunkIds.add(result.chunkId);
+        }
+      }
+    }
 
     const provider = this.embeddingProvider;
     const vectorModelName = provider.getModelName();
@@ -965,6 +1009,7 @@ export class SearchService {
     const hasVectors = this.store.hasVectorIndex(project.project_id, vectorModelName);
     const vectorModeRequested = mode === "semantic" || mode === "hybrid";
     let effectiveVectorEnabled = this.settings.enableVectorSearch && vectorModeRequested && hasVectors;
+    let vectorPrefiltered = false;
 
     // If vectors are requested but not available, add a note and skip
     if (this.settings.enableVectorSearch && vectorModeRequested && !hasVectors) {
@@ -980,6 +1025,10 @@ export class SearchService {
           // v4.2.2: REMOVED lazy vector hydration from search path
           // Vectors should be built during indexing, not during search
           const queryEmbedding = await provider.embed(query);
+
+          // v4.2.3: Use FTS results as candidate set for vector search if available
+          // This reduces O(n) to O(ftsChunkIds.size) for most queries
+          const candidateChunkIds = ftsChunkIds.size > 0 ? ftsChunkIds : undefined;
           const vectorSearch = this.store.searchByVector(
             project.project_id,
             queryEmbedding,
@@ -987,52 +1036,18 @@ export class SearchService {
             vectorModelName,
             normalizedFilters,
             project.index_version,
+            candidateChunkIds,
           );
           vectorCacheHit = vectorSearch.cacheHit;
           vectorCandidateCount = vectorSearch.candidateCount;
+          vectorPrefiltered = vectorSearch.prefiltered;
+          if (vectorPrefiltered) {
+            notes.push(`Vector search prefiltered to ${ftsChunkIds.size} candidates from FTS results`);
+          }
           return vectorSearch.results;
         },
         vectorSkippedNoVectors ? "no-vectors-available" : (this.settings.enableVectorSearch ? "mode-disabled" : "vector-search-disabled"),
         budget.vectorMs,
-      ),
-    );
-
-    const unicodeEnabled = (mode === "auto" || mode === "lexical" || mode === "hybrid") && containsUnicodeToken(analysis.tokens);
-    resultSets.push(
-      await runPhase(
-        "unicode-substring",
-        unicodeEnabled,
-        () =>
-          this.store.searchByTextSubstrings(
-            project.project_id,
-            buildExpandedUnicodeTokens(analysis),
-            fanoutLimit,
-            normalizedFilters,
-          ),
-        containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
-        budget.ftsMs,
-      ),
-    );
-
-    const symbolEnabled = mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike;
-    resultSets.push(
-      await runPhase(
-        "symbol",
-        symbolEnabled,
-        () => this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
-        "mode-disabled",
-        budget.symbolMs,
-      ),
-    );
-
-    const pathEnabled = mode === "auto" || mode === "hybrid" || analysis.isPathLike;
-    resultSets.push(
-      await runPhase(
-        "path",
-        pathEnabled,
-        () => this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
-        analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
-        budget.symbolMs,
       ),
     );
 
@@ -1072,6 +1087,8 @@ export class SearchService {
         hydratedChunkCount: vectorHydratedChunkCount,
         mode: this.settings.vectorIndexingMode,
         skippedNoVectors: vectorSkippedNoVectors,
+        prefiltered: vectorPrefiltered,
+        prefilteredCandidates: vectorPrefiltered ? ftsChunkIds.size : undefined,
       },
       budget: {
         totalMs: budget.totalMs,
@@ -1095,6 +1112,7 @@ export class SearchService {
     this.logger.info("search completed", {
       candidateCount: mergedResults.length,
       mode,
+      parallelDurationMs,
       projectRootPath,
       query,
       resultCount: results.length,

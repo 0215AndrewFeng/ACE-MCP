@@ -71,6 +71,7 @@ async function main(): Promise<void> {
   const summaryGenerator = new SummaryGenerator(store, llmClient, logger);
 
   const server = createMcpServer({
+    embeddingProvider,
     indexCoordinator,
     llmClient,
     logger,
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
 
   if (cliOptions.webPort) {
     webAppHandle = await startWebApp(cliOptions.webPort, {
+      embeddingProvider,
       indexCoordinator,
       llmClient,
       logger,

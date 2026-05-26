@@ -12,6 +12,7 @@ import { SQLiteStore } from "../core/storage/sqliteStore.js";
 
 export interface TestProjectEnvironment {
   cleanup: () => Promise<void>;
+  embeddingProvider: EmbeddingProvider;
   indexCoordinator: IndexCoordinator;
   projectRootPath: string;
   searchService: SearchService;
@@ -79,6 +80,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     cleanup: async () => {
       await rm(tempDir, { force: true, recursive: true });
     },
+    embeddingProvider: provider,
     indexCoordinator: new IndexCoordinator(settings, store, logger, provider),
     projectRootPath,
     searchService: new SearchService(store, logger, settings, provider),

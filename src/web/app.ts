@@ -13,6 +13,7 @@ import {
   type SupportedLanguage,
 } from "../core/common/types.js";
 import type { Logger } from "../core/common/logger.js";
+import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
 import { buildQaUserPrompt, QA_SYSTEM_PROMPT } from "../core/llm/qaPrompt.js";
@@ -26,6 +27,7 @@ import { buildEnvelope } from "../server/tools/responseEnvelope.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface WebAppDependencies {
+  embeddingProvider: EmbeddingProvider;
   indexCoordinator: IndexCoordinator;
   llmClient: LlmClient;
   logger: Logger;
@@ -66,6 +68,7 @@ function normalizeSupportedLanguages(value: unknown): SupportedLanguage[] | unde
 function toolCatalog(): Array<{ description: string; name: string }> {
   return [
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
+    { description: "Pre-build vector embeddings for a project to enable fast semantic search.", name: "warm_index" },
     { description: "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query.", name: "search_context" },
     { description: "Incrementally index the project and locate symbol definitions with signatures and snippets.", name: "find_definition" },
     { description: "Incrementally index the project, resolve the best definition, and return likely references.", name: "find_references" },
@@ -219,6 +222,73 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       );
     } catch (error: unknown) {
       const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
+    }
+  });
+
+  // v4.2.3: Warm vector index endpoint
+  app.post("/api/index/warm", async (req: Request, res: Response) => {
+    try {
+      const { projectRootPath } = req.body;
+      if (!projectRootPath) {
+        res.status(400).json({ error: "projectRootPath is required" });
+        return;
+      }
+
+      const normalizedPath = normalizeAbsolutePath(String(projectRootPath));
+      const projectRecord = dependencies.store.getProjectByRoot(normalizedPath);
+      if (!projectRecord) {
+        res.status(404).json({ error: "Project not indexed. Run index_project first." });
+        return;
+      }
+
+      const modelName = dependencies.embeddingProvider.getModelName();
+      const coverageBefore = dependencies.store.getVectorCoverage(projectRecord.project_id, modelName);
+      const missingChunks = dependencies.store.listChunksMissingVectors(projectRecord.project_id, modelName);
+
+      if (missingChunks.length === 0) {
+        res.json({
+          success: true,
+          warmed: false,
+          message: "All chunks already have vectors indexed.",
+          coverage: coverageBefore,
+        });
+        return;
+      }
+
+      const startedAt = Date.now();
+      const batchSize = Math.max(8, Math.min(64, dependencies.settings.batchSize));
+      let hydratedCount = 0;
+
+      for (let i = 0; i < missingChunks.length; i += batchSize) {
+        const batch = missingChunks.slice(i, i + batchSize);
+        const embeddings = await dependencies.embeddingProvider.embedBatch(batch.map((c) => c.content));
+        dependencies.store.writeChunkVectors(
+          batch.map((chunk, idx) => ({
+            chunkId: chunk.chunkId,
+            embedding: embeddings[idx],
+            modelName,
+          })),
+          projectRecord.project_id,
+        );
+        hydratedCount += batch.length;
+      }
+
+      const durationMs = Date.now() - startedAt;
+      const coverageAfter = dependencies.store.getVectorCoverage(projectRecord.project_id, modelName);
+
+      res.json({
+        success: true,
+        warmed: true,
+        hydratedChunks: hydratedCount,
+        durationMs,
+        coverage: coverageAfter,
+      });
+    } catch (error: unknown) {
+      const statusCode = error instanceof AppError ? error.statusCode : 500;
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : String(error),
+        code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
+      });
     }
   });
 
