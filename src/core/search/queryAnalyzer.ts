@@ -63,3 +63,35 @@ export function analyzeQuery(query: string): QueryAnalysis {
     tokens: uniqueTokens,
   };
 }
+
+/**
+ * v4.3.0: Estimate optimal maxSources based on question complexity
+ * Simple questions (symbol lookup, short queries) need fewer sources
+ * Complex questions (architecture, flow, how-to) need more sources
+ */
+export function estimateOptimalSources(question: string, defaultTopK: number = 10): number {
+  const normalized = question.normalize("NFKC").toLowerCase();
+  const wordCount = question.split(/\s+/).filter(w => w.length > 1).length;
+
+  // Simple symbol/function lookup - few sources needed
+  const isSimpleLookup = /^(what is|where is|find|locate|定位|查找|在哪|是什么)\s/i.test(normalized) ||
+    wordCount <= 3;
+
+  // Complex architectural questions - more sources needed
+  const isComplexQuestion = /(how does|how do|流程|架构|逻辑|原理|实现|设计|调用链|业务流|工作原理)/i.test(normalized) ||
+    /(整体|全局|系统|模块间|交互|依赖)/i.test(normalized) ||
+    wordCount >= 8;
+
+  // Code review or refactoring questions
+  const isReviewQuestion = /(review|重构|优化|改进|问题|bug|错误)/i.test(normalized);
+
+  if (isSimpleLookup) {
+    return Math.min(defaultTopK, 5);
+  }
+
+  if (isComplexQuestion || isReviewQuestion) {
+    return Math.min(Math.max(defaultTopK, 15), 20);
+  }
+
+  return defaultTopK;
+}
