@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.0.0`
+当前版本：`v4.3.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -21,6 +21,10 @@
 - 搜索质量指标：`passRate` / `top1Recall` / `top5Recall` / `meanReciprocalRank`
 - 统一的 `meta / request / data / stats / notes` 返回结构
 - 搜索诊断信息（query analysis / phase timings / source breakdown / vector status）
+- **LLM 流式问答 (SSE Streaming)**：逐 token 显示答案，支持多轮对话追问
+- **智能 Sources 数量**：根据问题复杂度自动调整检索源数量
+- **LLM 响应缓存**：相同问题 5 分钟内直接返回缓存结果
+- **代码引用高亮**：`[N]` 引用可点击跳转到对应源码卡片
 - 可选 Web 调试面板
 
 ## 使用示例
