@@ -21,6 +21,57 @@ const searchHistoryEl = document.getElementById("search-history");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
 
+// ── v4.2.6: Project management with LocalStorage persistence ─────────────────
+const PROJECT_LIST_KEY = 'ace-mcp-projects';
+const SELECTED_PROJECT_KEY = 'ace-mcp-selected-project';
+
+function getStoredProjects() {
+  return JSON.parse(localStorage.getItem(PROJECT_LIST_KEY) || '[]');
+}
+
+function saveStoredProjects(projects) {
+  localStorage.setItem(PROJECT_LIST_KEY, JSON.stringify(projects));
+}
+
+function addStoredProject(projectPath, fileCount = 0) {
+  const projects = getStoredProjects();
+  const existing = projects.find(p => p.path === projectPath);
+  if (existing) {
+    existing.fileCount = fileCount;
+    existing.lastUsed = Date.now();
+  } else {
+    projects.push({ path: projectPath, fileCount, lastUsed: Date.now() });
+  }
+  saveStoredProjects(projects);
+}
+
+function removeStoredProject(projectPath) {
+  const projects = getStoredProjects().filter(p => p.path !== projectPath);
+  saveStoredProjects(projects);
+}
+
+function getSelectedProject() {
+  return localStorage.getItem(SELECTED_PROJECT_KEY) || '';
+}
+
+function setSelectedProject(projectPath) {
+  localStorage.setItem(SELECTED_PROJECT_KEY, projectPath);
+}
+
+function renderProjectSelect() {
+  if (!projectRootSelect) return;
+  const projects = getStoredProjects().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+  projectRootSelect.innerHTML = '<option value="">-- Select a project --</option>' +
+    projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.path)}${p.fileCount ? ` (${p.fileCount} files)` : ''}</option>`).join("");
+
+  // Restore selection
+  const selected = getSelectedProject();
+  if (selected && projects.some(p => p.path === selected)) {
+    projectRootSelect.value = selected;
+    projectRootInput.value = selected;
+  }
+}
+
 function saveHistory() {
   localStorage.setItem("ace-mcp-search-history", JSON.stringify(searchHistory));
   renderHistory();
@@ -45,6 +96,97 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ── v4.2.6: Syntax highlighting for code snippets ────────────────────────────
+const SYNTAX_PATTERNS = {
+  // Keywords by language
+  keywords: {
+    javascript: /\b(const|let|var|function|class|extends|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|delete|typeof|instanceof|import|export|from|default|async|await|yield|static|get|set|this|super|null|undefined|true|false)\b/g,
+    java: /\b(public|private|protected|static|final|abstract|class|interface|extends|implements|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|throws|new|import|package|void|int|long|double|float|boolean|char|byte|short|String|null|true|false|this|super)\b/g,
+    python: /\b(def|class|return|if|elif|else|for|while|try|except|finally|raise|import|from|as|with|pass|break|continue|yield|lambda|and|or|not|in|is|None|True|False|self|async|await)\b/g,
+    dotnet: /\b(public|private|protected|internal|static|readonly|const|class|interface|struct|enum|abstract|sealed|virtual|override|new|return|if|else|for|foreach|while|do|switch|case|break|continue|try|catch|finally|throw|using|namespace|void|int|long|double|float|bool|char|byte|string|object|null|true|false|this|base|var|async|await|get|set)\b/g,
+  },
+  // Common patterns
+  string: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g,
+  comment: /\/\/.*$|\/\*[\s\S]*?\*\/|#.*$/gm,
+  number: /\b\d+\.?\d*([eE][+-]?\d+)?\b/g,
+  decorator: /@\w+/g,
+};
+
+function highlightSyntax(line, language, searchTerms = []) {
+  // First escape HTML
+  let html = escapeHtml(line);
+
+  // Track positions for non-overlapping replacements
+  const replacements = [];
+
+  // Helper to add replacement
+  const addReplacement = (match, className, index) => {
+    replacements.push({ start: index, end: index + match.length, html: `<span class="syn-${className}">${escapeHtml(match)}</span>` });
+  };
+
+  // Detect language
+  const lang = (language || '').toLowerCase();
+  const keywords = SYNTAX_PATTERNS.keywords[lang] || SYNTAX_PATTERNS.keywords.javascript;
+
+  // Reset regex lastIndex
+  SYNTAX_PATTERNS.string.lastIndex = 0;
+  SYNTAX_PATTERNS.comment.lastIndex = 0;
+  SYNTAX_PATTERNS.number.lastIndex = 0;
+  SYNTAX_PATTERNS.decorator.lastIndex = 0;
+  keywords.lastIndex = 0;
+
+  // Collect matches (strings first - they take priority)
+  let match;
+  while ((match = SYNTAX_PATTERNS.string.exec(line)) !== null) {
+    addReplacement(match[0], 'string', match.index);
+  }
+  while ((match = SYNTAX_PATTERNS.comment.exec(line)) !== null) {
+    addReplacement(match[0], 'comment', match.index);
+  }
+
+  // Keywords (only if not inside string/comment)
+  while ((match = keywords.exec(line)) !== null) {
+    const overlaps = replacements.some(r => match.index >= r.start && match.index < r.end);
+    if (!overlaps) {
+      addReplacement(match[0], 'keyword', match.index);
+    }
+  }
+
+  // Numbers (only if not inside string/comment/keyword)
+  while ((match = SYNTAX_PATTERNS.number.exec(line)) !== null) {
+    const overlaps = replacements.some(r => match.index >= r.start && match.index < r.end);
+    if (!overlaps) {
+      addReplacement(match[0], 'number', match.index);
+    }
+  }
+
+  // Decorators (Python/Java annotations)
+  if (lang === 'python' || lang === 'java') {
+    while ((match = SYNTAX_PATTERNS.decorator.exec(line)) !== null) {
+      const overlaps = replacements.some(r => match.index >= r.start && match.index < r.end);
+      if (!overlaps) {
+        addReplacement(match[0], 'decorator', match.index);
+      }
+    }
+  }
+
+  // Sort replacements by position (descending) and apply
+  replacements.sort((a, b) => b.start - a.start);
+  for (const r of replacements) {
+    html = html.slice(0, r.start) + r.html + html.slice(r.end);
+  }
+
+  // Highlight search terms (on top of syntax highlighting)
+  for (const term of searchTerms) {
+    if (term.length < 2) continue;
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const termRegex = new RegExp(`(${escapedTerm})`, 'gi');
+    html = html.replace(termRegex, '<mark class="search-highlight">$1</mark>');
+  }
+
+  return html;
 }
 
 async function request(method, url, body, timeoutMs = 600000) {
@@ -153,10 +295,12 @@ document.getElementById("load-config")?.addEventListener("click", () => run(() =
 document.getElementById("load-tools")?.addEventListener("click", () => run(() => request("GET", "/api/tools")));
 document.getElementById("load-projects")?.addEventListener("click", () => run(async () => {
   const data = await request("GET", "/api/projects");
-  // Populate project selector
-  if (projectRootSelect && data.projects) {
-    projectRootSelect.innerHTML = '<option value="">-- Select a project --</option>' +
-      data.projects.map(p => `<option value="${escapeHtml(p.projectRootPath)}">${escapeHtml(p.projectRootPath)}</option>`).join("");
+  // v4.2.6: Merge server projects with local storage
+  if (data.projects) {
+    for (const p of data.projects) {
+      addStoredProject(p.projectRootPath, p.fileCount);
+    }
+    renderProjectSelect();
   }
   return data;
 }));
@@ -164,8 +308,12 @@ document.getElementById("load-projects")?.addEventListener("click", () => run(as
 projectRootSelect?.addEventListener("change", () => {
   if (projectRootSelect.value) {
     projectRootInput.value = projectRootSelect.value;
+    setSelectedProject(projectRootSelect.value);
   }
 });
+
+// v4.2.6: Initialize project select from LocalStorage on page load
+renderProjectSelect();
 
 document.getElementById("run-index")?.addEventListener("click", () => run(() => request("POST", "/api/index-project", {
   mode: indexModeInput.value,
@@ -271,6 +419,71 @@ document.getElementById("autostart-disable")?.addEventListener("click", async ()
 // Load autostart status on page load
 loadAutostartStatus();
 
+// ── v4.2.6: Add Project button with LocalStorage persistence ────────────────
+document.getElementById("add-project")?.addEventListener("click", async () => {
+  const addBtn = document.getElementById("add-project");
+  const projectPath = projectRootInput.value?.trim();
+
+  if (!projectPath) {
+    alert("Please enter a project root path first.");
+    return;
+  }
+
+  // Validate path format (basic check)
+  if (!projectPath.startsWith("/") && !projectPath.match(/^[A-Z]:\\/i)) {
+    alert("Please enter an absolute path (e.g., /Users/me/project or C:\\projects\\myapp)");
+    return;
+  }
+
+  addBtn.disabled = true;
+  addBtn.textContent = "Indexing...";
+
+  try {
+    // Index the project with full mode for new projects
+    const result = await request("POST", "/api/index-project", {
+      projectRootPath: projectPath,
+      mode: "full"
+    });
+
+    // Show success message
+    const fileCount = result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
+    const chunkCount = result?.data?.chunkCount ?? result?.stats?.indexSync?.chunkCount ?? 0;
+    alert(`✅ Project indexed successfully!\n\nFiles: ${fileCount}\nChunks: ${chunkCount}\n\nYou can now search and ask questions about this project.`);
+
+    // v4.2.6: Save to LocalStorage and update select
+    addStoredProject(projectPath, fileCount);
+    setSelectedProject(projectPath);
+    renderProjectSelect();
+
+    // Update result display
+    render(result);
+  } catch (err) {
+    alert("❌ Failed to index project:\n\n" + (err.message || err));
+  } finally {
+    addBtn.disabled = false;
+    addBtn.textContent = "+ Add";
+  }
+});
+
+// ── v4.2.6: Delete Project button ────────────────────────────────────────────
+document.getElementById("delete-project")?.addEventListener("click", async () => {
+  const projectPath = projectRootInput.value?.trim();
+  if (!projectPath) {
+    alert("Please select or enter a project path first.");
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to remove this project from the list?\n\n${projectPath}\n\nNote: This only removes it from the dropdown. Index data remains on disk.`)) {
+    return;
+  }
+
+  removeStoredProject(projectPath);
+  projectRootInput.value = '';
+  setSelectedProject('');
+  renderProjectSelect();
+  alert("Project removed from list.");
+});
+
 // Ask Codebase (RAG)
 function renderMarkdown(text) {
   let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
@@ -341,14 +554,17 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
     hasMore = false;
   }
 
+  // v4.2.6: Apply syntax highlighting based on language
+  const highlightLine = (line) => highlightSyntax(line, source.language, searchTermsLower);
+
   // Render preview with line numbers and highlights
   const previewHtml = previewLines.map(l =>
-    `<div class="snippet-line${l.isMatch ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${l.lineNum}</span>${escapeHtml(l.content)}</div>`
+    `<div class="snippet-line${l.isMatch ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${l.lineNum}</span>${highlightLine(l.content)}</div>`
   ).join('');
 
   // Render full snippet for expansion
   const fullHtml = lines.map((line, i) =>
-    `<div class="snippet-line${matchedLineIndices.has(i) ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${source.startLine + i}</span>${escapeHtml(line)}</div>`
+    `<div class="snippet-line${matchedLineIndices.has(i) ? ' snippet-line-match' : ''}"><span class="snippet-linenum">${source.startLine + i}</span>${highlightLine(line)}</div>`
   ).join('');
 
   const snippetId = `snippet-${source.index}`;

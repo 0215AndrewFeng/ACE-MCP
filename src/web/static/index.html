@@ -38,7 +38,11 @@
         <select id="project-root-select">
           <option value="">-- Select a project --</option>
         </select>
-        <input id="project-root" class="mono" placeholder="/path/to/project" />
+        <div style="display:flex;gap:8px;align-items:end">
+          <input id="project-root" class="mono" placeholder="/path/to/project" style="flex:1" />
+          <button id="add-project" type="button" class="secondary" style="width:auto;min-width:80px" title="Add new project and index it">+ Add</button>
+          <button id="delete-project" type="button" class="secondary" style="width:auto;min-width:80px;background:#dc2626;border-color:#dc2626" title="Remove project from list">🗑 Del</button>
+        </div>
         <label for="index-mode">Index mode</label>
         <select id="index-mode">
           <option value="incremental">incremental</option>

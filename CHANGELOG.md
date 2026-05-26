@@ -2,6 +2,21 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.2.6] - 2026-05-26
+
+### 功能增强
+
+- **项目列表持久化**：已添加的项目自动保存到 LocalStorage，刷新页面后下拉列表自动恢复，无需重复添加。
+- **删除项目按钮**：新增 "🗑 Del" 按钮，可从下拉列表中移除不再需要的项目（索引数据保留在磁盘）。
+- **代码语法高亮**：搜索结果 snippet 现支持语法高亮，根据语言类型（JavaScript/Java/Python/.NET）着色关键字、字符串、注释、数字等。
+- **搜索词高亮**：搜索词在 snippet 中以黄色背景高亮显示，便于快速定位匹配位置。
+
+### 内部改进
+
+- 前端新增 `getStoredProjects()` / `addStoredProject()` / `removeStoredProject()` 函数管理项目列表。
+- 前端新增 `highlightSyntax()` 函数，支持 JavaScript/Java/Python/.NET 四种语言的基础语法高亮。
+- CSS 新增 `.syn-keyword` / `.syn-string` / `.syn-comment` / `.syn-number` / `.syn-decorator` / `.search-highlight` 样式类。
+
 ## [4.2.5] - 2026-05-26
 
 ### 功能增强
