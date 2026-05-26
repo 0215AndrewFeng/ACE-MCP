@@ -1,0 +1,20 @@
+README.md
+  s_0f8113dba42c56::t_8babf05793ea62 24-27
+  s_0f8113dba42c56::t_d350e6238545b9 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "3d46c86796d67a6d52284e73ca650cf774482c34",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
