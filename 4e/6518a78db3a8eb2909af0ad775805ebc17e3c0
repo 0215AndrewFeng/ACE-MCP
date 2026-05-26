@@ -1,0 +1,38 @@
+src/web/static/index.html
+  s_0f8113dba42c56::t_c7d918732e7c59 129-130
+src/core/search/remoteEmbedding.ts
+  s_0f8113dba42c56::t_1db54b3c5e56e8 54-55,97-100,109,128-136
+CHANGELOG.md
+  s_0f8113dba42c56::t_ffcd927ecbb63a 5-24
+package.json
+  s_0f8113dba42c56::t_ce03acae217f3c 3
+src/core/summary/summaryGenerator.ts
+  s_0f8113dba42c56::t_4754287a685e8f 1,12-25,40-50,71-72,83-97,134,143,167,173-183,191-205,248-249,259-260
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_598aa3068c2dc9 689,691
+  s_0f8113dba42c56::t_a9cb0036aafc26 423-438
+  s_0f8113dba42c56::t_322e4cf0155373 571,576
+  s_0f8113dba42c56::t_d8cc5146e6b167 719-891
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_555cd5d7f253d5 303-306,329-372
+src/version.ts
+  s_0f8113dba42c56::t_580298160bd4d0 2
+src/core/summary/types.ts
+  s_0f8113dba42c56::t_993e59979bf7a1 18-19,44-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "4e6518a78db3a8eb2909af0ad775805ebc17e3c0",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
