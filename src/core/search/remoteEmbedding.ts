@@ -51,8 +51,8 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
     this.queryCacheMisses = 0;
   }
 
-  async embed(text: string): Promise<number[]> {
-    const results = await this.embedBatch([text]);
+  async embed(text: string, signal?: AbortSignal): Promise<number[]> {
+    const results = await this.embedBatch([text], signal);
     return results[0];
   }
 
@@ -94,7 +94,10 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
     }
   }
 
-  async embedBatch(texts: string[]): Promise<number[][]> {
+  /**
+   * v4.2.5: embedBatch now supports AbortSignal for cancellation
+   */
+  async embedBatch(texts: string[], signal?: AbortSignal): Promise<number[][]> {
     try {
       const response = await fetch(this.apiUrl, {
         body: JSON.stringify({ input: texts, model: this.modelName_ }),
@@ -103,6 +106,7 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
           "Content-Type": "application/json",
         },
         method: "POST",
+        signal,
       });
 
       if (!response.ok) {
@@ -121,6 +125,15 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
       const sorted = [...json.data].sort((a, b) => a.index - b.index);
       return sorted.map((item) => item.embedding);
     } catch (error: unknown) {
+      // v4.2.5: Distinguish between abort and other errors
+      if (error instanceof Error && error.name === "AbortError") {
+        console.warn("[RemoteEmbeddingProvider] request aborted");
+        if (this.fallback) {
+          return this.fallback.embedBatch(texts);
+        }
+        throw error;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       console.warn(
         `[RemoteEmbeddingProvider] request failed: ${message}, falling back to ${this.fallback?.getModelName() ?? "none"}`,

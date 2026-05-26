@@ -15,6 +15,8 @@ export interface ModuleSummary {
   description: string;
   keySymbols: string[];
   fileCount: number;
+  /** v4.2.5: Content hash for incremental update detection */
+  contentHash?: string;
 }
 
 export interface ModuleRelationship {
@@ -39,4 +41,7 @@ export interface SummaryGenerationResult {
   moduleCount: number;
   tokensUsed: { prompt: number; completion: number };
   durationMs: number;
+  /** v4.2.5: Number of modules regenerated (vs cached) */
+  regeneratedModules?: number;
+  cachedModules?: number;
 }
