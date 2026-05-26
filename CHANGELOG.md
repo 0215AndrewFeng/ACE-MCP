@@ -2,6 +2,26 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.2.5] - 2026-05-26
+
+### 功能增强
+
+- **前端流式问答 (SSE Streaming)**：新增 "Stream" 按钮，使用 EventSource 接收 `/api/qa/ask/stream` 的 SSE 流，答案逐 token 显示，体验更流畅。
+- **对话持久化**：多轮对话历史现存储到 LocalStorage，刷新页面后自动恢复，支持跨会话追问。
+- **搜索结果去重增强**：新增 `mergeOverlappingResults()` 函数，自动合并同文件内行号重叠超过 50% 的 snippet，减少冗余结果。
+- **项目摘要增量更新**：`SummaryGenerator` 通过 content hash 检测模块变更，未变更的模块复用缓存的摘要，节省 LLM token 消耗。
+
+### 性能优化
+
+- **远程 Embedding 超时保护**：`RemoteEmbeddingProvider.embedBatch()` 支持 `AbortSignal`，超时时真正中断请求而非仅 abandon promise。
+
+### 内部改进
+
+- `ModuleSummary` 新增 `contentHash` 字段，用于增量更新检测。
+- `SummaryGenerationResult` 新增 `regeneratedModules` 和 `cachedModules` 字段，便于观察增量更新效果。
+- 前端新增 `saveQaHistory()` / `clearQaHistory()` 函数管理 LocalStorage 中的对话历史。
+- 前端 Stream 按钮复用已有的 SSE 后端，无需额外接口。
+
 ## [4.2.4] - 2026-05-26
 
 ### 功能增强

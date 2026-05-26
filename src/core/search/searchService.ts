@@ -300,7 +300,10 @@ function dedupeSameFileResults(results: SearchResult[], analysis: QueryAnalysis,
       mergedBySymbol.set(key, preferred);
     }
 
-    const ranked = [...mergedBySymbol.values()]
+    // v4.2.5: Merge overlapping line ranges within same file
+    const merged = mergeOverlappingResults([...mergedBySymbol.values()], analysis);
+
+    const ranked = merged
       .map((result) => {
         const scored = scoreMergedResult(result, analysis);
         return {
@@ -321,6 +324,52 @@ function dedupeSameFileResults(results: SearchResult[], analysis: QueryAnalysis,
   }
 
   return deduped;
+}
+
+/**
+ * v4.2.5: Merge results with overlapping line ranges
+ * If two results overlap by more than 50%, merge them into one
+ */
+function mergeOverlappingResults(results: SearchResult[], analysis: QueryAnalysis): SearchResult[] {
+  if (results.length <= 1) return results;
+
+  // Sort by start line
+  const sorted = [...results].sort((a, b) => a.startLine - b.startLine);
+  const merged: SearchResult[] = [];
+
+  for (const result of sorted) {
+    const last = merged[merged.length - 1];
+    if (!last) {
+      merged.push(result);
+      continue;
+    }
+
+    // Check for overlap
+    const overlapStart = Math.max(last.startLine, result.startLine);
+    const overlapEnd = Math.min(last.endLine, result.endLine);
+    const overlapLines = Math.max(0, overlapEnd - overlapStart + 1);
+    const lastLines = last.endLine - last.startLine + 1;
+    const resultLines = result.endLine - result.startLine + 1;
+    const minLines = Math.min(lastLines, resultLines);
+
+    // If overlap > 50% of smaller range, merge them
+    if (overlapLines > minLines * 0.5) {
+      // Extend the range and combine scores
+      const combinedReasons = new Set([...last.reason.split("+"), ...result.reason.split("+")]);
+      const preferred = choosePreferredResult(last, result, analysis);
+      merged[merged.length - 1] = {
+        ...preferred,
+        startLine: Math.min(last.startLine, result.startLine),
+        endLine: Math.max(last.endLine, result.endLine),
+        reason: [...combinedReasons].sort().join("+"),
+        score: Math.max(last.score, result.score) + 0.1, // Bonus for merged result
+      };
+    } else {
+      merged.push(result);
+    }
+  }
+
+  return merged;
 }
 
 function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number): SearchResult[] {

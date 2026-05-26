@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,6 +8,20 @@ import type { SQLiteStore } from "../storage/sqliteStore.js";
 import type { ProjectSummary, SummaryGenerationResult, ModuleSummary, ModuleRelationship } from "./types.js";
 
 const SUMMARIES_DIR = ".ace-mcp/summaries";
+
+/**
+ * v4.2.5: Generate content hash for a module based on file paths and symbol signatures
+ */
+function computeModuleContentHash(
+  moduleFiles: Array<{ relativePath: string; lineCount: number }>,
+  definitions: Array<{ fullName: string; signature: string }>
+): string {
+  const content = [
+    ...moduleFiles.map(f => `${f.relativePath}:${f.lineCount}`).sort(),
+    ...definitions.map(d => `${d.fullName}:${d.signature.slice(0, 100)}`).sort(),
+  ].join("\n");
+  return createHash("md5").update(content).digest("hex").slice(0, 16);
+}
 
 export class SummaryGenerator {
   constructor(
@@ -20,6 +35,17 @@ export class SummaryGenerator {
 
     if (!this.llmClient.isConfigured()) {
       throw new Error("LLM API not configured. Set ACE_MCP_LLM_API_URL and ACE_MCP_LLM_API_KEY.");
+    }
+
+    // v4.2.5: Load existing summary for incremental update
+    const existingSummary = await this.loadSummary(projectRootPath);
+    const existingModuleMap = new Map<string, ModuleSummary>();
+    if (existingSummary) {
+      for (const mod of existingSummary.modules) {
+        if (mod.contentHash) {
+          existingModuleMap.set(mod.path, mod);
+        }
+      }
     }
 
     // 1. Get all indexed files
@@ -42,6 +68,8 @@ export class SummaryGenerator {
     const modules: ModuleSummary[] = [];
     let totalPrompt = 0;
     let totalCompletion = 0;
+    let regeneratedModules = 0;
+    let cachedModules = 0;
 
     for (const [moduleName, moduleFiles] of moduleMap) {
       // Get symbols for these files
@@ -51,6 +79,21 @@ export class SummaryGenerator {
         200,
         { pathPrefix: moduleName === "(root)" ? undefined : moduleName },
       );
+
+      // v4.2.5: Compute content hash for incremental update
+      const contentHash = computeModuleContentHash(moduleFiles, definitions);
+      const existingModule = existingModuleMap.get(moduleName);
+
+      // If hash matches, reuse existing summary
+      if (existingModule && existingModule.contentHash === contentHash) {
+        modules.push(existingModule);
+        cachedModules++;
+        this.logger.debug("Reusing cached module summary", { moduleName, contentHash });
+        continue;
+      }
+
+      // Generate new summary for this module
+      regeneratedModules++;
 
       const symbolList = definitions
         .map((d) => `  ${d.kind} ${d.fullName} (${d.filePath}:${d.line}) — ${d.signature.slice(0, 120)}`)
@@ -88,6 +131,7 @@ Respond with ONLY the description, no prefix or formatting.`;
           description: (result.content ?? "").trim(),
           keySymbols: definitions.slice(0, 10).map((d) => d.fullName),
           fileCount: moduleFiles.length,
+          contentHash,
         });
       } catch (error) {
         this.logger.warn("Failed to summarize module", { moduleName, error: String(error) });
@@ -96,6 +140,7 @@ Respond with ONLY the description, no prefix or formatting.`;
           description: "(summary generation failed)",
           keySymbols: definitions.slice(0, 10).map((d) => d.fullName),
           fileCount: moduleFiles.length,
+          contentHash,
         });
       }
     }
@@ -119,19 +164,23 @@ Respond with ONLY the description, no prefix or formatting.`;
       }
     }
 
-    // 5. Generate architecture overview
+    // 5. Generate architecture overview (only if modules changed or no existing)
     const moduleOverview = modules
       .map((m) => `- **${m.path}** (${m.fileCount} files): ${m.description}`)
       .join("\n");
 
     let architecture = "";
-    try {
-      const archResult = await this.llmClient.complete({
-        messages: [
-          { role: "system", content: "You are a code architecture analyst. Write in markdown." },
-          {
-            role: "user",
-            content: `Based on these module summaries, write a concise project architecture overview (3-5 paragraphs).
+    // v4.2.5: Only regenerate architecture if modules changed
+    const shouldRegenerateArchitecture = regeneratedModules > 0 || !existingSummary?.architecture;
+
+    if (shouldRegenerateArchitecture) {
+      try {
+        const archResult = await this.llmClient.complete({
+          messages: [
+            { role: "system", content: "You are a code architecture analyst. Write in markdown." },
+            {
+              role: "user",
+              content: `Based on these module summaries, write a concise project architecture overview (3-5 paragraphs).
 
 Project: ${path.basename(projectRootPath)}
 Total files: ${files.length}
@@ -139,17 +188,21 @@ Modules:
 ${moduleOverview}
 
 Include: overall purpose, key architectural patterns, module relationships, and data flow.`,
-          },
-        ],
-        maxTokens: 1024,
-      });
+            },
+          ],
+          maxTokens: 1024,
+        });
 
-      totalPrompt += archResult.usage.promptTokens;
-      totalCompletion += archResult.usage.completionTokens;
-      architecture = (archResult.content ?? "").trim();
-    } catch (error) {
-      this.logger.warn("Failed to generate architecture overview", { error: String(error) });
-      architecture = `# ${path.basename(projectRootPath)}\n\nArchitecture overview generation failed.\n\n## Modules\n\n${moduleOverview}`;
+        totalPrompt += archResult.usage.promptTokens;
+        totalCompletion += archResult.usage.completionTokens;
+        architecture = (archResult.content ?? "").trim();
+      } catch (error) {
+        this.logger.warn("Failed to generate architecture overview", { error: String(error) });
+        architecture = `# ${path.basename(projectRootPath)}\n\nArchitecture overview generation failed.\n\n## Modules\n\n${moduleOverview}`;
+      }
+    } else {
+      architecture = existingSummary!.architecture;
+      this.logger.debug("Reusing cached architecture overview");
     }
 
     // 6. Persist
@@ -192,6 +245,8 @@ Include: overall purpose, key architectural patterns, module relationships, and 
     this.logger.info("Project summary generated", {
       durationMs,
       moduleCount: modules.length,
+      regeneratedModules,
+      cachedModules,
       tokensUsed: { prompt: totalPrompt, completion: totalCompletion },
     });
 
@@ -201,6 +256,8 @@ Include: overall purpose, key architectural patterns, module relationships, and 
       moduleCount: modules.length,
       tokensUsed: { prompt: totalPrompt, completion: totalCompletion },
       durationMs,
+      regeneratedModules,
+      cachedModules,
     };
   }
 

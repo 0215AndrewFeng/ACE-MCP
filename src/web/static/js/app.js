@@ -420,8 +420,22 @@ function setStep(stepsEl, phase, icon, text, done) {
 }
 
 let qaTimerInterval = null;
-// v4.2.4: Multi-turn conversation history
-let qaConversationHistory = [];
+// v4.2.5: Multi-turn conversation with LocalStorage persistence
+const QA_HISTORY_KEY = 'ace-mcp-qa-history';
+let qaConversationHistory = JSON.parse(localStorage.getItem(QA_HISTORY_KEY) || '[]');
+
+function saveQaHistory() {
+  // Keep only last 12 messages (6 turns)
+  if (qaConversationHistory.length > 12) {
+    qaConversationHistory = qaConversationHistory.slice(-12);
+  }
+  localStorage.setItem(QA_HISTORY_KEY, JSON.stringify(qaConversationHistory));
+}
+
+function clearQaHistory() {
+  qaConversationHistory = [];
+  localStorage.removeItem(QA_HISTORY_KEY);
+}
 
 document.getElementById("run-ask")?.addEventListener("click", async () => {
   const askBtn = document.getElementById("run-ask");
@@ -554,15 +568,12 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
       answerBodyEl.innerHTML = renderMarkdown(qaData.answer);
       answerBodyEl.hidden = false;
 
-      // v4.2.4: Save to conversation history for multi-turn support
+      // v4.2.5: Save to conversation history with LocalStorage persistence
       qaConversationHistory.push(
         { role: 'user', content: question },
         { role: 'assistant', content: qaData.answer }
       );
-      // Keep only last 6 turns (12 messages)
-      if (qaConversationHistory.length > 12) {
-        qaConversationHistory = qaConversationHistory.slice(-12);
-      }
+      saveQaHistory();
 
       // Show feedback buttons
       const feedbackEl = document.getElementById('qa-feedback');
@@ -675,9 +686,9 @@ document.getElementById('qa-submit-correction')?.addEventListener('click', async
   }
 });
 
-// ── v4.2.4: New conversation button ──────────────────────────────────────────
+// ── v4.2.5: New conversation button with LocalStorage clear ─────────────────
 document.getElementById('qa-new-conversation')?.addEventListener('click', function() {
-  qaConversationHistory = [];
+  clearQaHistory();
   document.getElementById('qa-question').value = '';
   document.getElementById('qa-answer-body').hidden = true;
   document.getElementById('qa-answer-body').innerHTML = '';
@@ -703,5 +714,178 @@ document.addEventListener('click', (e) => {
       sourceCard.classList.add('highlight');
       setTimeout(() => sourceCard.classList.remove('highlight'), 2000);
     }
+  }
+});
+
+// ── v4.2.5: SSE Streaming Ask ────────────────────────────────────────────────
+document.getElementById("run-ask-stream")?.addEventListener("click", async () => {
+  const askBtn = document.getElementById("run-ask-stream");
+  const progressEl = document.getElementById("qa-progress");
+  const loadingEl = document.getElementById("qa-loading");
+  const timerEl = document.getElementById("qa-timer");
+  const stepsEl = document.getElementById("qa-steps");
+  const answerBodyEl = document.getElementById("qa-answer-body");
+  const sourcesListEl = document.getElementById("qa-sources-list");
+  const statsEl = document.getElementById("qa-stats");
+  const errorEl = document.getElementById("qa-error");
+  const rawEl = document.getElementById("qa-raw");
+  const question = document.getElementById("qa-question")?.value?.trim();
+  if (!question) return;
+
+  const timeoutSec = Number(document.getElementById("qa-timeout")?.value || 120);
+  const projectRoot = projectRootInput.value;
+  const maxSources = Number(document.getElementById("qa-max-sources")?.value || 10);
+  const includeSummary = document.getElementById("qa-include-summary")?.checked ?? true;
+
+  // Reset UI
+  askBtn.disabled = true;
+  askBtn.textContent = 'Streaming...';
+  document.getElementById("run-ask").disabled = true;
+  [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
+  rawEl.innerHTML = '';
+  stepsEl.innerHTML = '';
+  progressEl.hidden = false;
+  loadingEl.hidden = false;
+
+  const startTime = Date.now();
+  if (qaTimerInterval) clearInterval(qaTimerInterval);
+  qaTimerInterval = setInterval(() => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    timerEl.textContent = `${elapsed}s / ${timeoutSec}s`;
+  }, 100);
+
+  // Build query params
+  const params = new URLSearchParams({
+    projectRootPath: projectRoot,
+    question,
+    maxSources: String(maxSources),
+    includeSummary: String(includeSummary),
+    timeoutSeconds: String(timeoutSec),
+    history: JSON.stringify(qaConversationHistory),
+  });
+
+  let fullAnswer = '';
+  let finalData = null;
+  const searchTerms = question.split(/\s+/).filter(t => t.length > 2);
+
+  try {
+    const eventSource = new EventSource(`/api/qa/ask/stream?${params}`);
+
+    await new Promise((resolve, reject) => {
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+
+          switch (data.type) {
+            case 'phase':
+              if (data.status === 'start') {
+                const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
+                const labels = {
+                  index: 'Checking project index...',
+                  search: 'Searching relevant code...',
+                  summary: 'Loading project summary...',
+                  llm: 'Generating answer (streaming)...',
+                };
+                setStep(stepsEl, data.phase, icons[data.phase] || '⏳', labels[data.phase] || data.phase, false);
+              } else if (data.status === 'done') {
+                const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
+                let text = `${data.phase} done`;
+                if (data.ms) text += ` (${data.ms}ms)`;
+                if (data.resultCount !== undefined) text = `Found ${data.resultCount} snippets (${data.ms}ms)`;
+                if (data.hadSummary !== undefined) text = data.hadSummary ? 'Summary loaded' : 'No summary';
+                setStep(stepsEl, data.phase, icons[data.phase] || '✅', text, true);
+              }
+              break;
+
+            case 'sources':
+              if (data.sources?.length) {
+                const maxScore = Math.max(...data.sources.map(s => s.score || 0));
+                const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
+                sourcesListEl.innerHTML = `<h4>Retrieved sources (${data.sources.length})</h4>` + cards;
+                sourcesListEl.hidden = false;
+              }
+              break;
+
+            case 'token':
+              if (data.content) {
+                fullAnswer += data.content;
+                answerBodyEl.innerHTML = renderMarkdown(fullAnswer);
+                answerBodyEl.hidden = false;
+              }
+              break;
+
+            case 'done':
+              finalData = data;
+              eventSource.close();
+              resolve();
+              break;
+
+            case 'error':
+              eventSource.close();
+              reject(new Error(data.error));
+              break;
+          }
+        } catch (parseErr) {
+          console.error('SSE parse error:', parseErr, e.data);
+        }
+      };
+
+      eventSource.onerror = (e) => {
+        eventSource.close();
+        reject(new Error('SSE connection failed'));
+      };
+    });
+
+    // Success - save conversation history
+    if (fullAnswer) {
+      qaConversationHistory.push(
+        { role: 'user', content: question },
+        { role: 'assistant', content: fullAnswer }
+      );
+      saveQaHistory();
+
+      // Show feedback
+      const feedbackEl = document.getElementById('qa-feedback');
+      feedbackEl.hidden = false;
+      feedbackEl.dataset.context = JSON.stringify({
+        projectRootPath: projectRoot,
+        question,
+        answer: fullAnswer,
+        usage: finalData?.usage,
+        timing: finalData?.timing,
+      });
+      document.getElementById('qa-feedback-positive').classList.remove('selected');
+      document.getElementById('qa-feedback-negative').classList.remove('selected');
+      document.getElementById('qa-correction-form').hidden = true;
+      document.getElementById('qa-feedback-thanks').hidden = true;
+      document.getElementById('qa-feedback-positive').disabled = false;
+      document.getElementById('qa-feedback-negative').disabled = false;
+    }
+
+    // Stats
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const statItems = [`<span class="qa-stat"><span class="qa-stat-label">Total:</span> ${elapsed}s</span>`];
+    if (finalData?.timing?.indexMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Index:</span> ${finalData.timing.indexMs}ms</span>`);
+    if (finalData?.timing?.searchMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Search:</span> ${finalData.timing.searchMs}ms</span>`);
+    if (finalData?.timing?.llmMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">LLM:</span> ${finalData.timing.llmMs}ms</span>`);
+    if (finalData?.usage) {
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${finalData.usage.promptTokens} tok</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${finalData.usage.completionTokens} tok</span>`);
+    }
+    statsEl.innerHTML = statItems.join('');
+    statsEl.hidden = false;
+
+    rawEl.innerHTML = `<details><summary>Show raw JSON</summary><pre>${escapeHtml(JSON.stringify(finalData, null, 2))}</pre></details>`;
+
+  } catch (error) {
+    errorEl.textContent = error.message || String(error);
+    errorEl.hidden = false;
+  } finally {
+    clearInterval(qaTimerInterval);
+    qaTimerInterval = null;
+    loadingEl.hidden = true;
+    askBtn.disabled = false;
+    askBtn.textContent = 'Stream';
+    document.getElementById("run-ask").disabled = false;
   }
 });
