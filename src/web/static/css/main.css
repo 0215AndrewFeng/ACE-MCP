@@ -115,6 +115,17 @@ hr { border: none; border-top: 1px solid #e5e7eb; }
 /* ── QA Error ── */
 .qa-error { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; margin-top: 14px; color: #991b1b; font-size: 14px; }
 
+/* ── QA Fallback Notice ── */
+.qa-fallback-notice { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 12px 16px; color: #92400e; font-size: 14px; }
+
+/* ── QA Citation Links ── */
+.qa-citation { color: #2563eb; text-decoration: none; font-weight: 600; cursor: pointer; transition: color 0.15s; }
+.qa-citation:hover { text-decoration: underline; color: #1d4ed8; }
+
+/* ── Source Card Highlight (when citation clicked) ── */
+.qa-source-card.highlight { box-shadow: 0 0 0 2px #2563eb; animation: citation-flash 0.3s ease-out; }
+@keyframes citation-flash { 0% { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4); } 100% { box-shadow: 0 0 0 2px #2563eb; } }
+
 /* ── QA Feedback ── */
 .qa-feedback { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; background: #f8fafc; border-radius: 8px; flex-wrap: wrap; }
 .qa-feedback-label { font-size: 13px; color: #64748b; }

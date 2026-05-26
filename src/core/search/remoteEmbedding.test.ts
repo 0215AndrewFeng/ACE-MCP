@@ -120,12 +120,19 @@ test("RemoteEmbeddingProvider", async (t) => {
       async embedBatch(texts: string[]): Promise<number[][]> {
         return texts.map(() => [0.9, 0.8, 0.7]);
       },
+      async embedQuery(query: string): Promise<number[]> {
+        return this.embed(query);
+      },
       getDimension(): number {
         return 3;
       },
       getModelName(): string {
         return "test-fallback";
       },
+      getQueryCacheStats() {
+        return { size: 0, hits: 0, misses: 0 };
+      },
+      clearQueryCache() {},
     };
 
     provider = new RemoteEmbeddingProvider(
@@ -152,12 +159,19 @@ test("RemoteEmbeddingProvider", async (t) => {
       async embedBatch(texts: string[]): Promise<number[][]> {
         return texts.map(() => [1, 0, 0]);
       },
+      async embedQuery(query: string): Promise<number[]> {
+        return this.embed(query);
+      },
       getDimension(): number {
         return 3;
       },
       getModelName(): string {
         return "test-fallback";
       },
+      getQueryCacheStats() {
+        return { size: 0, hits: 0, misses: 0 };
+      },
+      clearQueryCache() {},
     };
 
     provider = new RemoteEmbeddingProvider(

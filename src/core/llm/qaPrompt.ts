@@ -2,6 +2,8 @@
  * Shared QA prompt templates for RAG (used by both MCP tool and Web API)
  */
 
+import type { LlmMessage } from "./llmClient.js";
+
 export const QA_SYSTEM_PROMPT = `You are a precise code assistant. Your task is to answer questions about a codebase based ONLY on the provided source code snippets and project summary.
 
 ## Rules
@@ -31,6 +33,59 @@ export interface QaSource {
   score: number;
   snippet: string;
   startLine: number;
+}
+
+export interface QaConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * Estimate token count for a text string (rough approximation)
+ */
+export function estimateTokens(text: string): number {
+  // Rough estimate: ~4 chars per token for English/code
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Compress sources to fit within token budget
+ * Prioritizes higher-score sources and truncates snippets if needed
+ */
+export function compressContext(sources: QaSource[], maxTokens: number): QaSource[] {
+  if (sources.length === 0) return sources;
+
+  // Sort by score descending
+  const sorted = [...sources].sort((a, b) => b.score - a.score);
+
+  // Calculate total tokens
+  let totalTokens = sorted.reduce((sum, s) => sum + estimateTokens(s.snippet), 0);
+
+  if (totalTokens <= maxTokens) {
+    return sorted;
+  }
+
+  // Truncate snippets starting from lowest-score sources
+  const result = [...sorted];
+  const tokensPerSource = Math.floor(maxTokens / result.length);
+  const minSnippetChars = 200; // Keep at least this many chars
+
+  for (let i = result.length - 1; i >= 0 && totalTokens > maxTokens; i--) {
+    const source = result[i];
+    const currentTokens = estimateTokens(source.snippet);
+    const targetTokens = Math.max(tokensPerSource, Math.ceil(minSnippetChars / 4));
+
+    if (currentTokens > targetTokens) {
+      const targetChars = targetTokens * 4;
+      result[i] = {
+        ...source,
+        snippet: source.snippet.slice(0, targetChars) + "\n// ... (truncated)",
+      };
+      totalTokens -= currentTokens - targetTokens;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -64,4 +119,31 @@ ${question}
 - Only use information from the source code snippets above
 - Cite sources using [N] notation
 - If unsure, say so rather than guessing`;
+}
+
+/**
+ * Build LLM messages with conversation history support
+ */
+export function buildQaMessagesWithHistory(
+  question: string,
+  sources: QaSource[],
+  summaryArchitecture: string | undefined,
+  history: QaConversationTurn[],
+  maxHistoryTurns = 3,
+): LlmMessage[] {
+  const messages: LlmMessage[] = [{ role: "system", content: QA_SYSTEM_PROMPT }];
+
+  // Add recent conversation history (simplified, without full context)
+  const recentHistory = history.slice(-maxHistoryTurns * 2);
+  for (const turn of recentHistory) {
+    messages.push({ role: turn.role, content: turn.content });
+  }
+
+  // Current question with full context
+  messages.push({
+    role: "user",
+    content: buildQaUserPrompt(question, sources, summaryArchitecture),
+  });
+
+  return messages;
 }

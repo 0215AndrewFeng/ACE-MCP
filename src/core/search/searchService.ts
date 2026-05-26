@@ -1024,7 +1024,8 @@ export class SearchService {
         async () => {
           // v4.2.2: REMOVED lazy vector hydration from search path
           // Vectors should be built during indexing, not during search
-          const queryEmbedding = await provider.embed(query);
+          // v4.2.4: Use embedQuery with caching for query vectors
+          const queryEmbedding = await provider.embedQuery(query, true);
 
           // v4.2.3: Use FTS results as candidate set for vector search if available
           // This reduces O(n) to O(ftsChunkIds.size) for most queries

@@ -85,7 +85,7 @@ Respond with ONLY the description, no prefix or formatting.`;
 
         modules.push({
           path: moduleName,
-          description: result.content.trim(),
+          description: (result.content ?? "").trim(),
           keySymbols: definitions.slice(0, 10).map((d) => d.fullName),
           fileCount: moduleFiles.length,
         });
@@ -146,7 +146,7 @@ Include: overall purpose, key architectural patterns, module relationships, and 
 
       totalPrompt += archResult.usage.promptTokens;
       totalCompletion += archResult.usage.completionTokens;
-      architecture = archResult.content.trim();
+      architecture = (archResult.content ?? "").trim();
     } catch (error) {
       this.logger.warn("Failed to generate architecture overview", { error: String(error) });
       architecture = `# ${path.basename(projectRootPath)}\n\nArchitecture overview generation failed.\n\n## Modules\n\n${moduleOverview}`;
