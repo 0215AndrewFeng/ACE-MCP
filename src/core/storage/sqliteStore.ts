@@ -1529,6 +1529,7 @@ export class SQLiteStore {
     const rows = this.db
       .prepare(
         `SELECT
+           sf.chunk_id,
            f.relative_path,
            f.language,
            c.start_line,
@@ -1546,6 +1547,7 @@ export class SQLiteStore {
          LIMIT ?`,
       )
       .all(projectId, semanticQuery, ...filterClause.parameters, limit) as Array<{
+      chunk_id: string;
       content: string;
       end_line: number;
       language: Language;
@@ -1559,6 +1561,7 @@ export class SQLiteStore {
       const overlap = semanticTerms.filter((term) => row.semantic_text.includes(term)).length;
       const overlapScore = semanticTerms.length > 0 ? overlap / semanticTerms.length : 0;
       return {
+        chunkId: row.chunk_id,
         endLine: row.end_line,
         filePath: row.relative_path,
         language: row.language,
@@ -1574,6 +1577,7 @@ export class SQLiteStore {
   /**
    * 向量搜索
    * 使用余弦相似度 + Top-K 堆，避免全量排序
+   * v4.2.3: 支持候选预过滤，只在指定的 chunkIds 范围内搜索
    */
   public searchByVector(
     projectId: string,
@@ -1582,14 +1586,27 @@ export class SQLiteStore {
     modelName: string,
     filters?: SearchFilters,
     indexVersion = Number.NaN,
-  ): { cacheHit: boolean; candidateCount: number; results: SearchResult[] } {
+    candidateChunkIds?: Set<string>,
+  ): { cacheHit: boolean; candidateCount: number; results: SearchResult[]; prefiltered: boolean } {
     const { cacheHit, vectors } = this.getProjectVectors(projectId, modelName, indexVersion);
-    const filteredVectors = filters ? vectors.filter((vector) => matchesSearchFilters(vector, filters)) : vectors;
+
+    // v4.2.3: 如果提供了候选集，只在候选集中搜索
+    let filteredVectors = vectors;
+    const prefiltered = candidateChunkIds !== undefined && candidateChunkIds.size > 0;
+
+    if (prefiltered) {
+      filteredVectors = vectors.filter((v) => candidateChunkIds.has(v.chunkId));
+    }
+
+    if (filters) {
+      filteredVectors = filteredVectors.filter((vector) => matchesSearchFilters(vector, filters));
+    }
 
     if (filteredVectors.length === 0) {
       return {
         cacheHit,
         candidateCount: 0,
+        prefiltered,
         results: [],
       };
     }
@@ -1610,6 +1627,7 @@ export class SQLiteStore {
       return {
         cacheHit,
         candidateCount: filteredVectors.length,
+        prefiltered,
         results: [],
       };
     }
@@ -1645,6 +1663,7 @@ export class SQLiteStore {
     return {
       cacheHit,
       candidateCount: filteredVectors.length,
+      prefiltered,
       results: rows.map((row) => ({
         endLine: row.end_line,
         filePath: row.relative_path,
@@ -1755,6 +1774,7 @@ export class SQLiteStore {
     const rows = this.db
       .prepare(
         `SELECT
+           chunk_fts.chunk_id,
            f.relative_path,
            f.language,
            c.start_line,
@@ -1770,9 +1790,10 @@ export class SQLiteStore {
           ORDER BY raw_score
           LIMIT ?`,
       )
-      .all(projectId, ftsQuery, ...filterClause.parameters, limit) as SearchRow[];
+      .all(projectId, ftsQuery, ...filterClause.parameters, limit) as Array<SearchRow & { chunk_id: string }>;
 
     return rows.map((row) => ({
+      chunkId: row.chunk_id,
       endLine: row.end_line,
       filePath: row.relative_path,
       language: row.language,

@@ -2,6 +2,21 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.2.3] - 2026-05-25
+
+### 性能优化
+
+- **并行 FTS 搜索**：将 lexical、semantic-fts、unicode、symbol、path 五个搜索阶段并行化（`Promise.all`），减少串行等待时间。
+- **候选预过滤（Candidate Prefiltering）**：向量搜索利用 FTS 阶段已返回的 chunkId 作为候选集，将 O(n) 全量向量扫描缩减为 O(candidates)，大幅降低大项目语义搜索延迟。
+- **索引预热 API**：新增 `warm_index` MCP 工具和 `POST /api/index/warm` 端点，允许显式触发向量索引的批量生成，避免首次搜索时的延迟抖动。
+
+### 内部改进
+
+- `SearchResult` 新增 `chunkId` 字段，便于跨搜索阶段追踪候选。
+- `SearchDiagnostics.vectorIndex` 新增 `prefiltered` 和 `prefilteredCandidates` 诊断字段。
+- `searchByText` / `searchBySemantic` 返回 `chunkId`，`searchByVector` 支持 `candidateChunkIds` 参数。
+- `TestProjectEnvironment` 接口导出 `embeddingProvider`，方便测试 warm_index 端点。
+
 ## [4.0.5] - 2026-05-22
 
 ### 改进

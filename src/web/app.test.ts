@@ -23,6 +23,7 @@ test("web app exposes runtime diagnostics and health metadata", async () => {
       webPort: undefined,
     };
     const handle = await startWebApp(0, {
+      embeddingProvider: environment.embeddingProvider,
       indexCoordinator: environment.indexCoordinator,
       logger: new Logger(environment.settings.logFilePath, "error"),
       runtime,
@@ -72,6 +73,7 @@ test("web search and stats responses return valid data", async () => {
       webPort: undefined,
     };
     const handle = await startWebApp(0, {
+      embeddingProvider: environment.embeddingProvider,
       indexCoordinator: environment.indexCoordinator,
       logger: new Logger(environment.settings.logFilePath, "error"),
       runtime,
@@ -150,6 +152,7 @@ test("watch API endpoints return correct state", async () => {
       webPort: undefined,
     };
     const handle = await startWebApp(0, {
+      embeddingProvider: environment.embeddingProvider,
       indexCoordinator: environment.indexCoordinator,
       logger: new Logger(environment.settings.logFilePath, "error"),
       runtime,
@@ -220,6 +223,7 @@ export const runWorkflow = (orderId: string) => handleRefund(orderId);
       webPort: undefined,
     };
     const handle = await startWebApp(0, {
+      embeddingProvider: environment.embeddingProvider,
       indexCoordinator: environment.indexCoordinator,
       logger: new Logger(environment.settings.logFilePath, "error"),
       runtime,

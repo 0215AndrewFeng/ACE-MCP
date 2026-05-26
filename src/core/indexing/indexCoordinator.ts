@@ -321,6 +321,17 @@ export class IndexCoordinator {
       }
       this.store.resolveSymbolGraph(projectId, changedFileIds);
     }
+
+    // Pre-build semantic FTS index during indexing so first search doesn't block
+    if (changedFiles > 0 || deletedFiles.length > 0) {
+      const semanticStart = performance.now();
+      this.store.ensureSemanticIndex(projectId);
+      const semanticMs = Math.round(performance.now() - semanticStart);
+      if (semanticMs > 100) {
+        this.logger.info("semantic index built", { projectRootPath, semanticMs });
+      }
+    }
+
     const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
     this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion);
     this.store.recordIndexEvent(projectId, {
