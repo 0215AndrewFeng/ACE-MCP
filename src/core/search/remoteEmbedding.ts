@@ -6,9 +6,19 @@ interface EmbeddingResponse {
   usage: { prompt_tokens: number; total_tokens: number };
 }
 
+interface QueryCacheEntry {
+  embedding: number[];
+  timestamp: number;
+}
+
 export class RemoteEmbeddingProvider implements EmbeddingProvider {
   private dimension_?: number;
   private modelName_: string;
+  private readonly queryCache = new Map<string, QueryCacheEntry>();
+  private readonly queryCacheMaxSize = 1000;
+  private readonly queryCacheTtlMs = 300_000; // 5 minutes
+  private queryCacheHits = 0;
+  private queryCacheMisses = 0;
 
   constructor(
     private apiUrl: string,
@@ -27,9 +37,61 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
     return this.modelName_;
   }
 
+  getQueryCacheStats(): { size: number; hits: number; misses: number } {
+    return {
+      size: this.queryCache.size,
+      hits: this.queryCacheHits,
+      misses: this.queryCacheMisses,
+    };
+  }
+
+  clearQueryCache(): void {
+    this.queryCache.clear();
+    this.queryCacheHits = 0;
+    this.queryCacheMisses = 0;
+  }
+
   async embed(text: string): Promise<number[]> {
     const results = await this.embedBatch([text]);
     return results[0];
+  }
+
+  async embedQuery(query: string, useCache = true): Promise<number[]> {
+    if (useCache) {
+      const cached = this.queryCache.get(query);
+      if (cached && Date.now() - cached.timestamp < this.queryCacheTtlMs) {
+        this.queryCacheHits++;
+        return cached.embedding;
+      }
+    }
+
+    this.queryCacheMisses++;
+    const embedding = await this.embed(query);
+
+    // Store in cache
+    this.queryCache.set(query, { embedding, timestamp: Date.now() });
+    this.evictQueryCache();
+
+    return embedding;
+  }
+
+  private evictQueryCache(): void {
+    if (this.queryCache.size <= this.queryCacheMaxSize) return;
+
+    const now = Date.now();
+    for (const [key, entry] of this.queryCache) {
+      if (now - entry.timestamp > this.queryCacheTtlMs) {
+        this.queryCache.delete(key);
+      }
+    }
+
+    if (this.queryCache.size > this.queryCacheMaxSize) {
+      const entries = [...this.queryCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toDelete = entries.slice(0, entries.length - this.queryCacheMaxSize);
+      for (const [key] of toDelete) {
+        this.queryCache.delete(key);
+      }
+    }
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {

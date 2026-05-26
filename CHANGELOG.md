@@ -2,6 +2,29 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.2.4] - 2026-05-26
+
+### 功能增强
+
+- **LLM 流式响应 (SSE Streaming)**：新增 `/api/qa/ask/stream` 端点，支持 Server-Sent Events 流式返回，前端可逐 token 显示生成进度。
+- **多轮对话支持**：Ask Codebase 现支持上下文追问，自动保留最近 6 轮对话历史，新增"🔄 New"按钮清空对话。
+- **代码引用高亮**：LLM 回答中的 `[N]` 引用可点击跳转到对应源码卡片，卡片高亮 2 秒便于定位。
+- **LLM 降级策略**：当 LLM 超时或不可用时，返回降级响应（`fallback: true`），前端显示警告提示并展示检索结果供用户参考。
+- **RAG 上下文压缩**：新增 `compressContext()` 函数，按 score 排序并截断低分 snippet，确保 context 不超过 6000 tokens。
+
+### 性能优化
+
+- **Query Embedding 缓存**：`EmbeddingProvider` 新增 `embedQuery()` 方法，支持 5 分钟 TTL 缓存，避免重复 query 重算 embedding。
+- **LLM 超时控制**：`LlmClient.complete()` 支持 `timeoutMs` 和 `fallbackOnTimeout` 参数，使用 `AbortController` 实现真正的请求取消。
+
+### 内部改进
+
+- `LlmClient` 新增 `streamComplete()` async generator 方法，解析 SSE 流返回 token/done/error 事件。
+- `qaPrompt.ts` 新增 `QaConversationTurn`、`buildQaMessagesWithHistory()`、`estimateTokens()`、`compressContext()` 导出。
+- `EmbeddingProvider` 接口新增 `embedQuery()`、`getQueryCacheStats()`、`clearQueryCache()` 方法。
+- 前端 `renderSourceCard()` 生成的卡片现带 `id="source-N"` 属性，支持引用跳转。
+- 默认 timeout 从 60s 调整为 120s，max sources 上限从 20 调整为 30。
+
 ## [4.2.3] - 2026-05-25
 
 ### 性能优化

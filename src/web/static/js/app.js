@@ -286,6 +286,8 @@ function renderMarkdown(text) {
   html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
   html = html.replace(/\n{2,}/g, '</p><p>');
   html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
+  // v4.2.4: Make [N] citations clickable
+  html = html.replace(/\[(\d+)\]/g, '<a href="#source-$1" class="qa-citation" data-source="$1">[$1]</a>');
   return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
 }
 
@@ -353,7 +355,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
   const expandBtn = hasMore ? `<button class="snippet-expand-btn" onclick="toggleSnippet('${snippetId}')" title="Expand/Collapse">+${totalLines - previewLines.length} more lines</button>` : '';
 
   return `
-    <div class="qa-source-card">
+    <div id="source-${source.index}" class="qa-source-card">
       <div class="qa-source-index">${source.index}</div>
       <div class="qa-source-info">
         <div class="qa-source-path">${escapeHtml(source.filePath)}</div>
@@ -418,6 +420,8 @@ function setStep(stepsEl, phase, icon, text, done) {
 }
 
 let qaTimerInterval = null;
+// v4.2.4: Multi-turn conversation history
+let qaConversationHistory = [];
 
 document.getElementById("run-ask")?.addEventListener("click", async () => {
   const askBtn = document.getElementById("run-ask");
@@ -495,25 +499,71 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
       sourcesListEl.hidden = false;
     }
 
-    // Step 3: LLM
-    setStep(stepsEl, 'llm', '🤖', 'Generating answer with LLM...', false);
+    // Step 3: LLM with retry support
+    const maxRetries = Number(document.getElementById("qa-retries")?.value || 2);
+    let qaData = null;
+    let llmMs = 0;
+    let retryCount = 0;
     const llmStart = Date.now();
-    const qaData = await request("POST", "/api/qa/ask", {
-      projectRootPath: projectRoot,
-      question,
-      maxSources,
-      includeSummary: document.getElementById("qa-include-summary")?.checked ?? true,
-      timeoutSeconds: timeoutSec,
-    });
-    const llmMs = Date.now() - llmStart;
-    setStep(stepsEl, 'llm', '🤖', `Answer generated (${llmMs}ms, ${qaData?.usage?.completionTokens ?? '?'} tokens)`, true);
+
+    while (retryCount <= maxRetries) {
+      try {
+        const attemptLabel = retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : '';
+        setStep(stepsEl, 'llm', '🤖', `Generating answer with LLM...${attemptLabel}`, false);
+
+        qaData = await request("POST", "/api/qa/ask", {
+          projectRootPath: projectRoot,
+          question,
+          maxSources,
+          includeSummary: document.getElementById("qa-include-summary")?.checked ?? true,
+          timeoutSeconds: timeoutSec,
+          // v4.2.4: Send conversation history for multi-turn support
+          history: qaConversationHistory,
+        });
+
+        llmMs = Date.now() - llmStart;
+        setStep(stepsEl, 'llm', '🤖', `Answer generated (${llmMs}ms, ${qaData?.usage?.completionTokens ?? '?'} tokens)${retryCount > 0 ? ` after ${retryCount} retry` : ''}`, true);
+        break; // Success, exit retry loop
+      } catch (err) {
+        retryCount++;
+        const isTimeout = err.message?.includes('timed out') || err.message?.includes('timeout');
+
+        if (isTimeout && retryCount <= maxRetries) {
+          setStep(stepsEl, 'llm', '⚠️', `LLM timeout, retrying (${retryCount}/${maxRetries})...`, false);
+          await new Promise(r => setTimeout(r, 1000)); // Brief pause before retry
+        } else {
+          throw err; // Re-throw if not timeout or out of retries
+        }
+      }
+    }
+
+    if (!qaData) {
+      throw new Error(`LLM failed after ${maxRetries} retries`);
+    }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
+    // v4.2.4: Handle fallback response (LLM unavailable)
+    if (qaData?.fallback) {
+      answerBodyEl.innerHTML = `<div class="qa-fallback-notice">⚠️ ${qaData.message || 'LLM 服务暂时不可用，以下是检索到的相关代码片段，您可以直接参考。'}</div>`;
+      answerBodyEl.hidden = false;
+      setStep(stepsEl, 'llm', '⚠️', `LLM ${qaData.fallbackReason === 'timeout' ? 'timeout' : 'unavailable'} - showing search results only`, true);
+    }
     // Answer
-    if (qaData?.answer) {
+    else if (qaData?.answer) {
       answerBodyEl.innerHTML = renderMarkdown(qaData.answer);
       answerBodyEl.hidden = false;
+
+      // v4.2.4: Save to conversation history for multi-turn support
+      qaConversationHistory.push(
+        { role: 'user', content: question },
+        { role: 'assistant', content: qaData.answer }
+      );
+      // Keep only last 6 turns (12 messages)
+      if (qaConversationHistory.length > 12) {
+        qaConversationHistory = qaConversationHistory.slice(-12);
+      }
+
       // Show feedback buttons
       const feedbackEl = document.getElementById('qa-feedback');
       feedbackEl.hidden = false;
@@ -622,5 +672,36 @@ document.getElementById('qa-submit-correction')?.addEventListener('click', async
   } catch (error) {
     console.error('Feedback submission failed:', error);
     this.disabled = false;
+  }
+});
+
+// ── v4.2.4: New conversation button ──────────────────────────────────────────
+document.getElementById('qa-new-conversation')?.addEventListener('click', function() {
+  qaConversationHistory = [];
+  document.getElementById('qa-question').value = '';
+  document.getElementById('qa-answer-body').hidden = true;
+  document.getElementById('qa-answer-body').innerHTML = '';
+  document.getElementById('qa-sources-list').hidden = true;
+  document.getElementById('qa-sources-list').innerHTML = '';
+  document.getElementById('qa-stats').hidden = true;
+  document.getElementById('qa-feedback').hidden = true;
+  document.getElementById('qa-error').hidden = true;
+  document.getElementById('qa-raw').innerHTML = '';
+  document.getElementById('qa-progress').hidden = true;
+  document.getElementById('qa-steps').innerHTML = '';
+});
+
+// ── v4.2.4: Citation click handler for scrolling to sources ──────────────────
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('qa-citation')) {
+    e.preventDefault();
+    const sourceNum = e.target.dataset.source;
+    const sourceCard = document.getElementById(`source-${sourceNum}`);
+    if (sourceCard) {
+      sourceCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add highlight effect
+      sourceCard.classList.add('highlight');
+      setTimeout(() => sourceCard.classList.remove('highlight'), 2000);
+    }
   }
 });

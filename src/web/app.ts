@@ -16,7 +16,7 @@ import type { Logger } from "../core/common/logger.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
-import { buildQaUserPrompt, QA_SYSTEM_PROMPT } from "../core/llm/qaPrompt.js";
+import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
@@ -820,13 +820,13 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   // ── QA endpoint ────────────────────────────────────────
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds } = req.body;
+      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history } = req.body;
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
       }
 
-      const timeout = clampInteger(timeoutSeconds, 10, 300, 60) * 1000;
+      const timeout = clampInteger(timeoutSeconds, 10, 600, 120) * 1000;
       const startMs = Date.now();
       const checkTimeout = (phase: string) => {
         if (Date.now() - startMs > timeout) {
@@ -841,7 +841,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       checkTimeout("index");
 
       // Phase 2: Search
-      const topK = clampInteger(maxSources, 1, 20, 10);
+      const topK = clampInteger(maxSources, 1, 30, 10);
       const searchStart = Date.now();
       const searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -865,7 +865,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
       checkTimeout("summary");
 
-      // Phase 4: LLM with shared prompt template
+      // Phase 4: LLM with context compression and multi-turn support
       const sources = searchResult.results.map((r) => ({
         filePath: r.filePath,
         startLine: r.startLine,
@@ -874,17 +874,52 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         score: r.score,
         snippet: r.snippet,
       }));
-      const userPrompt = buildQaUserPrompt(String(question ?? ""), sources, summaryArchitecture);
+
+      // v4.2.4: Compress context to fit token budget
+      const maxContextTokens = 6000;
+      const compressedSources = compressContext(sources, maxContextTokens);
+
+      // v4.2.4: Build messages with conversation history if provided
+      const conversationHistory: QaConversationTurn[] = Array.isArray(history) ? history : [];
+      const messages = conversationHistory.length > 0
+        ? buildQaMessagesWithHistory(String(question ?? ""), compressedSources, summaryArchitecture, conversationHistory)
+        : [
+            { role: "system" as const, content: QA_SYSTEM_PROMPT },
+            { role: "user" as const, content: buildQaUserPrompt(String(question ?? ""), compressedSources, summaryArchitecture) },
+          ];
 
       const llmStart = Date.now();
+      // v4.2.4: Add timeout and fallback support
       const result = await dependencies.llmClient.complete({
-        messages: [
-          { role: "system", content: QA_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+        messages,
+        timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
+        fallbackOnTimeout: true,
       });
       const llmMs = Date.now() - llmStart;
       const totalMs = Date.now() - startMs;
+
+      // v4.2.4: Handle fallback response
+      if (result.fallback) {
+        res.json({
+          answer: null,
+          fallback: true,
+          fallbackReason: result.fallbackReason,
+          message: "LLM 服务暂时不可用，以下是检索到的相关代码片段，您可以直接参考。",
+          sources: searchResult.results.map((r, i) => ({
+            index: i + 1,
+            filePath: r.filePath,
+            startLine: r.startLine,
+            endLine: r.endLine,
+            language: r.language,
+            score: r.score,
+            snippet: r.snippet.slice(0, 200),
+          })),
+          usage: result.usage,
+          hadSummary: Boolean(summaryArchitecture),
+          timing: { indexMs, searchMs, llmMs, totalMs },
+        });
+        return;
+      }
 
       res.json({
         answer: result.content,
@@ -904,6 +939,160 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
       res.status(500).json({ error: message });
+    }
+  });
+
+  // ── QA streaming endpoint (SSE) ────────────────────────────────────
+  app.get("/api/qa/ask/stream", async (req: Request, res: Response) => {
+    // Set up SSE
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+
+    const sendEvent = (data: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const projectRootPath = req.query.projectRootPath as string;
+      const question = req.query.question as string;
+      const maxSources = Number(req.query.maxSources) || 10;
+      const includeSummary = req.query.includeSummary !== "false";
+      const languages = req.query.languages as string | undefined;
+      const timeoutSeconds = Number(req.query.timeoutSeconds) || 120;
+      const historyJson = req.query.history as string | undefined;
+
+      if (!dependencies.llmClient.isConfigured()) {
+        sendEvent({ type: "error", error: "LLM API not configured" });
+        res.end();
+        return;
+      }
+
+      const timeout = clampInteger(timeoutSeconds, 10, 600, 120) * 1000;
+      const startMs = Date.now();
+
+      // Phase 1: Index
+      sendEvent({ type: "phase", phase: "index", status: "start" });
+      const indexStart = Date.now();
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const indexMs = Date.now() - indexStart;
+      sendEvent({ type: "phase", phase: "index", status: "done", ms: indexMs });
+
+      if (Date.now() - startMs > timeout) {
+        sendEvent({ type: "error", error: "Timeout at index phase" });
+        res.end();
+        return;
+      }
+
+      // Phase 2: Search
+      sendEvent({ type: "phase", phase: "search", status: "start" });
+      const topK = clampInteger(maxSources, 1, 30, 10);
+      const searchStart = Date.now();
+      const searchResult = await dependencies.searchService.search(
+        indexResult.projectRootPath,
+        String(question ?? ""),
+        "auto",
+        topK,
+        0,
+        { languages: normalizeSupportedLanguages(languages?.split(",")) },
+        "full",
+      );
+      const searchMs = Date.now() - searchStart;
+      sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs, resultCount: searchResult.results.length });
+
+      // Send sources immediately
+      const sources = searchResult.results.map((r, i) => ({
+        index: i + 1,
+        filePath: r.filePath,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        language: r.language,
+        score: r.score,
+        snippet: r.snippet,
+      }));
+      sendEvent({ type: "sources", sources });
+
+      if (Date.now() - startMs > timeout) {
+        sendEvent({ type: "error", error: "Timeout at search phase" });
+        res.end();
+        return;
+      }
+
+      // Phase 3: Load summary
+      sendEvent({ type: "phase", phase: "summary", status: "start" });
+      let summaryArchitecture: string | undefined;
+      if (includeSummary) {
+        const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
+        if (summary) {
+          summaryArchitecture = summary.architecture;
+        }
+      }
+      sendEvent({ type: "phase", phase: "summary", status: "done", hadSummary: Boolean(summaryArchitecture) });
+
+      // Phase 4: LLM streaming
+      sendEvent({ type: "phase", phase: "llm", status: "start" });
+      const llmStart = Date.now();
+
+      const compressedSources = compressContext(sources.map(s => ({
+        filePath: s.filePath,
+        startLine: s.startLine,
+        endLine: s.endLine,
+        language: s.language,
+        score: s.score,
+        snippet: s.snippet,
+      })), 6000);
+
+      // Parse conversation history
+      let conversationHistory: QaConversationTurn[] = [];
+      if (historyJson) {
+        try {
+          conversationHistory = JSON.parse(historyJson);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      const messages = conversationHistory.length > 0
+        ? buildQaMessagesWithHistory(String(question ?? ""), compressedSources, summaryArchitecture, conversationHistory)
+        : [
+            { role: "system" as const, content: QA_SYSTEM_PROMPT },
+            { role: "user" as const, content: buildQaUserPrompt(String(question ?? ""), compressedSources, summaryArchitecture) },
+          ];
+
+      let fullContent = "";
+      let usage = { promptTokens: 0, completionTokens: 0 };
+
+      for await (const chunk of dependencies.llmClient.streamComplete({
+        messages,
+        timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
+      })) {
+        if (chunk.type === "token" && chunk.content) {
+          fullContent += chunk.content;
+          sendEvent({ type: "token", content: chunk.content });
+        } else if (chunk.type === "done") {
+          usage = chunk.usage ?? usage;
+        } else if (chunk.type === "error") {
+          sendEvent({ type: "error", error: chunk.error });
+          res.end();
+          return;
+        }
+      }
+
+      const llmMs = Date.now() - llmStart;
+      const totalMs = Date.now() - startMs;
+
+      sendEvent({
+        type: "done",
+        answer: fullContent,
+        usage,
+        hadSummary: Boolean(summaryArchitecture),
+        timing: { indexMs, searchMs, llmMs, totalMs },
+      });
+      res.end();
+    } catch (error: unknown) {
+      sendEvent({ type: "error", error: error instanceof Error ? error.message : String(error) });
+      res.end();
     }
   });
 

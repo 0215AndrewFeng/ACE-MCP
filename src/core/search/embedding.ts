@@ -4,8 +4,16 @@ import { RemoteEmbeddingProvider } from "./remoteEmbedding.js";
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
+  embedQuery(query: string, useCache?: boolean): Promise<number[]>;
   getDimension(): number;
   getModelName(): string;
+  getQueryCacheStats(): { size: number; hits: number; misses: number };
+  clearQueryCache(): void;
+}
+
+interface QueryCacheEntry {
+  embedding: number[];
+  timestamp: number;
 }
 
 export function createEmbeddingProvider(settings: Settings): EmbeddingProvider {
@@ -27,6 +35,11 @@ export function createEmbeddingProvider(settings: Settings): EmbeddingProvider {
 export class InMemoryEmbeddingProvider implements EmbeddingProvider {
   private readonly dimension: number;
   private readonly modelName: string;
+  private readonly queryCache = new Map<string, QueryCacheEntry>();
+  private readonly queryCacheMaxSize = 1000;
+  private readonly queryCacheTtlMs = 300_000; // 5 minutes
+  private queryCacheHits = 0;
+  private queryCacheMisses = 0;
 
   constructor(dimension: number = 256, modelName: string = "in-memory-hash-vector-v2") {
     this.dimension = dimension;
@@ -41,12 +54,66 @@ export class InMemoryEmbeddingProvider implements EmbeddingProvider {
     return this.modelName;
   }
 
+  getQueryCacheStats(): { size: number; hits: number; misses: number } {
+    return {
+      size: this.queryCache.size,
+      hits: this.queryCacheHits,
+      misses: this.queryCacheMisses,
+    };
+  }
+
+  clearQueryCache(): void {
+    this.queryCache.clear();
+    this.queryCacheHits = 0;
+    this.queryCacheMisses = 0;
+  }
+
   async embed(text: string): Promise<number[]> {
     return this.embedBatch([text]).then((results) => results[0]);
   }
 
   async embedBatch(texts: string[]): Promise<number[][]> {
     return texts.map((text) => this.computeTfIdfVector(text));
+  }
+
+  async embedQuery(query: string, useCache = true): Promise<number[]> {
+    if (useCache) {
+      const cached = this.queryCache.get(query);
+      if (cached && Date.now() - cached.timestamp < this.queryCacheTtlMs) {
+        this.queryCacheHits++;
+        return cached.embedding;
+      }
+    }
+
+    this.queryCacheMisses++;
+    const embedding = await this.embed(query);
+
+    // Store in cache
+    this.queryCache.set(query, { embedding, timestamp: Date.now() });
+    this.evictQueryCache();
+
+    return embedding;
+  }
+
+  private evictQueryCache(): void {
+    if (this.queryCache.size <= this.queryCacheMaxSize) return;
+
+    // Remove expired entries first
+    const now = Date.now();
+    for (const [key, entry] of this.queryCache) {
+      if (now - entry.timestamp > this.queryCacheTtlMs) {
+        this.queryCache.delete(key);
+      }
+    }
+
+    // If still over limit, remove oldest entries
+    if (this.queryCache.size > this.queryCacheMaxSize) {
+      const entries = [...this.queryCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+      const toDelete = entries.slice(0, entries.length - this.queryCacheMaxSize);
+      for (const [key] of toDelete) {
+        this.queryCache.delete(key);
+      }
+    }
   }
 
   private fnv1aHash(input: string): number {
