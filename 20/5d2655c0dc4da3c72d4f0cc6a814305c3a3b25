@@ -1,0 +1,35 @@
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_69c9d64f84fb53 2017-2188
+  s_0f8113dba42c56::t_65d5ba2a52f6d8 476,480,483-488
+src/core/project/fileCollector.ts
+  s_0f8113dba42c56::t_27fe8a3e1d795a 2,9-15,24-48,50,52-55,57,61-62,66,71-72,77,83-84,86,88,92-97
+package.json
+  s_0f8113dba42c56::t_396ac3229be972 30
+  s_0f8113dba42c56::t_4b0dd3f9e57469 3
+src/core/project/ignoreManager.ts
+  s_0f8113dba42c56::t_a0ac670f0dc993 6-10,12-14,33-41,44-72
+CHANGELOG.md
+  s_0f8113dba42c56::t_5e8e08f0b117ee 5-24
+src/version.ts
+  s_0f8113dba42c56::t_698bf0db7977c6 2
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_bdd10debf320ce 259-265,284,288-293,309-347
+  s_0f8113dba42c56::t_e2a0f7f5ff9499 10,12,18-19
+  s_0f8113dba42c56::t_fdf719829710d2 37-39,45-50,58-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "205d2655c0dc4da3c72d4f0cc6a814305c3a3b25",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
