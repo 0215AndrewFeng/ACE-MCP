@@ -1,0 +1,57 @@
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_a5ed3da249e1bf 180-186
+  s_0f8113dba42c56::t_e01be2da132fe7 198-210
+src/web/app.ts
+  s_0f8113dba42c56::t_1c5f70f1786227 1125
+  s_0f8113dba42c56::t_77479d10767332 1042,1052,1055
+  s_0f8113dba42c56::t_69431ee1f0a784 1006,1021
+  s_0f8113dba42c56::t_5346ea62a1f159 1093-1097,1126-1129,1131-1135
+  s_0f8113dba42c56::t_4423e9ac0f12e8 1068,1070,1072
+  s_0f8113dba42c56::t_36c442b14df8b1 979,991,997
+  s_0f8113dba42c56::t_9ed1e85b713054 955-958,961,963,965-966
+  s_0f8113dba42c56::t_6ed025a348c41e 945-946,962,964,969-977
+  s_0f8113dba42c56::t_cbe07672b27228 1088,1104,1113,1122
+  s_0f8113dba42c56::t_2332bffeb129ca 1100
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_0996dcd7baf46d 934
+  s_0f8113dba42c56::t_adba6f9f22b3a2 666-676,679,681-682,684
+  s_0f8113dba42c56::t_60f5c19f36ac3a 363-379
+  s_0f8113dba42c56::t_03bfc68f8ccd17 633-634,647
+  s_0f8113dba42c56::t_96feee90180d3d 712
+  s_0f8113dba42c56::t_7763dadd07c98b 776,820-823,825-863,866,929,932-933,935,937-938,989-995,1007-1008,1016,1024-1026
+  s_0f8113dba42c56::t_879a2845e41e9b 900-919
+  s_0f8113dba42c56::t_00b745c9c19491 313,317-356
+  s_0f8113dba42c56::t_d694d2eba7c8c5 717-760
+  s_0f8113dba42c56::t_b433d375f376cc 977-978,996-1006
+  s_0f8113dba42c56::t_899529dd3796e6 1135-1143
+  s_0f8113dba42c56::t_0b5a229890c4d4 815
+src/core/llm/llmClient.ts
+  s_0f8113dba42c56::t_641f26d438b944 218,220-225
+  s_0f8113dba42c56::t_8b1a93226bcb3b 226-228
+  s_0f8113dba42c56::t_b7ca0d0f287251 27
+  s_0f8113dba42c56::t_0cf1a8cfea8b1e 219
+CHANGELOG.md
+  s_0f8113dba42c56::t_85b33dcfcdc2dc 5-23
+package.json
+  s_0f8113dba42c56::t_7050975483de26 3
+src/web/static/index.html
+  s_0f8113dba42c56::t_a2d9937f1f6907 90-92
+src/version.ts
+  s_0f8113dba42c56::t_fbcc8632483ac2 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d303a098266e7f840f23e26ecae0f433b6381511",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
