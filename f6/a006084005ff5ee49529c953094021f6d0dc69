@@ -1,0 +1,35 @@
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_13f8a08b7ea1be 423-452,457-465,485-486
+  s_0f8113dba42c56::t_fc779f7b018eee 557-559,562,567
+  s_0f8113dba42c56::t_76c514d82073ca 24-74
+  s_0f8113dba42c56::t_53cf445cedee2d 101-191
+  s_0f8113dba42c56::t_e31bfb41ced104 298-303,311,315-316
+  s_0f8113dba42c56::t_9e40c2ca6e9f5c 422,453-456,466-484
+src/version.ts
+  s_0f8113dba42c56::t_fea6be4908caad 2
+CHANGELOG.md
+  s_0f8113dba42c56::t_50a5b86490a5c5 5-19
+package.json
+  s_0f8113dba42c56::t_353c6618e10fd4 3
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_d22a0b3b4597f5 147-154
+src/web/static/index.html
+  s_0f8113dba42c56::t_92889ecb3d4719 43-44
+  s_0f8113dba42c56::t_24974b795102cb 41-42,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "f6a006084005ff5ee49529c953094021f6d0dc69",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
