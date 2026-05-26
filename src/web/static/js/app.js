@@ -61,8 +61,8 @@ function setSelectedProject(projectPath) {
 function renderProjectSelect() {
   if (!projectRootSelect) return;
   const projects = getStoredProjects().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
-  projectRootSelect.innerHTML = '<option value="">-- Select a project --</option>' +
-    projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.path)}${p.fileCount ? ` (${p.fileCount} files)` : ''}</option>`).join("");
+  projectRootSelect.innerHTML = '<option value="">-- 请选择项目 --</option>' +
+    projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.path)}${p.fileCount ? ` (${p.fileCount} 个文件)` : ''}</option>`).join("");
 
   // Restore selection
   const selected = getSelectedProject();
@@ -80,14 +80,19 @@ function saveHistory() {
 function renderHistory() {
   if (!searchHistoryEl) return;
   searchHistoryEl.innerHTML = searchHistory.map((item, i) =>
-    `<span class="search-history-item" data-index="${i}">${escapeHtml(item.query)}</span>`
+    `<span class="search-history-item" data-index="${i}" title="点击填充到搜索框">${escapeHtml(item.query)}</span>`
   ).join("");
   searchHistoryEl.querySelectorAll(".search-history-item").forEach(el => {
     el.addEventListener("click", () => {
       const idx = parseInt(el.dataset.index || "0");
       const item = searchHistory[idx];
-      searchQueryInput.value = item.query;
-      searchModeInput.value = item.mode || "auto";
+      // v4.2.8: Also fill QA question if search query is empty
+      if (searchQueryInput) searchQueryInput.value = item.query;
+      if (searchModeInput) searchModeInput.value = item.mode || "auto";
+      const qaQuestion = document.getElementById("qa-question");
+      if (qaQuestion && !qaQuestion.value.trim()) {
+        qaQuestion.value = item.query;
+      }
     });
   });
 }
@@ -382,15 +387,15 @@ async function loadAutostartStatus() {
   try {
     const data = await request("GET", "/api/autostart");
     if (autostartBadge) {
-      autostartBadge.textContent = data.enabled ? (data.running ? "Running" : "Enabled") : "Disabled";
+      autostartBadge.textContent = data.enabled ? (data.running ? "运行中" : "已启用") : "已禁用";
       autostartBadge.className = "autostart-badge " + (data.enabled ? (data.running ? "running" : "enabled") : "disabled");
     }
     if (autostartPlatform) {
-      autostartPlatform.textContent = data.platform + (data.webPort ? ` (port ${data.webPort})` : "");
+      autostartPlatform.textContent = data.platform + (data.webPort ? ` (端口 ${data.webPort})` : "");
     }
   } catch (err) {
     if (autostartBadge) {
-      autostartBadge.textContent = "Error";
+      autostartBadge.textContent = "检查失败";
       autostartBadge.className = "autostart-badge disabled";
     }
   }
@@ -399,20 +404,20 @@ async function loadAutostartStatus() {
 document.getElementById("autostart-enable")?.addEventListener("click", async () => {
   try {
     await request("POST", "/api/autostart", { action: "enable" });
-    alert("Autostart enabled! Service will start on next system boot.");
+    alert("开机自启动已启用！下次系统启动时服务会自动运行。");
     loadAutostartStatus();
   } catch (err) {
-    alert("Failed to enable autostart: " + (err.message || err));
+    alert("启用失败: " + (err.message || err));
   }
 });
 
 document.getElementById("autostart-disable")?.addEventListener("click", async () => {
   try {
     await request("POST", "/api/autostart", { action: "disable" });
-    alert("Autostart disabled.");
+    alert("开机自启动已禁用");
     loadAutostartStatus();
   } catch (err) {
-    alert("Failed to disable autostart: " + (err.message || err));
+    alert("禁用失败: " + (err.message || err));
   }
 });
 
@@ -425,13 +430,13 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
   const projectPath = projectRootInput.value?.trim();
 
   if (!projectPath) {
-    alert("Please enter a project root path first.");
+    alert("请先输入项目路径");
     return;
   }
 
   // Validate path format (basic check)
   if (!projectPath.startsWith("/") && !projectPath.match(/^[A-Z]:\\/i)) {
-    alert("Please enter an absolute path (e.g., /Users/me/project or C:\\projects\\myapp)");
+    alert("请输入绝对路径（如 /Users/me/project 或 C:\\projects\\myapp）");
     return;
   }
 
@@ -448,7 +453,7 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
     // Show success message
     const fileCount = result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
     const chunkCount = result?.data?.chunkCount ?? result?.stats?.indexSync?.chunkCount ?? 0;
-    alert(`✅ Project indexed successfully!\n\nFiles: ${fileCount}\nChunks: ${chunkCount}\n\nYou can now search and ask questions about this project.`);
+    alert(`✅ 项目索引成功！\n\n文件数: ${fileCount}\n代码块: ${chunkCount}\n\n现在可以搜索和提问了。`);
 
     // v4.2.6: Save to LocalStorage and update select
     addStoredProject(projectPath, fileCount);
@@ -458,7 +463,7 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
     // Update result display
     render(result);
   } catch (err) {
-    alert("❌ Failed to index project:\n\n" + (err.message || err));
+    alert("❌ 索引失败:\n\n" + (err.message || err));
   } finally {
     addBtn.disabled = false;
     addBtn.textContent = "+ Add";
@@ -469,11 +474,11 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
 document.getElementById("delete-project")?.addEventListener("click", async () => {
   const projectPath = projectRootInput.value?.trim();
   if (!projectPath) {
-    alert("Please select or enter a project path first.");
+    alert("请先选择或输入项目路径");
     return;
   }
 
-  if (!confirm(`Are you sure you want to remove this project from the list?\n\n${projectPath}\n\nNote: This only removes it from the dropdown. Index data remains on disk.`)) {
+  if (!confirm(`确定要从列表中移除此项目吗？\n\n${projectPath}\n\n注意：这只会从下拉列表中移除，索引数据会保留在磁盘上。`)) {
     return;
   }
 
@@ -481,7 +486,7 @@ document.getElementById("delete-project")?.addEventListener("click", async () =>
   projectRootInput.value = '';
   setSelectedProject('');
   renderProjectSelect();
-  alert("Project removed from list.");
+  alert("已从列表中移除");
 });
 
 // Ask Codebase (RAG)
@@ -636,6 +641,7 @@ function setStep(stepsEl, phase, icon, text, done) {
 }
 
 let qaTimerInterval = null;
+let currentEventSource = null; // v4.2.8: Track current SSE connection for Stop button
 // v4.2.5: Multi-turn conversation with LocalStorage persistence
 const QA_HISTORY_KEY = 'ace-mcp-qa-history';
 let qaConversationHistory = JSON.parse(localStorage.getItem(QA_HISTORY_KEY) || '[]');
@@ -654,8 +660,10 @@ function clearQaHistory() {
 }
 
 // ── Ask Codebase (SSE Streaming by default since v4.2.7) ─────────────────────
-document.getElementById("run-ask")?.addEventListener("click", async () => {
+// v4.2.8: Refactored to support Stop button and Enter key
+async function runAskQuestion() {
   const askBtn = document.getElementById("run-ask");
+  const stopBtn = document.getElementById("qa-stop");
   const progressEl = document.getElementById("qa-progress");
   const loadingEl = document.getElementById("qa-loading");
   const timerEl = document.getElementById("qa-timer");
@@ -675,7 +683,8 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
 
   // Reset UI
   askBtn.disabled = true;
-  askBtn.textContent = 'Streaming...';
+  askBtn.textContent = '生成中...';
+  if (stopBtn) stopBtn.hidden = false;
   [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
   rawEl.innerHTML = '';
   stepsEl.innerHTML = '';
@@ -701,13 +710,14 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
 
   let fullAnswer = '';
   let finalData = null;
+  let wasStopped = false;
   const searchTerms = question.split(/\s+/).filter(t => t.length > 2);
 
   try {
-    const eventSource = new EventSource(`/api/qa/ask/stream?${params}`);
+    currentEventSource = new EventSource(`/api/qa/ask/stream?${params}`);
 
     await new Promise((resolve, reject) => {
-      eventSource.onmessage = (e) => {
+      currentEventSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
 
@@ -716,18 +726,18 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
               if (data.status === 'start') {
                 const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
                 const labels = {
-                  index: 'Checking project index...',
-                  search: 'Searching relevant code...',
-                  summary: 'Loading project summary...',
-                  llm: 'Generating answer (streaming)...',
+                  index: '检查项目索引...',
+                  search: '搜索相关代码...',
+                  summary: '加载项目摘要...',
+                  llm: '生成回答中...',
                 };
                 setStep(stepsEl, data.phase, icons[data.phase] || '⏳', labels[data.phase] || data.phase, false);
               } else if (data.status === 'done') {
                 const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
-                let text = `${data.phase} done`;
+                let text = `${data.phase} 完成`;
                 if (data.ms) text += ` (${data.ms}ms)`;
-                if (data.resultCount !== undefined) text = `Found ${data.resultCount} snippets (${data.ms}ms)`;
-                if (data.hadSummary !== undefined) text = data.hadSummary ? 'Summary loaded' : 'No summary';
+                if (data.resultCount !== undefined) text = `找到 ${data.resultCount} 个代码片段 (${data.ms}ms)`;
+                if (data.hadSummary !== undefined) text = data.hadSummary ? '摘要已加载' : '无项目摘要';
                 setStep(stepsEl, data.phase, icons[data.phase] || '✅', text, true);
               }
               break;
@@ -736,7 +746,7 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
               if (data.sources?.length) {
                 const maxScore = Math.max(...data.sources.map(s => s.score || 0));
                 const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
-                sourcesListEl.innerHTML = `<h4>Retrieved sources (${data.sources.length})</h4>` + cards;
+                sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>` + cards;
                 sourcesListEl.hidden = false;
               }
               break;
@@ -751,12 +761,14 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
 
             case 'done':
               finalData = data;
-              eventSource.close();
+              currentEventSource.close();
+              currentEventSource = null;
               resolve();
               break;
 
             case 'error':
-              eventSource.close();
+              currentEventSource.close();
+              currentEventSource = null;
               reject(new Error(data.error));
               break;
           }
@@ -765,52 +777,64 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
         }
       };
 
-      eventSource.onerror = (e) => {
-        eventSource.close();
-        reject(new Error('SSE connection failed'));
+      currentEventSource.onerror = (e) => {
+        if (currentEventSource) {
+          currentEventSource.close();
+          currentEventSource = null;
+        }
+        if (!wasStopped) {
+          reject(new Error('连接失败，请检查服务是否正常运行'));
+        } else {
+          resolve(); // User stopped, not an error
+        }
       };
     });
 
-    // Success - save conversation history
+    // Success - save conversation history (even if stopped, save partial answer)
     if (fullAnswer) {
       qaConversationHistory.push(
         { role: 'user', content: question },
-        { role: 'assistant', content: fullAnswer }
+        { role: 'assistant', content: fullAnswer + (wasStopped ? '\n\n[回答已中断]' : '') }
       );
       saveQaHistory();
 
-      // Show feedback
-      const feedbackEl = document.getElementById('qa-feedback');
-      feedbackEl.hidden = false;
-      feedbackEl.dataset.context = JSON.stringify({
-        projectRootPath: projectRoot,
-        question,
-        answer: fullAnswer,
-        usage: finalData?.usage,
-        timing: finalData?.timing,
-      });
-      document.getElementById('qa-feedback-positive').classList.remove('selected');
-      document.getElementById('qa-feedback-negative').classList.remove('selected');
-      document.getElementById('qa-correction-form').hidden = true;
-      document.getElementById('qa-feedback-thanks').hidden = true;
-      document.getElementById('qa-feedback-positive').disabled = false;
-      document.getElementById('qa-feedback-negative').disabled = false;
+      // Show feedback (only if not stopped)
+      if (!wasStopped) {
+        const feedbackEl = document.getElementById('qa-feedback');
+        feedbackEl.hidden = false;
+        feedbackEl.dataset.context = JSON.stringify({
+          projectRootPath: projectRoot,
+          question,
+          answer: fullAnswer,
+          usage: finalData?.usage,
+          timing: finalData?.timing,
+        });
+        document.getElementById('qa-feedback-positive').classList.remove('selected');
+        document.getElementById('qa-feedback-negative').classList.remove('selected');
+        document.getElementById('qa-correction-form').hidden = true;
+        document.getElementById('qa-feedback-thanks').hidden = true;
+        document.getElementById('qa-feedback-positive').disabled = false;
+        document.getElementById('qa-feedback-negative').disabled = false;
+      }
     }
 
     // Stats
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    const statItems = [`<span class="qa-stat"><span class="qa-stat-label">Total:</span> ${elapsed}s</span>`];
-    if (finalData?.timing?.indexMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Index:</span> ${finalData.timing.indexMs}ms</span>`);
-    if (finalData?.timing?.searchMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Search:</span> ${finalData.timing.searchMs}ms</span>`);
+    const statItems = [`<span class="qa-stat"><span class="qa-stat-label">总计:</span> ${elapsed}s</span>`];
+    if (finalData?.timing?.indexMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">索引:</span> ${finalData.timing.indexMs}ms</span>`);
+    if (finalData?.timing?.searchMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">搜索:</span> ${finalData.timing.searchMs}ms</span>`);
     if (finalData?.timing?.llmMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">LLM:</span> ${finalData.timing.llmMs}ms</span>`);
     if (finalData?.usage) {
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${finalData.usage.promptTokens} tok</span>`);
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${finalData.usage.completionTokens} tok</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">输入:</span> ${finalData.usage.promptTokens} tok</span>`);
+      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">输出:</span> ${finalData.usage.completionTokens} tok</span>`);
     }
+    if (wasStopped) statItems.push(`<span class="qa-stat" style="color:#dc2626"><span class="qa-stat-label">状态:</span> 已中断</span>`);
     statsEl.innerHTML = statItems.join('');
     statsEl.hidden = false;
 
-    rawEl.innerHTML = `<details><summary>Show raw JSON</summary><pre>${escapeHtml(JSON.stringify(finalData, null, 2))}</pre></details>`;
+    if (finalData) {
+      rawEl.innerHTML = `<details><summary>查看原始 JSON</summary><pre>${escapeHtml(JSON.stringify(finalData, null, 2))}</pre></details>`;
+    }
 
   } catch (error) {
     errorEl.textContent = error.message || String(error);
@@ -820,7 +844,37 @@ document.getElementById("run-ask")?.addEventListener("click", async () => {
     qaTimerInterval = null;
     loadingEl.hidden = true;
     askBtn.disabled = false;
-    askBtn.textContent = 'Ask';
+    askBtn.textContent = '发送';
+    if (stopBtn) stopBtn.hidden = true;
+    currentEventSource = null;
+  }
+}
+
+document.getElementById("run-ask")?.addEventListener("click", runAskQuestion);
+
+// v4.2.8: Stop button handler
+document.getElementById("qa-stop")?.addEventListener("click", () => {
+  if (currentEventSource) {
+    currentEventSource.close();
+    currentEventSource = null;
+  }
+  const stopBtn = document.getElementById("qa-stop");
+  if (stopBtn) stopBtn.hidden = true;
+  // Add stopped message to the answer
+  const answerBodyEl = document.getElementById("qa-answer-body");
+  if (answerBodyEl && !answerBodyEl.hidden) {
+    answerBodyEl.innerHTML += '<p style="color:#dc2626;font-style:italic;margin-top:12px">⏹️ 回答已中断</p>';
+  }
+});
+
+// v4.2.8: Enter key to submit (Shift+Enter for newline)
+document.getElementById("qa-question")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    const askBtn = document.getElementById("run-ask");
+    if (askBtn && !askBtn.disabled) {
+      runAskQuestion();
+    }
   }
 });
 
@@ -905,6 +959,14 @@ document.addEventListener('click', (e) => {
       sourceCard.classList.add('highlight');
       setTimeout(() => sourceCard.classList.remove('highlight'), 2000);
     }
+  }
+});
+
+// v4.2.8: Enter key to submit search (Shift+Enter for newline)
+document.getElementById("search-query")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById("run-search")?.click();
   }
 });
 
