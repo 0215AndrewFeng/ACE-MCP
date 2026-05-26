@@ -653,289 +653,9 @@ function clearQaHistory() {
   localStorage.removeItem(QA_HISTORY_KEY);
 }
 
+// ── Ask Codebase (SSE Streaming by default since v4.2.7) ─────────────────────
 document.getElementById("run-ask")?.addEventListener("click", async () => {
   const askBtn = document.getElementById("run-ask");
-  const progressEl = document.getElementById("qa-progress");
-  const loadingEl = document.getElementById("qa-loading");
-  const timerEl = document.getElementById("qa-timer");
-  const stepsEl = document.getElementById("qa-steps");
-  const answerBodyEl = document.getElementById("qa-answer-body");
-  const sourcesListEl = document.getElementById("qa-sources-list");
-  const statsEl = document.getElementById("qa-stats");
-  const errorEl = document.getElementById("qa-error");
-  const rawEl = document.getElementById("qa-raw");
-  const question = document.getElementById("qa-question")?.value?.trim();
-  if (!question) return;
-
-  const timeoutSec = Number(document.getElementById("qa-timeout")?.value || 60);
-  const projectRoot = projectRootInput.value;
-
-  // Reset
-  askBtn.disabled = true;
-  askBtn.textContent = 'Thinking...';
-  [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
-  rawEl.innerHTML = '';
-  stepsEl.innerHTML = '';
-  progressEl.hidden = false;
-  loadingEl.hidden = false;
-
-  const startTime = Date.now();
-  if (qaTimerInterval) clearInterval(qaTimerInterval);
-  qaTimerInterval = setInterval(() => {
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    timerEl.textContent = `${elapsed}s / ${timeoutSec}s`;
-    if (Date.now() - startTime > timeoutSec * 1000) {
-      clearInterval(qaTimerInterval);
-      // timeout handled below
-    }
-  }, 100);
-
-  try {
-    // Step 1: Index
-    setStep(stepsEl, 'index', '📂', 'Checking project index (first time may take minutes)...', false);
-    const indexStart = Date.now();
-    await request("POST", "/api/index-project", { mode: "incremental", projectRootPath: projectRoot });
-    const indexMs = Date.now() - indexStart;
-    const indexNote = indexMs > 5000 ? ' (semantic index built)' : '';
-    setStep(stepsEl, 'index', '📂', `Index ready (${indexMs}ms)${indexNote}`, true);
-
-    // Step 2: Search
-    const maxSources = Number(document.getElementById("qa-max-sources")?.value || 8);
-    setStep(stepsEl, 'search', '🔍', `Searching top ${maxSources} relevant code snippets...`, false);
-    const searchStart = Date.now();
-    const searchData = await request("POST", "/api/search-context", {
-      projectRootPath: projectRoot,
-      query: question,
-      mode: "auto",
-      topK: maxSources,
-      includeContextLines: 0,
-      resultMode: "full",
-    });
-    const searchMs = Date.now() - searchStart;
-    const resultCount = searchData?.data?.results?.length ?? 0;
-    setStep(stepsEl, 'search', '🔍', `Found ${resultCount} relevant code snippets (${searchMs}ms)`, true);
-
-    // Show search results immediately as source cards
-    const searchResults = searchData?.data?.results || [];
-    // Extract search terms from question for highlighting
-    const searchTerms = question.split(/\s+/).filter(t => t.length > 2);
-    if (searchResults.length) {
-      const maxScore = Math.max(...searchResults.map(s => s.score || 0));
-      const cards = searchResults.map((r, i) => renderSourceCard({
-        index: i + 1, filePath: r.filePath, startLine: r.startLine, endLine: r.endLine,
-        language: r.language, score: r.score, snippet: r.snippet || '',
-      }, maxScore, searchTerms)).join('');
-      sourcesListEl.innerHTML = `<h4>Retrieved sources (${searchResults.length})</h4>` + cards;
-      sourcesListEl.hidden = false;
-    }
-
-    // Step 3: LLM with retry support
-    const maxRetries = Number(document.getElementById("qa-retries")?.value || 2);
-    let qaData = null;
-    let llmMs = 0;
-    let retryCount = 0;
-    const llmStart = Date.now();
-
-    while (retryCount <= maxRetries) {
-      try {
-        const attemptLabel = retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : '';
-        setStep(stepsEl, 'llm', '🤖', `Generating answer with LLM...${attemptLabel}`, false);
-
-        qaData = await request("POST", "/api/qa/ask", {
-          projectRootPath: projectRoot,
-          question,
-          maxSources,
-          includeSummary: document.getElementById("qa-include-summary")?.checked ?? true,
-          timeoutSeconds: timeoutSec,
-          // v4.2.4: Send conversation history for multi-turn support
-          history: qaConversationHistory,
-        });
-
-        llmMs = Date.now() - llmStart;
-        setStep(stepsEl, 'llm', '🤖', `Answer generated (${llmMs}ms, ${qaData?.usage?.completionTokens ?? '?'} tokens)${retryCount > 0 ? ` after ${retryCount} retry` : ''}`, true);
-        break; // Success, exit retry loop
-      } catch (err) {
-        retryCount++;
-        const isTimeout = err.message?.includes('timed out') || err.message?.includes('timeout');
-
-        if (isTimeout && retryCount <= maxRetries) {
-          setStep(stepsEl, 'llm', '⚠️', `LLM timeout, retrying (${retryCount}/${maxRetries})...`, false);
-          await new Promise(r => setTimeout(r, 1000)); // Brief pause before retry
-        } else {
-          throw err; // Re-throw if not timeout or out of retries
-        }
-      }
-    }
-
-    if (!qaData) {
-      throw new Error(`LLM failed after ${maxRetries} retries`);
-    }
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    // v4.2.4: Handle fallback response (LLM unavailable)
-    if (qaData?.fallback) {
-      answerBodyEl.innerHTML = `<div class="qa-fallback-notice">⚠️ ${qaData.message || 'LLM 服务暂时不可用，以下是检索到的相关代码片段，您可以直接参考。'}</div>`;
-      answerBodyEl.hidden = false;
-      setStep(stepsEl, 'llm', '⚠️', `LLM ${qaData.fallbackReason === 'timeout' ? 'timeout' : 'unavailable'} - showing search results only`, true);
-    }
-    // Answer
-    else if (qaData?.answer) {
-      answerBodyEl.innerHTML = renderMarkdown(qaData.answer);
-      answerBodyEl.hidden = false;
-
-      // v4.2.5: Save to conversation history with LocalStorage persistence
-      qaConversationHistory.push(
-        { role: 'user', content: question },
-        { role: 'assistant', content: qaData.answer }
-      );
-      saveQaHistory();
-
-      // Show feedback buttons
-      const feedbackEl = document.getElementById('qa-feedback');
-      feedbackEl.hidden = false;
-      // Store QA context for feedback submission
-      feedbackEl.dataset.context = JSON.stringify({
-        projectRootPath: projectRoot,
-        question,
-        answer: qaData.answer,
-        sources: qaData.sources,
-        usage: qaData.usage,
-        timing: qaData.timing,
-      });
-      // Reset feedback UI state
-      document.getElementById('qa-feedback-positive').classList.remove('selected');
-      document.getElementById('qa-feedback-negative').classList.remove('selected');
-      document.getElementById('qa-correction-form').hidden = true;
-      document.getElementById('qa-feedback-thanks').hidden = true;
-      document.getElementById('qa-feedback-positive').disabled = false;
-      document.getElementById('qa-feedback-negative').disabled = false;
-      document.getElementById('qa-correction').value = '';
-    }
-
-    // Update sources from QA response (may have different snippets)
-    if (qaData?.sources?.length) {
-      const maxScore = Math.max(...qaData.sources.map(s => s.score || 0));
-      sourcesListEl.innerHTML = `<h4>Sources (${qaData.sources.length})</h4>` +
-        qaData.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
-      sourcesListEl.hidden = false;
-    }
-
-    // Stats
-    const statItems = [`<span class="qa-stat"><span class="qa-stat-label">Total:</span> ${elapsed}s</span>`];
-    statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Index:</span> ${indexMs}ms</span>`);
-    statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Search:</span> ${searchMs}ms</span>`);
-    if (qaData?.timing?.llmMs) statItems.push(`<span class="qa-stat"><span class="qa-stat-label">LLM:</span> ${qaData.timing.llmMs}ms</span>`);
-    if (qaData?.usage) {
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Prompt:</span> ${qaData.usage.promptTokens} tok</span>`);
-      statItems.push(`<span class="qa-stat"><span class="qa-stat-label">Completion:</span> ${qaData.usage.completionTokens} tok</span>`);
-    }
-    statsEl.innerHTML = statItems.join('');
-    statsEl.hidden = false;
-
-    // Raw JSON
-    rawEl.innerHTML = `<details><summary>Show raw JSON</summary><pre>${escapeHtml(JSON.stringify(qaData, null, 2))}</pre></details>`;
-
-  } catch (error) {
-    const msg = error.message || String(error);
-    errorEl.textContent = msg;
-    errorEl.hidden = false;
-  } finally {
-    clearInterval(qaTimerInterval);
-    qaTimerInterval = null;
-    loadingEl.hidden = true;
-    askBtn.disabled = false;
-    askBtn.textContent = 'Ask';
-  }
-});
-
-// ── QA Feedback handlers ─────────────────────────────────────────────────────
-document.getElementById('qa-feedback-positive')?.addEventListener('click', async function() {
-  const feedbackEl = document.getElementById('qa-feedback');
-  const context = JSON.parse(feedbackEl.dataset.context || '{}');
-  if (!context.question) return;
-
-  this.classList.add('selected');
-  document.getElementById('qa-feedback-negative').classList.remove('selected');
-  this.disabled = true;
-  document.getElementById('qa-feedback-negative').disabled = true;
-
-  try {
-    await request('POST', '/api/qa/feedback', {
-      ...context,
-      rating: 'positive',
-    });
-    document.getElementById('qa-feedback-thanks').hidden = false;
-  } catch (error) {
-    console.error('Feedback submission failed:', error);
-  }
-});
-
-document.getElementById('qa-feedback-negative')?.addEventListener('click', function() {
-  this.classList.add('selected');
-  document.getElementById('qa-feedback-positive').classList.remove('selected');
-  document.getElementById('qa-correction-form').hidden = false;
-});
-
-document.getElementById('qa-submit-correction')?.addEventListener('click', async function() {
-  const feedbackEl = document.getElementById('qa-feedback');
-  const context = JSON.parse(feedbackEl.dataset.context || '{}');
-  if (!context.question) return;
-
-  const correction = document.getElementById('qa-correction').value.trim();
-
-  this.disabled = true;
-  document.getElementById('qa-feedback-positive').disabled = true;
-  document.getElementById('qa-feedback-negative').disabled = true;
-
-  try {
-    await request('POST', '/api/qa/feedback', {
-      ...context,
-      rating: 'negative',
-      correction: correction || undefined,
-    });
-    document.getElementById('qa-correction-form').hidden = true;
-    document.getElementById('qa-feedback-thanks').hidden = false;
-  } catch (error) {
-    console.error('Feedback submission failed:', error);
-    this.disabled = false;
-  }
-});
-
-// ── v4.2.5: New conversation button with LocalStorage clear ─────────────────
-document.getElementById('qa-new-conversation')?.addEventListener('click', function() {
-  clearQaHistory();
-  document.getElementById('qa-question').value = '';
-  document.getElementById('qa-answer-body').hidden = true;
-  document.getElementById('qa-answer-body').innerHTML = '';
-  document.getElementById('qa-sources-list').hidden = true;
-  document.getElementById('qa-sources-list').innerHTML = '';
-  document.getElementById('qa-stats').hidden = true;
-  document.getElementById('qa-feedback').hidden = true;
-  document.getElementById('qa-error').hidden = true;
-  document.getElementById('qa-raw').innerHTML = '';
-  document.getElementById('qa-progress').hidden = true;
-  document.getElementById('qa-steps').innerHTML = '';
-});
-
-// ── v4.2.4: Citation click handler for scrolling to sources ──────────────────
-document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('qa-citation')) {
-    e.preventDefault();
-    const sourceNum = e.target.dataset.source;
-    const sourceCard = document.getElementById(`source-${sourceNum}`);
-    if (sourceCard) {
-      sourceCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Add highlight effect
-      sourceCard.classList.add('highlight');
-      setTimeout(() => sourceCard.classList.remove('highlight'), 2000);
-    }
-  }
-});
-
-// ── v4.2.5: SSE Streaming Ask ────────────────────────────────────────────────
-document.getElementById("run-ask-stream")?.addEventListener("click", async () => {
-  const askBtn = document.getElementById("run-ask-stream");
   const progressEl = document.getElementById("qa-progress");
   const loadingEl = document.getElementById("qa-loading");
   const timerEl = document.getElementById("qa-timer");
@@ -956,7 +676,6 @@ document.getElementById("run-ask-stream")?.addEventListener("click", async () =>
   // Reset UI
   askBtn.disabled = true;
   askBtn.textContent = 'Streaming...';
-  document.getElementById("run-ask").disabled = true;
   [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
   rawEl.innerHTML = '';
   stepsEl.innerHTML = '';
@@ -970,7 +689,7 @@ document.getElementById("run-ask-stream")?.addEventListener("click", async () =>
     timerEl.textContent = `${elapsed}s / ${timeoutSec}s`;
   }, 100);
 
-  // Build query params
+  // Build query params for SSE stream
   const params = new URLSearchParams({
     projectRootPath: projectRoot,
     question,
@@ -1101,7 +820,91 @@ document.getElementById("run-ask-stream")?.addEventListener("click", async () =>
     qaTimerInterval = null;
     loadingEl.hidden = true;
     askBtn.disabled = false;
-    askBtn.textContent = 'Stream';
-    document.getElementById("run-ask").disabled = false;
+    askBtn.textContent = 'Ask';
   }
 });
+
+// ── QA Feedback handlers ─────────────────────────────────────────────────────
+document.getElementById('qa-feedback-positive')?.addEventListener('click', async function() {
+  const feedbackEl = document.getElementById('qa-feedback');
+  const context = JSON.parse(feedbackEl.dataset.context || '{}');
+  if (!context.question) return;
+
+  this.classList.add('selected');
+  document.getElementById('qa-feedback-negative').classList.remove('selected');
+  this.disabled = true;
+  document.getElementById('qa-feedback-negative').disabled = true;
+
+  try {
+    await request('POST', '/api/qa/feedback', {
+      ...context,
+      rating: 'positive',
+    });
+    document.getElementById('qa-feedback-thanks').hidden = false;
+  } catch (error) {
+    console.error('Feedback submission failed:', error);
+  }
+});
+
+document.getElementById('qa-feedback-negative')?.addEventListener('click', function() {
+  this.classList.add('selected');
+  document.getElementById('qa-feedback-positive').classList.remove('selected');
+  document.getElementById('qa-correction-form').hidden = false;
+});
+
+document.getElementById('qa-submit-correction')?.addEventListener('click', async function() {
+  const feedbackEl = document.getElementById('qa-feedback');
+  const context = JSON.parse(feedbackEl.dataset.context || '{}');
+  if (!context.question) return;
+
+  const correction = document.getElementById('qa-correction').value.trim();
+
+  this.disabled = true;
+  document.getElementById('qa-feedback-positive').disabled = true;
+  document.getElementById('qa-feedback-negative').disabled = true;
+
+  try {
+    await request('POST', '/api/qa/feedback', {
+      ...context,
+      rating: 'negative',
+      correction: correction || undefined,
+    });
+    document.getElementById('qa-correction-form').hidden = true;
+    document.getElementById('qa-feedback-thanks').hidden = false;
+  } catch (error) {
+    console.error('Feedback submission failed:', error);
+    this.disabled = false;
+  }
+});
+
+// ── v4.2.5: New conversation button with LocalStorage clear ─────────────────
+document.getElementById('qa-new-conversation')?.addEventListener('click', function() {
+  clearQaHistory();
+  document.getElementById('qa-question').value = '';
+  document.getElementById('qa-answer-body').hidden = true;
+  document.getElementById('qa-answer-body').innerHTML = '';
+  document.getElementById('qa-sources-list').hidden = true;
+  document.getElementById('qa-sources-list').innerHTML = '';
+  document.getElementById('qa-stats').hidden = true;
+  document.getElementById('qa-feedback').hidden = true;
+  document.getElementById('qa-error').hidden = true;
+  document.getElementById('qa-raw').innerHTML = '';
+  document.getElementById('qa-progress').hidden = true;
+  document.getElementById('qa-steps').innerHTML = '';
+});
+
+// ── v4.2.4: Citation click handler for scrolling to sources ──────────────────
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('qa-citation')) {
+    e.preventDefault();
+    const sourceNum = e.target.dataset.source;
+    const sourceCard = document.getElementById(`source-${sourceNum}`);
+    if (sourceCard) {
+      sourceCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add highlight effect
+      sourceCard.classList.add('highlight');
+      setTimeout(() => sourceCard.classList.remove('highlight'), 2000);
+    }
+  }
+});
+
