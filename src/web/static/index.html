@@ -1,193 +1,265 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ace-mcp debug panel</title>
+    <title>ace-mcp 代码助手</title>
     <link rel="stylesheet" href="/static/css/main.css" />
   </head>
   <body>
-    <h1>ace-mcp debug panel</h1>
-    <p>Use this page to inspect server state and debug indexing, search, stats, and snippet retrieval.</p>
-    <div class="grid">
-      <div class="card wide">
-        <h2>Quick actions</h2>
-        <div class="actions">
-          <button id="load-health" class="secondary" type="button">Load health</button>
-          <button id="load-runtime" class="secondary" type="button">Load runtime</button>
-          <button id="load-config" class="secondary" type="button">Load config</button>
-          <button id="load-tools" class="secondary" type="button">Load tools</button>
-          <button id="load-projects" class="secondary" type="button">Load projects</button>
-        </div>
-      </div>
-      <div class="card">
-        <h2>🚀 Autostart</h2>
-        <p class="hint">Configure ace-mcp to start automatically on system boot.</p>
-        <div id="autostart-status" class="autostart-status">
-          <span class="autostart-badge" id="autostart-badge">Checking...</span>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <button id="autostart-enable" type="button" style="flex:1">Enable</button>
-          <button id="autostart-disable" class="secondary" type="button" style="flex:1">Disable</button>
-        </div>
-        <p id="autostart-platform" class="hint" style="margin-top:8px"></p>
-      </div>
-      <div class="card">
-        <h2>Index project</h2>
-        <label for="project-root">Project root path</label>
-        <select id="project-root-select">
-          <option value="">-- Select a project --</option>
-        </select>
-        <div style="display:flex;gap:8px;align-items:end">
-          <input id="project-root" class="mono" placeholder="/path/to/project" style="flex:1" />
-          <button id="add-project" type="button" class="secondary" style="width:auto;min-width:80px" title="Add new project and index it">+ Add</button>
-          <button id="delete-project" type="button" class="secondary" style="width:auto;min-width:80px;background:#dc2626;border-color:#dc2626" title="Remove project from list">🗑 Del</button>
-        </div>
-        <label for="index-mode">Index mode</label>
-        <select id="index-mode">
-          <option value="incremental">incremental</option>
-          <option value="full">full</option>
-        </select>
-        <button id="run-index" type="button">Run index_project</button>
-      </div>
-      <div class="card">
-        <h2>Project stats</h2>
-        <p class="hint">Fetch persisted stats for the current project root.</p>
-        <button id="run-stats" type="button">Load project_stats</button>
-      </div>
-      <div class="card">
-        <h2>Search context</h2>
-        <label for="search-query">Query</label>
-        <textarea id="search-query" placeholder="refund service implementation"></textarea>
-        <label for="search-mode">Mode</label>
-        <select id="search-mode">
-          <option value="auto">auto</option>
-          <option value="lexical">lexical</option>
-          <option value="symbol">symbol</option>
-          <option value="semantic">semantic</option>
-          <option value="hybrid">hybrid</option>
-        </select>
-        <label for="top-k">Top K</label>
-        <input id="top-k" type="number" min="1" max="50" value="8" />
-        <label for="search-result-mode">Result mode</label>
-        <select id="search-result-mode">
-          <option value="full">full</option>
-          <option value="metadata">metadata</option>
-        </select>
-        <label for="include-context-lines">Context lines</label>
-        <input id="include-context-lines" type="number" min="0" max="50" value="0" />
-        <label for="search-languages">Languages (comma-separated)</label>
-        <input id="search-languages" class="mono" placeholder="javascript,java" />
-        <label for="search-path-prefix">Path prefix</label>
-        <input id="search-path-prefix" class="mono" placeholder="src/web" />
-        <label for="search-path-contains">Path contains</label>
-        <input id="search-path-contains" class="mono" placeholder="search" />
-        <label for="search-exclude-path-prefix">Exclude path prefix</label>
-        <input id="search-exclude-path-prefix" class="mono" placeholder="dist" />
-        <button id="run-search" type="button">Run search_context</button>
-      </div>
-      <div class="card">
-        <h2>Get file snippet</h2>
-        <label for="snippet-path">File path (relative to project root)</label>
-        <input id="snippet-path" class="mono" placeholder="src/index.ts" />
-        <label for="snippet-start">Start line</label>
-        <input id="snippet-start" type="number" min="1" value="1" />
-        <label for="snippet-end">End line</label>
-        <input id="snippet-end" type="number" min="1" value="40" />
-        <button id="run-snippet" type="button">Run get_file_snippet</button>
-      </div>
-      <div class="card">
-        <h2>🔑 LLM Config</h2>
-        <p class="hint">View or update LLM API configuration at runtime.</p>
-        <button id="load-llm-config" class="secondary" type="button">Load LLM config</button>
-        <hr style="margin:12px 0;border:none;border-top:1px solid #e5e7eb" />
-        <label for="llm-api-url">API URL</label>
-        <input id="llm-api-url" class="mono" placeholder="https://api.openai.com/v1/chat/completions" />
-        <label for="llm-api-key">API Key</label>
-        <input id="llm-api-key" type="password" class="mono" placeholder="sk-..." />
-        <label for="llm-model">Model</label>
-        <input id="llm-model" class="mono" placeholder="gpt-4o-mini" />
-        <button id="update-llm-config" type="button">Update LLM config</button>
-      </div>
-      <div class="card">
-        <h2>📝 Code Summary</h2>
-        <p class="hint">
-          Analyze the entire project structure and generate an architecture overview using LLM.
-          The summary describes each module's purpose, key symbols, and inter-module relationships.
-          Once generated, it is persisted to <code>.ace-mcp/summaries/</code> and can be used as
-          additional context for RAG Q&A below.
-        </p>
-        <button id="run-generate-summary" type="button">Generate summary</button>
-        <button id="load-summary" class="secondary" type="button" style="margin-top:8px">Load existing summary</button>
-      </div>
-      <div class="card wide">
-        <h2>💬 Ask Codebase (RAG)</h2>
-        <p class="hint">
-          输入问题即可。系统会自动搜索相关代码片段，结合项目摘要，调用 LLM 生成带源码引用的回答。
-        </p>
-        <div style="display:flex;gap:12px;align-items:end">
-          <div style="flex:1">
-            <label for="qa-question">Question</label>
-            <textarea id="qa-question" rows="2" style="min-height:52px" placeholder="这个项目的搜索流程是什么？"></textarea>
+    <header class="app-header">
+      <h1>🔍 ace-mcp 代码助手</h1>
+      <p class="subtitle">本地代码搜索与智能问答工具，支持 Java / JavaScript / Python / .NET 项目</p>
+    </header>
+
+    <div class="main-container">
+      <!-- 左侧：项目选择 + 问答（核心功能） -->
+      <div class="primary-panel">
+        <!-- 项目选择卡片 -->
+        <div class="card">
+          <h2>📁 选择项目</h2>
+          <p class="hint">选择已索引的项目，或输入新项目路径添加</p>
+          <select id="project-root-select">
+            <option value="">-- 请选择项目 --</option>
+          </select>
+          <div class="input-row">
+            <input id="project-root" class="mono" placeholder="输入项目绝对路径，如 /Users/me/my-project" />
+            <button id="add-project" type="button" class="btn-primary" title="索引新项目并添加到列表">➕ 添加</button>
+            <button id="delete-project" type="button" class="btn-danger" title="从列表移除（索引数据保留）">🗑️</button>
           </div>
-          <button id="run-ask" type="button" style="width:auto;min-width:80px;margin-bottom:12px;height:52px">Ask</button>
-          <button id="qa-new-conversation" class="secondary" type="button" style="width:auto;min-width:80px;margin-bottom:12px;height:52px" title="Start new conversation">🔄 New</button>
         </div>
-        <details class="qa-advanced">
-          <summary>Advanced options</summary>
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
-            <div style="flex:1;min-width:140px">
-              <label for="qa-max-sources">Max sources <span class="hint" style="display:inline;font-weight:normal">- code snippets as context</span></label>
-              <input id="qa-max-sources" type="number" min="1" max="30" value="10" />
+
+        <!-- 智能问答卡片（核心功能，突出显示） -->
+        <div class="card card-highlight">
+          <h2>💬 智能问答</h2>
+          <p class="hint">用自然语言提问，AI 会搜索代码并生成答案。支持多轮对话追问。</p>
+          <div class="qa-input-area">
+            <textarea id="qa-question" rows="2" placeholder="例如：这个项目的搜索流程是什么？&#10;提示：按 Enter 发送，Shift+Enter 换行"></textarea>
+            <div class="qa-buttons">
+              <button id="run-ask" type="button" class="btn-primary btn-large">发送</button>
+              <button id="qa-stop" type="button" class="btn-secondary" hidden title="停止生成">⏹️ 停止</button>
+              <button id="qa-new-conversation" class="btn-secondary" type="button" title="清空对话历史，开始新对话">🔄 新对话</button>
             </div>
-            <div style="flex:1;min-width:140px">
-              <label for="qa-timeout">Timeout <span class="hint" style="display:inline;font-weight:normal">- seconds</span></label>
-              <input id="qa-timeout" type="number" min="10" max="600" value="120" />
+          </div>
+          <details class="qa-advanced">
+            <summary>⚙️ 高级选项</summary>
+            <div class="options-grid">
+              <div>
+                <label for="qa-max-sources">参考代码数量</label>
+                <input id="qa-max-sources" type="number" min="1" max="30" value="10" />
+                <span class="hint">搜索多少个代码片段作为上下文</span>
+              </div>
+              <div>
+                <label for="qa-timeout">超时时间（秒）</label>
+                <input id="qa-timeout" type="number" min="10" max="600" value="120" />
+                <span class="hint">LLM 响应的最大等待时间</span>
+              </div>
+              <div>
+                <label for="qa-retries">失败重试次数</label>
+                <input id="qa-retries" type="number" min="0" max="5" value="2" />
+                <span class="hint">LLM 超时后自动重试几次</span>
+              </div>
+              <label class="checkbox-label">
+                <input id="qa-include-summary" type="checkbox" checked />
+                包含项目架构摘要
+                <span class="hint">提供更准确的回答，但消耗更多 token</span>
+              </label>
             </div>
-            <div style="flex:1;min-width:140px">
-              <label for="qa-retries">LLM retries <span class="hint" style="display:inline;font-weight:normal">- on timeout</span></label>
-              <input id="qa-retries" type="number" min="0" max="5" value="2" />
+          </details>
+          <div id="qa-progress" hidden>
+            <div id="qa-loading" class="qa-loading">
+              <div class="dots"><span></span><span></span><span></span></div>
+              <span id="qa-timer" class="qa-timer"></span>
             </div>
-            <label style="flex:1;min-width:160px;display:flex;align-items:center;gap:6px;margin-top:20px;font-weight:normal;cursor:pointer">
-              <input id="qa-include-summary" type="checkbox" checked style="width:auto" />
-              Include project summary
-            </label>
+            <div id="qa-steps" class="qa-steps"></div>
+          </div>
+          <div id="qa-answer-body" class="qa-answer-body" hidden></div>
+          <div id="qa-feedback" class="qa-feedback" hidden>
+            <span class="qa-feedback-label">这个回答有帮助吗？</span>
+            <button id="qa-feedback-positive" class="qa-feedback-btn" title="有帮助">👍</button>
+            <button id="qa-feedback-negative" class="qa-feedback-btn" title="没帮助">👎</button>
+            <div id="qa-correction-form" class="qa-correction-form" hidden>
+              <label for="qa-correction">请提供更好的答案：</label>
+              <textarea id="qa-correction" rows="3" placeholder="告诉我们正确的答案或需要补充的内容..."></textarea>
+              <button id="qa-submit-correction" type="button" class="btn-primary">提交反馈</button>
+            </div>
+            <div id="qa-feedback-thanks" class="qa-feedback-thanks" hidden>✓ 感谢您的反馈！</div>
+          </div>
+          <div id="qa-sources-list" class="qa-sources-list" hidden></div>
+          <div id="qa-stats" class="qa-stats" hidden></div>
+          <div id="qa-error" class="qa-error" hidden></div>
+          <div id="qa-raw" class="qa-raw"></div>
+        </div>
+
+        <!-- 代码搜索卡片 -->
+        <div class="card">
+          <h2>🔍 代码搜索</h2>
+          <p class="hint">直接搜索代码片段，不调用 AI。适合精确查找函数、类名等。</p>
+          <div class="search-input-area">
+            <textarea id="search-query" rows="2" placeholder="搜索关键词，如：RefundService、handleLogin、数据库连接"></textarea>
+            <button id="run-search" type="button" class="btn-primary">搜索</button>
+          </div>
+          <details class="search-advanced">
+            <summary>⚙️ 搜索选项</summary>
+            <div class="options-grid">
+              <div>
+                <label for="search-mode">搜索模式</label>
+                <select id="search-mode">
+                  <option value="auto">自动（推荐）</option>
+                  <option value="lexical">词法匹配 - 精确关键词</option>
+                  <option value="symbol">符号搜索 - 函数/类名</option>
+                  <option value="semantic">语义搜索 - 相似概念</option>
+                  <option value="hybrid">混合模式 - 综合匹配</option>
+                </select>
+              </div>
+              <div>
+                <label for="top-k">结果数量</label>
+                <input id="top-k" type="number" min="1" max="50" value="8" />
+              </div>
+              <div>
+                <label for="search-result-mode">结果详情</label>
+                <select id="search-result-mode">
+                  <option value="full">完整 - 包含代码片段</option>
+                  <option value="metadata">简洁 - 仅文件信息</option>
+                </select>
+              </div>
+              <div>
+                <label for="include-context-lines">上下文行数</label>
+                <input id="include-context-lines" type="number" min="0" max="50" value="0" />
+                <span class="hint">匹配行前后额外显示几行</span>
+              </div>
+              <div>
+                <label for="search-languages">限定语言</label>
+                <input id="search-languages" class="mono" placeholder="javascript,java" />
+                <span class="hint">逗号分隔，留空搜索全部</span>
+              </div>
+              <div>
+                <label for="search-path-prefix">路径前缀</label>
+                <input id="search-path-prefix" class="mono" placeholder="src/services" />
+                <span class="hint">只搜索该目录下的文件</span>
+              </div>
+              <div>
+                <label for="search-path-contains">路径包含</label>
+                <input id="search-path-contains" class="mono" placeholder="controller" />
+                <span class="hint">路径中必须包含该关键词</span>
+              </div>
+              <div>
+                <label for="search-exclude-path-prefix">排除路径</label>
+                <input id="search-exclude-path-prefix" class="mono" placeholder="node_modules,dist" />
+                <span class="hint">不搜索这些目录</span>
+              </div>
+            </div>
+          </details>
+          <div id="search-history" class="search-history"></div>
+        </div>
+      </div>
+
+      <!-- 右侧：次要功能 + 调试面板 -->
+      <div class="secondary-panel">
+        <!-- 项目管理 -->
+        <div class="card card-compact">
+          <h2>📊 项目管理</h2>
+          <div class="button-group">
+            <button id="run-index" type="button" class="btn-secondary">
+              <span class="btn-icon">🔄</span>
+              <span class="btn-text">重新索引</span>
+            </button>
+            <button id="run-stats" type="button" class="btn-secondary">
+              <span class="btn-icon">📈</span>
+              <span class="btn-text">查看统计</span>
+            </button>
+            <button id="run-generate-summary" type="button" class="btn-secondary">
+              <span class="btn-icon">📝</span>
+              <span class="btn-text">生成摘要</span>
+            </button>
+            <button id="load-summary" type="button" class="btn-secondary">
+              <span class="btn-icon">📖</span>
+              <span class="btn-text">加载摘要</span>
+            </button>
+          </div>
+          <div class="index-options">
+            <label for="index-mode">索引模式：</label>
+            <select id="index-mode">
+              <option value="incremental">增量（只处理变更文件）</option>
+              <option value="full">全量（重建所有索引）</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 文件片段查看 -->
+        <div class="card card-compact">
+          <h2>📄 查看代码片段</h2>
+          <p class="hint">按行号范围查看指定文件内容</p>
+          <input id="snippet-path" class="mono" placeholder="文件相对路径，如 src/index.ts" />
+          <div class="input-row">
+            <div>
+              <label for="snippet-start">起始行</label>
+              <input id="snippet-start" type="number" min="1" value="1" />
+            </div>
+            <div>
+              <label for="snippet-end">结束行</label>
+              <input id="snippet-end" type="number" min="1" value="40" />
+            </div>
+            <button id="run-snippet" type="button" class="btn-secondary">查看</button>
+          </div>
+        </div>
+
+        <!-- LLM 配置 -->
+        <details class="card card-compact">
+          <summary><h2 style="display:inline">🔑 LLM 配置</h2></summary>
+          <p class="hint">配置 AI 模型的 API 地址和密钥</p>
+          <button id="load-llm-config" class="btn-secondary btn-small" type="button">加载当前配置</button>
+          <hr />
+          <label for="llm-api-url">API 地址</label>
+          <input id="llm-api-url" class="mono" placeholder="https://api.openai.com/v1/chat/completions" />
+          <label for="llm-api-key">API 密钥</label>
+          <input id="llm-api-key" type="password" class="mono" placeholder="sk-..." />
+          <label for="llm-model">模型名称</label>
+          <input id="llm-model" class="mono" placeholder="gpt-4o-mini" />
+          <button id="update-llm-config" type="button" class="btn-primary">保存配置</button>
+        </details>
+
+        <!-- 系统设置 -->
+        <details class="card card-compact">
+          <summary><h2 style="display:inline">🚀 系统设置</h2></summary>
+          <div class="setting-section">
+            <h3>开机自启动</h3>
+            <p class="hint">让 ace-mcp 在系统启动时自动运行</p>
+            <div id="autostart-status" class="autostart-status">
+              <span class="autostart-badge" id="autostart-badge">检查中...</span>
+            </div>
+            <div class="button-group">
+              <button id="autostart-enable" type="button" class="btn-secondary">启用</button>
+              <button id="autostart-disable" type="button" class="btn-secondary">禁用</button>
+            </div>
+            <p id="autostart-platform" class="hint"></p>
+          </div>
+          <hr />
+          <div class="setting-section">
+            <h3>服务状态</h3>
+            <div class="button-group">
+              <button id="load-health" class="btn-secondary btn-small" type="button">健康检查</button>
+              <button id="load-runtime" class="btn-secondary btn-small" type="button">运行时信息</button>
+              <button id="load-config" class="btn-secondary btn-small" type="button">配置详情</button>
+              <button id="load-tools" class="btn-secondary btn-small" type="button">可用工具</button>
+              <button id="load-projects" class="btn-secondary btn-small" type="button">已索引项目</button>
+            </div>
           </div>
         </details>
-        <div id="qa-progress" hidden>
-          <div id="qa-loading" class="qa-loading">
-            <div class="dots"><span></span><span></span><span></span></div>
-            <span id="qa-timer" class="qa-timer"></span>
-          </div>
-          <div id="qa-steps" class="qa-steps"></div>
+
+        <!-- 调试输出 -->
+        <div class="card card-compact">
+          <h2>🖥️ 调试输出</h2>
+          <div id="result-summary" class="result-summary" hidden></div>
+          <pre id="result">点击上方按钮查看结果</pre>
         </div>
-        <div id="qa-answer-body" class="qa-answer-body" hidden></div>
-        <div id="qa-feedback" class="qa-feedback" hidden>
-          <span class="qa-feedback-label">Was this helpful?</span>
-          <button id="qa-feedback-positive" class="qa-feedback-btn" title="Helpful">👍</button>
-          <button id="qa-feedback-negative" class="qa-feedback-btn" title="Not helpful">👎</button>
-          <div id="qa-correction-form" class="qa-correction-form" hidden>
-            <label for="qa-correction">What would be a better answer?</label>
-            <textarea id="qa-correction" rows="3" placeholder="Provide the correct answer or clarification..."></textarea>
-            <button id="qa-submit-correction" type="button">Submit Feedback</button>
-          </div>
-          <div id="qa-feedback-thanks" class="qa-feedback-thanks" hidden>✓ Thank you for your feedback!</div>
-        </div>
-        <div id="qa-sources-list" class="qa-sources-list" hidden></div>
-        <div id="qa-stats" class="qa-stats" hidden></div>
-        <div id="qa-error" class="qa-error" hidden></div>
-        <div id="qa-raw" class="qa-raw"></div>
-      </div>
-      <div class="card wide">
-        <h2>Search History</h2>
-        <div id="search-history" class="search-history"></div>
-      </div>
-      <div class="card wide">
-        <h2>Result</h2>
-        <div id="result-summary" class="result-summary" hidden></div>
-        <pre id="result">Click an action to begin.</pre>
       </div>
     </div>
+
+    <footer class="app-footer">
+      <p>ace-mcp - 本地代码搜索 MCP 服务器 | <a href="https://gitee.com/AndrewFengCode/ace-mcp" target="_blank">项目主页</a></p>
+    </footer>
+
     <script src="/static/js/app.js"></script>
   </body>
 </html>
