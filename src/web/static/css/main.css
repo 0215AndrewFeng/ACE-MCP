@@ -144,3 +144,11 @@ hr { border: none; border-top: 1px solid #e5e7eb; }
 .autostart-badge.running { background: #dcfce7; color: #166534; }
 .autostart-badge.enabled { background: #dbeafe; color: #1e40af; }
 .autostart-badge.disabled { background: #f3f4f6; color: #6b7280; }
+
+/* ── v4.2.6: Syntax Highlighting ── */
+.syn-keyword { color: #8b5cf6; font-weight: 600; }
+.syn-string { color: #059669; }
+.syn-comment { color: #9ca3af; font-style: italic; }
+.syn-number { color: #0891b2; }
+.syn-decorator { color: #d97706; }
+.search-highlight { background: #fef08a; color: #713f12; padding: 0 2px; border-radius: 2px; font-weight: 500; }
