@@ -88,9 +88,15 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   const app: Express = express();
   app.use(express.json());
 
-  // Static files
+  // Static files with cache control to ensure fresh content during development
   const staticPath = path.join(__dirname, "static");
-  app.use("/static", express.static(staticPath));
+  app.use("/static", express.static(staticPath, {
+    etag: true,
+    maxAge: 0, // No caching for development
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    },
+  }));
 
   // Health check
   app.get("/health", (_req: Request, res: Response) => {
@@ -942,8 +948,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     }
   });
 
-  // ── QA streaming endpoint (SSE) ────────────────────────────────────
-  app.get("/api/qa/ask/stream", async (req: Request, res: Response) => {
+  // ── QA streaming endpoint (SSE) - supports both GET and POST ────────────────────────────────────
+  const handleQaStream = async (req: Request, res: Response) => {
     // Set up SSE
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -952,16 +958,40 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
     const sendEvent = (data: Record<string, unknown>) => {
       res.write(`data: ${JSON.stringify(data)}\n\n`);
+      // Flush immediately for real-time streaming
+      if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
+        (res as unknown as { flush: () => void }).flush();
+      }
     };
 
+    // Handle client disconnect - check socket state for reliable detection
+    let clientDisconnected = false;
+    const checkDisconnected = () => {
+      // Check if socket is still writable (client still connected)
+      if (res.writableEnded || res.destroyed || !res.socket || res.socket.destroyed) {
+        return true;
+      }
+      return clientDisconnected;
+    };
+
+    // Only mark disconnected when socket actually closes
+    res.on("close", () => {
+      clientDisconnected = true;
+      dependencies.logger.info("SSE client disconnected");
+    });
+
     try {
-      const projectRootPath = req.query.projectRootPath as string;
-      const question = req.query.question as string;
-      const maxSources = Number(req.query.maxSources) || 10;
-      const includeSummary = req.query.includeSummary !== "false";
-      const languages = req.query.languages as string | undefined;
-      const timeoutSeconds = Number(req.query.timeoutSeconds) || 120;
-      const historyJson = req.query.history as string | undefined;
+      // Support both GET (query params) and POST (body)
+      const isPost = req.method === "POST";
+      const projectRootPath = isPost ? req.body?.projectRootPath : req.query.projectRootPath as string;
+      const question = isPost ? req.body?.question : req.query.question as string;
+      const maxSources = Number(isPost ? req.body?.maxSources : req.query.maxSources) || 10;
+      const includeSummary = isPost ? req.body?.includeSummary !== false : req.query.includeSummary !== "false";
+      const languages = isPost ? req.body?.languages : req.query.languages as string | undefined;
+      const timeoutSeconds = Number(isPost ? req.body?.timeoutSeconds : req.query.timeoutSeconds) || 120;
+      const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
+
+      dependencies.logger.info("SSE stream started", { projectRootPath, question: question?.slice(0, 50) });
 
       if (!dependencies.llmClient.isConfigured()) {
         sendEvent({ type: "error", error: "LLM API not configured" });
@@ -973,11 +1003,13 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const startMs = Date.now();
 
       // Phase 1: Index
+      dependencies.logger.info("SSE phase: index start");
       sendEvent({ type: "phase", phase: "index", status: "start" });
       const indexStart = Date.now();
       const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
       const indexMs = Date.now() - indexStart;
       sendEvent({ type: "phase", phase: "index", status: "done", ms: indexMs });
+      dependencies.logger.info("SSE phase: index done", { indexMs });
 
       if (Date.now() - startMs > timeout) {
         sendEvent({ type: "error", error: "Timeout at index phase" });
@@ -986,6 +1018,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       // Phase 2: Search
+      dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
       const topK = clampInteger(maxSources, 1, 30, 10);
       const searchStart = Date.now();
@@ -1000,6 +1033,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       );
       const searchMs = Date.now() - searchStart;
       sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs, resultCount: searchResult.results.length });
+      dependencies.logger.info("SSE phase: search done", { searchMs, resultCount: searchResult.results.length });
 
       // Send sources immediately
       const sources = searchResult.results.map((r, i) => ({
@@ -1020,6 +1054,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       // Phase 3: Load summary
+      dependencies.logger.info("SSE phase: summary start");
       sendEvent({ type: "phase", phase: "summary", status: "start" });
       let summaryArchitecture: string | undefined;
       if (includeSummary) {
@@ -1029,8 +1064,10 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         }
       }
       sendEvent({ type: "phase", phase: "summary", status: "done", hadSummary: Boolean(summaryArchitecture) });
+      dependencies.logger.info("SSE phase: summary done", { hadSummary: Boolean(summaryArchitecture) });
 
       // Phase 4: LLM streaming
+      dependencies.logger.info("SSE phase: llm start");
       sendEvent({ type: "phase", phase: "llm", status: "start" });
       const llmStart = Date.now();
 
@@ -1043,11 +1080,11 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         snippet: s.snippet,
       })), 6000);
 
-      // Parse conversation history
+      // Parse conversation history (POST sends array directly, GET sends JSON string)
       let conversationHistory: QaConversationTurn[] = [];
-      if (historyJson) {
+      if (historyData) {
         try {
-          conversationHistory = JSON.parse(historyJson);
+          conversationHistory = typeof historyData === 'string' ? JSON.parse(historyData) : historyData;
         } catch {
           // Ignore parse errors
         }
@@ -1063,16 +1100,23 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       let fullContent = "";
       let usage = { promptTokens: 0, completionTokens: 0 };
 
+      dependencies.logger.info("SSE calling LLM streamComplete", { messageCount: messages.length });
       for await (const chunk of dependencies.llmClient.streamComplete({
         messages,
         timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
       })) {
+        // Check if client disconnected
+        if (checkDisconnected()) {
+          dependencies.logger.info("SSE client disconnected during LLM streaming, stopping");
+          return;
+        }
         if (chunk.type === "token" && chunk.content) {
           fullContent += chunk.content;
-          sendEvent({ type: "token", content: chunk.content });
+          sendEvent({ type: "token", content: chunk.content, isThinking: chunk.isThinking });
         } else if (chunk.type === "done") {
           usage = chunk.usage ?? usage;
         } else if (chunk.type === "error") {
+          dependencies.logger.error("SSE LLM error", { error: chunk.error });
           sendEvent({ type: "error", error: chunk.error });
           res.end();
           return;
@@ -1081,6 +1125,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
       const llmMs = Date.now() - llmStart;
       const totalMs = Date.now() - startMs;
+      dependencies.logger.info("SSE phase: llm done", { llmMs, contentLength: fullContent.length });
 
       sendEvent({
         type: "done",
@@ -1089,12 +1134,20 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         hadSummary: Boolean(summaryArchitecture),
         timing: { indexMs, searchMs, llmMs, totalMs },
       });
+      dependencies.logger.info("SSE stream completed", { totalMs });
       res.end();
     } catch (error: unknown) {
-      sendEvent({ type: "error", error: error instanceof Error ? error.message : String(error) });
-      res.end();
+      dependencies.logger.error("SSE stream error", { error: error instanceof Error ? error.message : String(error) });
+      if (!checkDisconnected()) {
+        sendEvent({ type: "error", error: error instanceof Error ? error.message : String(error) });
+        res.end();
+      }
     }
-  });
+  };
+
+  // Register both GET and POST handlers
+  app.get("/api/qa/ask/stream", handleQaStream);
+  app.post("/api/qa/ask/stream", handleQaStream);
 
   // ── QA Feedback endpoint ───────────────────────────────────────
   app.post("/api/qa/feedback", async (req: Request, res: Response) => {

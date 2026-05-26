@@ -177,6 +177,23 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-source-card.highlight { box-shadow: 0 0 0 3px #667eea; animation: citation-flash 0.3s ease-out; }
 @keyframes citation-flash { 0% { box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.4); } 100% { box-shadow: 0 0 0 3px #667eea; } }
 
+/* ── QA Thinking (DeepSeek reasoning) ── */
+.qa-thinking { margin-bottom: 16px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; overflow: hidden; }
+.qa-thinking summary { padding: 10px 14px; font-size: 14px; color: #6b7280; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.qa-thinking summary:hover { background: #f3f4f6; }
+.qa-thinking[open] summary { border-bottom: 1px solid #e5e7eb; }
+.qa-thinking-content { padding: 12px 14px; font-size: 13px; color: #4b5563; line-height: 1.7; white-space: pre-wrap; font-family: ui-monospace, monospace; max-height: 300px; overflow-y: auto; background: #fefefe; }
+
+/* v4.2.10: Inline thinking (shown while waiting for answer) */
+.qa-thinking-inline { font-size: 13px; color: #9ca3af; line-height: 1.6; font-style: italic; padding: 8px 0; white-space: pre-wrap; animation: thinking-pulse 2s ease-in-out infinite; }
+@keyframes thinking-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+/* v4.2.10: Collapsed thinking (shown after answer) */
+.qa-thinking-collapsed { margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+.qa-thinking-collapsed summary { padding: 8px 12px; font-size: 12px; color: #9ca3af; cursor: pointer; }
+.qa-thinking-collapsed summary:hover { background: #f3f4f6; color: #6b7280; }
+.qa-thinking-collapsed .qa-thinking-content { padding: 10px 12px; font-size: 12px; max-height: 200px; }
+
 /* ── QA Feedback ── */
 .qa-feedback { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px 16px; background: #f8fafc; border-radius: 10px; flex-wrap: wrap; }
 .qa-feedback-label { font-size: 14px; color: #4b5563; }
@@ -187,6 +204,19 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-correction-form textarea { min-height: 80px; }
 .qa-correction-form button { margin-top: 10px; }
 .qa-feedback-thanks { font-size: 14px; color: #059669; font-weight: 600; }
+
+/* ── v4.2.9: Session Token Stats ── */
+.session-token-stats { font-size: 12px; color: #6b7280; padding: 8px 12px; background: #f1f5f9; border-radius: 8px; margin-top: 10px; display: inline-block; }
+.btn-text { background: none; border: none; color: #667eea; font-size: 12px; cursor: pointer; padding: 4px 8px; margin-left: 8px; }
+.btn-text:hover { text-decoration: underline; }
+
+/* ── v4.2.9: Error Classification ── */
+.qa-error-card { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 18px; }
+.qa-error-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.qa-error-icon { font-size: 20px; }
+.qa-error-label { font-size: 14px; font-weight: 600; color: #991b1b; }
+.qa-error-message { font-size: 13px; color: #7f1d1d; background: #fee2e2; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; font-family: ui-monospace, monospace; word-break: break-word; }
+.qa-error-hint { font-size: 13px; color: #4b5563; }
 
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
