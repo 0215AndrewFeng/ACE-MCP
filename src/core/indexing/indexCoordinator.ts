@@ -7,12 +7,16 @@ import iconv from "iconv-lite";
 import { mapInBatches } from "../common/batch.js";
 import type { Logger } from "../common/logger.js";
 import type {
+  ChunkRecord,
   CollectedFile,
+  ImportInfo,
   IndexFailure,
   IndexProjectResult,
   IndexedFileRecord,
   ProjectInfo,
   Settings,
+  SymbolInfo,
+  SymbolUsageInfo,
 } from "../common/types.js";
 import { buildChunks } from "./chunker.js";
 import { buildStableId, computeSha256, hasFileChanged } from "./fileFingerprint.js";
@@ -30,17 +34,32 @@ interface DecodedSource {
   encoding: string;
 }
 
+/**
+ * v4.3.1: Extended result type for batch processing
+ */
 type IndexedFileResult =
   | {
       chunkCount: number;
       indexed: true;
       vectorChunkCount: number;
+      // v4.3.1: Include data for batch write
+      indexedFile: IndexedFileRecord;
+      chunks: ChunkRecord[];
+      symbols: SymbolInfo[];
+      imports: ImportInfo[];
+      usages: SymbolUsageInfo[];
     }
   | {
       filePath: string;
       indexed: false;
       message: string;
     };
+
+/**
+ * v4.3.1: Batch size for database writes
+ * Balances transaction overhead vs memory usage
+ */
+const DB_WRITE_BATCH_SIZE = 50;
 
 function scoreDecodedContent(content: string): number {
   const replacementCount = (content.match(/\uFFFD/g) ?? []).length;
@@ -237,6 +256,13 @@ export class IndexCoordinator {
     const changedFiles = filesToIndex.length;
     const indexingStartedAtMs = performance.now();
     let vectorMs = 0;
+
+    /**
+     * v4.3.1: Optimized indexing with batch database writes
+     * 1. Parallel file read and parse (mapInBatches)
+     * 2. Batch database writes (writeFileIndexBatch)
+     * 3. Eliminates database lock contention
+     */
     const fileResults = await mapInBatches<CollectedFile, IndexedFileResult>(filesToIndex, this.settings.batchSize, async (file) => {
       try {
         const buffer = await readFile(file.absolutePath);
@@ -255,28 +281,16 @@ export class IndexCoordinator {
           size: file.size,
         };
 
-        this.store.writeFileIndex(projectId, indexedFile, chunks, analysis.symbols, analysis.imports, analysis.usages, timestamp);
-        let vectorChunkCount = 0;
-        if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager" && chunks.length > 0) {
-          const provider = this.embeddingProvider;
-          const vectorStartedAtMs = performance.now();
-          const embeddings = await provider.embedBatch(chunks.map((chunk) => chunk.content));
-          vectorMs += Math.round(performance.now() - vectorStartedAtMs);
-          vectorChunkCount = chunks.length;
-          this.store.writeChunkVectors(
-            chunks.map((chunk, index) => ({
-              chunkId: chunk.chunkId,
-              embedding: embeddings[index],
-              modelName: provider.getModelName(),
-            })),
-            projectId,
-          );
-        }
-
+        // v4.3.1: Return data for batch write instead of writing immediately
         return {
           chunkCount: chunks.length,
           indexed: true as const,
-          vectorChunkCount,
+          vectorChunkCount: 0, // Will be updated after vector indexing
+          indexedFile,
+          chunks,
+          symbols: analysis.symbols,
+          imports: analysis.imports,
+          usages: analysis.usages,
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -292,6 +306,45 @@ export class IndexCoordinator {
         };
       }
     });
+
+    // v4.3.1: Batch write to database - dramatically reduces transaction overhead
+    const successResults = fileResults.filter((r): r is Extract<IndexedFileResult, { indexed: true }> => r.indexed);
+    for (let i = 0; i < successResults.length; i += DB_WRITE_BATCH_SIZE) {
+      const batch = successResults.slice(i, i + DB_WRITE_BATCH_SIZE);
+      this.store.writeFileIndexBatch(
+        projectId,
+        batch.map((r) => ({
+          indexedFile: r.indexedFile,
+          chunks: r.chunks,
+          symbols: r.symbols,
+          imports: r.imports,
+          usages: r.usages,
+        })),
+        timestamp,
+      );
+    }
+
+    // v4.3.1: Vector indexing (still per-file for now, but after batch write)
+    if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager") {
+      for (const result of successResults) {
+        if (result.chunks.length > 0) {
+          const provider = this.embeddingProvider;
+          const vectorStartedAtMs = performance.now();
+          const embeddings = await provider.embedBatch(result.chunks.map((chunk) => chunk.content));
+          vectorMs += Math.round(performance.now() - vectorStartedAtMs);
+          result.vectorChunkCount = result.chunks.length;
+          this.store.writeChunkVectors(
+            result.chunks.map((chunk, index) => ({
+              chunkId: chunk.chunkId,
+              embedding: embeddings[index],
+              modelName: provider.getModelName(),
+            })),
+            projectId,
+          );
+        }
+      }
+    }
+
     const indexMs = Math.round(performance.now() - indexingStartedAtMs);
     const failedFiles: IndexFailure[] = [];
     let chunkCount = 0;

@@ -2,6 +2,26 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.1] - 2026-05-26
+
+### 性能优化
+
+- **fast-glob 文件收集**：使用 fast-glob 替代手动递归遍历，单次获取文件列表和 stat 信息，collectMs 预计减少 70%。
+- **批量事务写入**：新增 `writeFileIndexBatch()` 方法，将多个文件的数据库写入合并为单一事务，indexMs 预计减少 80%。
+- **SQLite 配置优化**：
+  - `busy_timeout = 30000` - 消除 "database is locked" 错误
+  - `cache_size = -128000` - 增加缓存到 128MB
+  - `mmap_size = 268435456` - 启用 256MB 内存映射
+  - `wal_autocheckpoint = 10000` - 减少 checkpoint 频率
+- **IgnoreManager 缓存**：缓存 shouldIgnore 结果，避免重复正则匹配。
+
+### 内部改进
+
+- 新增 `fast-glob` 依赖。
+- `fileCollector.ts` 完全重写，使用 fast-glob 的 stats 选项。
+- `indexCoordinator.ts` 改为先并行读取解析，再批量写入数据库。
+- `DB_WRITE_BATCH_SIZE = 50`：每 50 个文件一次事务提交。
+
 ## [4.3.0] - 2026-05-26
 
 ### 搜索增强
