@@ -17,9 +17,11 @@ import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
 import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
+import { qaCache, QaCache } from "../core/llm/qaCache.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { SearchService } from "../core/search/searchService.js";
+import { estimateOptimalSources } from "../core/search/queryAnalyzer.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
 import type { SummaryGenerator } from "../core/summary/summaryGenerator.js";
 import { buildEnvelope } from "../server/tools/responseEnvelope.js";
@@ -1020,7 +1022,9 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       // Phase 2: Search
       dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
-      const topK = clampInteger(maxSources, 1, 30, 10);
+      // v4.3.0: Smart sources - auto-adjust based on question complexity
+      const smartTopK = maxSources === 10 ? estimateOptimalSources(String(question ?? ""), 10) : maxSources;
+      const topK = clampInteger(smartTopK, 1, 30, 10);
       const searchStart = Date.now();
       const searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -1033,7 +1037,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       );
       const searchMs = Date.now() - searchStart;
       sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs, resultCount: searchResult.results.length });
-      dependencies.logger.info("SSE phase: search done", { searchMs, resultCount: searchResult.results.length });
+      dependencies.logger.info("SSE phase: search done", { searchMs, resultCount: searchResult.results.length, smartTopK });
 
       // Send sources immediately
       const sources = searchResult.results.map((r, i) => ({
@@ -1046,6 +1050,9 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         snippet: r.snippet,
       }));
       sendEvent({ type: "sources", sources });
+
+      // v4.3.0: Generate source hashes for caching
+      const sourceHashes = sources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine));
 
       if (Date.now() - startMs > timeout) {
         sendEvent({ type: "error", error: "Timeout at search phase" });
@@ -1066,6 +1073,43 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       sendEvent({ type: "phase", phase: "summary", status: "done", hadSummary: Boolean(summaryArchitecture) });
       dependencies.logger.info("SSE phase: summary done", { hadSummary: Boolean(summaryArchitecture) });
 
+      // Parse conversation history first (POST sends array directly, GET sends JSON string)
+      let conversationHistory: QaConversationTurn[] = [];
+      if (historyData) {
+        try {
+          conversationHistory = typeof historyData === 'string' ? JSON.parse(historyData) : historyData;
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // v4.3.0: Check LLM response cache (only for non-conversation queries)
+      const questionStr = String(question ?? "");
+      if (conversationHistory.length === 0) {
+        const cachedResponse = qaCache.get(questionStr, sourceHashes);
+        if (cachedResponse) {
+          dependencies.logger.info("SSE cache hit", { questionLength: questionStr.length });
+          sendEvent({ type: "phase", phase: "llm", status: "start" });
+          // Send cached answer as tokens (simulate streaming for consistent UX)
+          const chunks = cachedResponse.answer.match(/.{1,50}/g) || [cachedResponse.answer];
+          for (const chunk of chunks) {
+            sendEvent({ type: "token", content: chunk });
+          }
+          const totalMs = Date.now() - startMs;
+          sendEvent({
+            type: "done",
+            answer: cachedResponse.answer,
+            usage: cachedResponse.usage,
+            hadSummary: Boolean(summaryArchitecture),
+            timing: { indexMs, searchMs, llmMs: 0, totalMs },
+            cached: true,
+          });
+          dependencies.logger.info("SSE stream completed (cached)", { totalMs });
+          res.end();
+          return;
+        }
+      }
+
       // Phase 4: LLM streaming
       dependencies.logger.info("SSE phase: llm start");
       sendEvent({ type: "phase", phase: "llm", status: "start" });
@@ -1080,21 +1124,11 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         snippet: s.snippet,
       })), 6000);
 
-      // Parse conversation history (POST sends array directly, GET sends JSON string)
-      let conversationHistory: QaConversationTurn[] = [];
-      if (historyData) {
-        try {
-          conversationHistory = typeof historyData === 'string' ? JSON.parse(historyData) : historyData;
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
       const messages = conversationHistory.length > 0
-        ? buildQaMessagesWithHistory(String(question ?? ""), compressedSources, summaryArchitecture, conversationHistory)
+        ? buildQaMessagesWithHistory(questionStr, compressedSources, summaryArchitecture, conversationHistory)
         : [
             { role: "system" as const, content: QA_SYSTEM_PROMPT },
-            { role: "user" as const, content: buildQaUserPrompt(String(question ?? ""), compressedSources, summaryArchitecture) },
+            { role: "user" as const, content: buildQaUserPrompt(questionStr, compressedSources, summaryArchitecture) },
           ];
 
       let fullContent = "";
@@ -1121,6 +1155,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           res.end();
           return;
         }
+      }
+
+      // v4.3.0: Cache the response for future queries (only non-conversation)
+      if (conversationHistory.length === 0 && fullContent) {
+        qaCache.set(questionStr, sourceHashes, fullContent, usage);
+        dependencies.logger.info("SSE response cached", { questionLength: questionStr.length });
       }
 
       const llmMs = Date.now() - llmStart;
