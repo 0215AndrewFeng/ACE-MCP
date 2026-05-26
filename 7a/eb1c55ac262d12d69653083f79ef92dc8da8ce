@@ -1,0 +1,52 @@
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_93051de22251e7 324-334
+src/version.ts
+  s_0f8113dba42c56::t_4e70d2c8835ded 2
+src/web/app.test.ts
+  s_0f8113dba42c56::t_7e2c23998d0fd0 26,76,155,226
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_66dacd56edd97a 1532,1550,1564
+  s_0f8113dba42c56::t_3ad7d4b4f42285 1580,1589-1590,1592-1603,1609,1630,1666
+  s_0f8113dba42c56::t_e14edac0cb7670 1777,1793,1796
+src/server/toolRegistry.ts
+  s_0f8113dba42c56::t_261930e306b7aa 5,26,29,55
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_c084b4d793ed02 936-950,960-1001,1012,1028-1031
+  s_0f8113dba42c56::t_0e8721d0cda307 1039,1043-1046
+  s_0f8113dba42c56::t_19c705ebb728bf 1090-1091,1115
+package.json
+  s_0f8113dba42c56::t_ab6b1924579c57 3
+src/test/helpers.ts
+  s_0f8113dba42c56::t_e2eb031b5a5f75 15
+  s_0f8113dba42c56::t_47e5d5579b7ffa 83
+src/core/common/types.ts
+  s_0f8113dba42c56::t_c17e3d0c819557 210-211
+  s_0f8113dba42c56::t_d78cb5e500859a 416-419
+src/web/app.ts
+  s_0f8113dba42c56::t_358cda36cbeb13 228-294
+  s_0f8113dba42c56::t_0d3631b7ca0d8d 16,30
+  s_0f8113dba42c56::t_8a025093162ae5 71
+CHANGELOG.md
+  s_0f8113dba42c56::t_6834ad3ef087a7 5-19
+src/server/tools/warmIndex.ts
+  s_0f8113dba42c56::t_0472152c8002ed 1-103
+src/index.ts
+  s_0f8113dba42c56::t_6fa17ede4d6994 74
+  s_0f8113dba42c56::t_35dfcd53baabac 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "7aeb1c55ac262d12d69653083f79ef92dc8da8ce",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
