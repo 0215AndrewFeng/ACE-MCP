@@ -310,15 +310,72 @@ document.getElementById("load-projects")?.addEventListener("click", () => run(as
   return data;
 }));
 
-projectRootSelect?.addEventListener("change", () => {
+projectRootSelect?.addEventListener("change", async () => {
   if (projectRootSelect.value) {
     projectRootInput.value = projectRootSelect.value;
     setSelectedProject(projectRootSelect.value);
+
+    // v4.2.8: Auto-preload index when project is selected
+    const projectPath = projectRootSelect.value;
+    const selectEl = projectRootSelect;
+    const originalText = selectEl.options[selectEl.selectedIndex]?.text || '';
+
+    // Show loading state in select
+    if (selectEl.options[selectEl.selectedIndex]) {
+      selectEl.options[selectEl.selectedIndex].text = '⏳ 加载索引中...';
+    }
+
+    try {
+      const result = await request("POST", "/api/index-project", {
+        mode: "incremental",
+        projectRootPath: projectPath
+      });
+
+      // Update file count if available
+      const fileCount = result?.stats?.project?.indexedFileCount || result?.data?.indexedFiles;
+      if (fileCount) {
+        addStoredProject(projectPath, fileCount);
+        renderProjectSelect();
+        // Re-select the project
+        projectRootSelect.value = projectPath;
+        projectRootInput.value = projectPath;
+      } else {
+        // Restore original text
+        if (selectEl.options[selectEl.selectedIndex]) {
+          selectEl.options[selectEl.selectedIndex].text = originalText;
+        }
+      }
+
+      console.log('Index preloaded for:', projectPath);
+    } catch (err) {
+      console.warn('Failed to preload index:', err);
+      // Restore original text on error
+      if (selectEl.options[selectEl.selectedIndex]) {
+        selectEl.options[selectEl.selectedIndex].text = originalText;
+      }
+    }
   }
 });
 
 // v4.2.6: Initialize project select from LocalStorage on page load
 renderProjectSelect();
+
+// v4.2.8: Auto-preload index on page load if a project is selected
+(async function preloadOnStartup() {
+  const selectedProject = getSelectedProject();
+  if (selectedProject && projectRootInput) {
+    console.log('Auto-preloading index for:', selectedProject);
+    try {
+      await request("POST", "/api/index-project", {
+        mode: "incremental",
+        projectRootPath: selectedProject
+      });
+      console.log('Index preloaded successfully');
+    } catch (err) {
+      console.warn('Failed to preload index on startup:', err);
+    }
+  }
+})();
 
 document.getElementById("run-index")?.addEventListener("click", () => run(() => request("POST", "/api/index-project", {
   mode: indexModeInput.value,
@@ -573,7 +630,8 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
   ).join('');
 
   const snippetId = `snippet-${source.index}`;
-  const expandBtn = hasMore ? `<button class="snippet-expand-btn" onclick="toggleSnippet('${snippetId}')" title="Expand/Collapse">+${totalLines - previewLines.length} more lines</button>` : '';
+  // v4.2.9: Default collapsed for better performance with many results
+  const expandBtn = `<button class="snippet-expand-btn" onclick="toggleSnippet('${snippetId}')" title="展开/折叠代码">📄 查看代码 (${totalLines} 行)</button>`;
 
   return `
     <div id="source-${source.index}" class="qa-source-card">
@@ -586,7 +644,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
         <div class="qa-source-snippet-container" id="${snippetId}">
-          <div class="qa-source-snippet-preview">${previewHtml}</div>
+          <div class="qa-source-snippet-preview" hidden>${previewHtml}</div>
           <div class="qa-source-snippet-full" hidden>${fullHtml}</div>
           ${expandBtn}
         </div>
@@ -605,15 +663,25 @@ function toggleSnippet(id) {
   const full = container.querySelector('.qa-source-snippet-full');
   const btn = container.querySelector('.snippet-expand-btn');
 
-  if (full.hidden) {
+  // v4.2.9: Support default-collapsed mode (both preview and full are hidden initially)
+  const isCollapsed = preview.hidden && full.hidden;
+  const isShowingFull = !full.hidden;
+
+  if (isCollapsed) {
+    // First click: show preview
+    preview.hidden = false;
+    btn.textContent = '📖 展开全部';
+    btn.classList.add('expanded');
+  } else if (!isShowingFull) {
+    // Second click: show full
     preview.hidden = true;
     full.hidden = false;
-    btn.textContent = 'Collapse';
-    btn.classList.add('expanded');
+    btn.textContent = '📕 收起代码';
   } else {
-    preview.hidden = false;
+    // Third click: collapse all
+    preview.hidden = true;
     full.hidden = true;
-    btn.textContent = btn.dataset.originalText || btn.textContent;
+    btn.textContent = btn.dataset.originalText || `📄 查看代码`;
     btn.classList.remove('expanded');
   }
 }
@@ -641,10 +709,54 @@ function setStep(stepsEl, phase, icon, text, done) {
 }
 
 let qaTimerInterval = null;
-let currentEventSource = null; // v4.2.8: Track current SSE connection for Stop button
+let currentAbortController = null; // v4.2.8: Track abort controller for Stop button
 // v4.2.5: Multi-turn conversation with LocalStorage persistence
 const QA_HISTORY_KEY = 'ace-mcp-qa-history';
 let qaConversationHistory = JSON.parse(localStorage.getItem(QA_HISTORY_KEY) || '[]');
+
+// v4.2.9: Session token usage tracking
+const SESSION_TOKENS_KEY = 'ace-mcp-session-tokens';
+let sessionTokenUsage = JSON.parse(localStorage.getItem(SESSION_TOKENS_KEY) || '{"promptTokens":0,"completionTokens":0,"questionCount":0}');
+
+function updateSessionTokens(promptTokens, completionTokens) {
+  sessionTokenUsage.promptTokens += promptTokens || 0;
+  sessionTokenUsage.completionTokens += completionTokens || 0;
+  sessionTokenUsage.questionCount += 1;
+  localStorage.setItem(SESSION_TOKENS_KEY, JSON.stringify(sessionTokenUsage));
+  renderSessionTokenStats();
+}
+
+function resetSessionTokens() {
+  sessionTokenUsage = { promptTokens: 0, completionTokens: 0, questionCount: 0 };
+  localStorage.setItem(SESSION_TOKENS_KEY, JSON.stringify(sessionTokenUsage));
+  renderSessionTokenStats();
+}
+
+function renderSessionTokenStats() {
+  const el = document.getElementById('session-token-stats');
+  if (!el) return;
+  const total = sessionTokenUsage.promptTokens + sessionTokenUsage.completionTokens;
+  el.innerHTML = `累计: ${sessionTokenUsage.questionCount} 次提问 | ${total.toLocaleString()} tokens (输入 ${sessionTokenUsage.promptTokens.toLocaleString()} + 输出 ${sessionTokenUsage.completionTokens.toLocaleString()})`;
+  el.hidden = sessionTokenUsage.questionCount === 0;
+}
+
+// v4.2.9: Error classification helper
+function classifyError(error) {
+  const msg = (error?.message || String(error)).toLowerCase();
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch') || msg.includes('连接')) {
+    return { type: 'network', icon: '🌐', label: '网络错误', hint: '请检查网络连接，或确认服务是否正在运行' };
+  }
+  if (msg.includes('timeout') || msg.includes('超时') || msg.includes('abort')) {
+    return { type: 'timeout', icon: '⏱️', label: '请求超时', hint: '可以尝试增加超时时间，或简化问题' };
+  }
+  if (msg.includes('llm') || msg.includes('api') || msg.includes('model') || msg.includes('token') || msg.includes('rate')) {
+    return { type: 'llm', icon: '🤖', label: 'LLM 服务错误', hint: '请检查 LLM API 配置是否正确，或稍后重试' };
+  }
+  if (msg.includes('index') || msg.includes('project') || msg.includes('not found') || msg.includes('不存在')) {
+    return { type: 'index', icon: '📂', label: '索引错误', hint: '请确认项目路径正确，并尝试重新索引项目' };
+  }
+  return { type: 'unknown', icon: '❌', label: '未知错误', hint: '请查看详细错误信息' };
+}
 
 function saveQaHistory() {
   // Keep only last 12 messages (6 turns)
@@ -661,6 +773,7 @@ function clearQaHistory() {
 
 // ── Ask Codebase (SSE Streaming by default since v4.2.7) ─────────────────────
 // v4.2.8: Refactored to support Stop button and Enter key
+// v4.2.8: Use fetch + ReadableStream instead of EventSource for POST support
 async function runAskQuestion() {
   const askBtn = document.getElementById("run-ask");
   const stopBtn = document.getElementById("qa-stop");
@@ -698,28 +811,59 @@ async function runAskQuestion() {
     timerEl.textContent = `${elapsed}s / ${timeoutSec}s`;
   }, 100);
 
-  // Build query params for SSE stream
-  const params = new URLSearchParams({
-    projectRootPath: projectRoot,
-    question,
-    maxSources: String(maxSources),
-    includeSummary: String(includeSummary),
-    timeoutSeconds: String(timeoutSec),
-    history: JSON.stringify(qaConversationHistory),
-  });
-
   let fullAnswer = '';
+  let fullThinking = ''; // v4.2.8: Track DeepSeek thinking content
   let finalData = null;
   let wasStopped = false;
   const searchTerms = question.split(/\s+/).filter(t => t.length > 2);
 
-  try {
-    currentEventSource = new EventSource(`/api/qa/ask/stream?${params}`);
+  // Create AbortController for stop button
+  const abortController = new AbortController();
+  currentAbortController = abortController;
 
-    await new Promise((resolve, reject) => {
-      currentEventSource.onmessage = (e) => {
+  try {
+    // Use fetch with POST to avoid URL length limits
+    const response = await fetch('/api/qa/ask/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectRootPath: projectRoot,
+        question,
+        maxSources,
+        includeSummary,
+        timeoutSeconds: timeoutSec,
+        history: qaConversationHistory,
+      }),
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`服务器错误 ${response.status}: ${errorText.slice(0, 200)}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('无法读取响应流');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
         try {
-          const data = JSON.parse(e.data);
+          const data = JSON.parse(trimmed.slice(6));
 
           switch (data.type) {
             case 'phase':
@@ -753,42 +897,44 @@ async function runAskQuestion() {
 
             case 'token':
               if (data.content) {
-                fullAnswer += data.content;
-                answerBodyEl.innerHTML = renderMarkdown(fullAnswer);
+                if (data.isThinking) {
+                  // v4.2.10: Show thinking as inline gray text while waiting for answer
+                  fullThinking += data.content;
+                  // Only show thinking if no answer yet
+                  if (!fullAnswer) {
+                    answerBodyEl.innerHTML = `<div class="qa-thinking-inline">💭 ${escapeHtml(fullThinking)}</div>`;
+                  }
+                } else {
+                  // Regular answer content - replace thinking with answer
+                  fullAnswer += data.content;
+                  // Show answer with thinking collapsed below
+                  const thinkingHtml = fullThinking
+                    ? `<details class="qa-thinking-collapsed">
+                        <summary>💭 查看思考过程</summary>
+                        <div class="qa-thinking-content">${escapeHtml(fullThinking)}</div>
+                      </details>`
+                    : '';
+                  answerBodyEl.innerHTML = renderMarkdown(fullAnswer) + thinkingHtml;
+                }
                 answerBodyEl.hidden = false;
               }
               break;
 
             case 'done':
               finalData = data;
-              currentEventSource.close();
-              currentEventSource = null;
-              resolve();
               break;
 
             case 'error':
-              currentEventSource.close();
-              currentEventSource = null;
-              reject(new Error(data.error));
-              break;
+              throw new Error(data.error);
           }
         } catch (parseErr) {
-          console.error('SSE parse error:', parseErr, e.data);
+          if (parseErr.message && !parseErr.message.includes('JSON')) {
+            throw parseErr; // Re-throw non-JSON errors
+          }
+          console.warn('SSE parse warning:', parseErr, trimmed);
         }
-      };
-
-      currentEventSource.onerror = (e) => {
-        if (currentEventSource) {
-          currentEventSource.close();
-          currentEventSource = null;
-        }
-        if (!wasStopped) {
-          reject(new Error('连接失败，请检查服务是否正常运行'));
-        } else {
-          resolve(); // User stopped, not an error
-        }
-      };
-    });
+      }
+    }
 
     // Success - save conversation history (even if stopped, save partial answer)
     if (fullAnswer) {
@@ -827,6 +973,8 @@ async function runAskQuestion() {
     if (finalData?.usage) {
       statItems.push(`<span class="qa-stat"><span class="qa-stat-label">输入:</span> ${finalData.usage.promptTokens} tok</span>`);
       statItems.push(`<span class="qa-stat"><span class="qa-stat-label">输出:</span> ${finalData.usage.completionTokens} tok</span>`);
+      // v4.2.9: Update session token stats
+      updateSessionTokens(finalData.usage.promptTokens, finalData.usage.completionTokens);
     }
     if (wasStopped) statItems.push(`<span class="qa-stat" style="color:#dc2626"><span class="qa-stat-label">状态:</span> 已中断</span>`);
     statsEl.innerHTML = statItems.join('');
@@ -837,8 +985,26 @@ async function runAskQuestion() {
     }
 
   } catch (error) {
-    errorEl.textContent = error.message || String(error);
-    errorEl.hidden = false;
+    if (error.name === 'AbortError') {
+      wasStopped = true;
+      // User stopped, show partial answer
+      if (fullAnswer) {
+        answerBodyEl.innerHTML += '<p style="color:#dc2626;font-style:italic;margin-top:12px">⏹️ 回答已中断</p>';
+      }
+    } else {
+      // v4.2.9: Classify and display error with helpful hints
+      const errInfo = classifyError(error);
+      errorEl.innerHTML = `
+        <div class="qa-error-card">
+          <div class="qa-error-header">
+            <span class="qa-error-icon">${errInfo.icon}</span>
+            <span class="qa-error-label">${errInfo.label}</span>
+          </div>
+          <div class="qa-error-message">${escapeHtml(error.message || String(error))}</div>
+          <div class="qa-error-hint">💡 ${errInfo.hint}</div>
+        </div>`;
+      errorEl.hidden = false;
+    }
   } finally {
     clearInterval(qaTimerInterval);
     qaTimerInterval = null;
@@ -846,7 +1012,7 @@ async function runAskQuestion() {
     askBtn.disabled = false;
     askBtn.textContent = '发送';
     if (stopBtn) stopBtn.hidden = true;
-    currentEventSource = null;
+    currentAbortController = null;
   }
 }
 
@@ -854,17 +1020,12 @@ document.getElementById("run-ask")?.addEventListener("click", runAskQuestion);
 
 // v4.2.8: Stop button handler
 document.getElementById("qa-stop")?.addEventListener("click", () => {
-  if (currentEventSource) {
-    currentEventSource.close();
-    currentEventSource = null;
+  if (currentAbortController) {
+    currentAbortController.abort();
+    currentAbortController = null;
   }
   const stopBtn = document.getElementById("qa-stop");
   if (stopBtn) stopBtn.hidden = true;
-  // Add stopped message to the answer
-  const answerBodyEl = document.getElementById("qa-answer-body");
-  if (answerBodyEl && !answerBodyEl.hidden) {
-    answerBodyEl.innerHTML += '<p style="color:#dc2626;font-style:italic;margin-top:12px">⏹️ 回答已中断</p>';
-  }
 });
 
 // v4.2.8: Enter key to submit (Shift+Enter for newline)
@@ -970,3 +1131,12 @@ document.getElementById("search-query")?.addEventListener("keydown", (e) => {
   }
 });
 
+// v4.2.9: Initialize session token stats on page load
+renderSessionTokenStats();
+
+// v4.2.9: Reset session tokens button
+document.getElementById('reset-session-tokens')?.addEventListener('click', () => {
+  if (confirm('确定要重置本次会话的 Token 统计吗？')) {
+    resetSessionTokens();
+  }
+});

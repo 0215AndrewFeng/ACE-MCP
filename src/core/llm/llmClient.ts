@@ -24,6 +24,7 @@ export interface LlmStreamChunk {
   content?: string;
   usage?: { promptTokens: number; completionTokens: number };
   error?: string;
+  isThinking?: boolean; // For DeepSeek reasoning_content
 }
 
 interface ChatCompletionResponse {
@@ -214,9 +215,17 @@ export class LlmClient {
           try {
             const json = JSON.parse(trimmed.slice(6)) as ChatCompletionStreamDelta;
             const delta = json.choices?.[0]?.delta;
-            if (delta?.content) {
-              totalContent += delta.content;
-              yield { type: "token", content: delta.content };
+            // Support both content and reasoning_content (DeepSeek thinking)
+            const content = delta?.content;
+            const reasoning = (delta as { reasoning_content?: string })?.reasoning_content;
+
+            if (reasoning) {
+              // Emit thinking content with special marker
+              yield { type: "token", content: reasoning, isThinking: true };
+            }
+            if (content) {
+              totalContent += content;
+              yield { type: "token", content };
             }
             if (json.usage) {
               usage = {
