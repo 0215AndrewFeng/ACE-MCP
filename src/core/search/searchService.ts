@@ -372,8 +372,8 @@ function mergeOverlappingResults(results: SearchResult[], analysis: QueryAnalysi
   return merged;
 }
 
-function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number): SearchResult[] {
-  return dedupeSameFileResults(results, analysis)
+function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number, perFileLimit = 2): SearchResult[] {
+  return dedupeSameFileResults(results, analysis, perFileLimit)
     .map((result) => {
       const scored = scoreMergedResult(result, analysis);
       return {
@@ -885,7 +885,7 @@ export class SearchService {
     const executedStrategies: SearchPhaseStat[] = [];
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const normalizedFilters = normalizeSearchFilters(filters);
-    const fanoutLimit = Math.min(this.settings.searchFanoutLimit || SEARCH_FANOUT_LIMIT, Math.max(topK, topK * SEARCH_FANOUT_MULTIPLIER));
+    const fanoutLimit = Math.min(this.settings.searchFanoutLimit || SEARCH_FANOUT_LIMIT, Math.max(topK, topK * (this.settings.searchFanoutMultiplier || SEARCH_FANOUT_MULTIPLIER)));
     let vectorCacheHit = false;
     let vectorCandidateCount = 0;
     let vectorHydratedChunkCount = 0;
@@ -1103,7 +1103,7 @@ export class SearchService {
 
     const rerankStartedAt = performance.now();
     const mergedResults = mergeResults(resultSets);
-    const rerankedResults = rerankResults(mergedResults, analysis, topK);
+    const rerankedResults = rerankResults(mergedResults, analysis, topK, this.settings.searchPerFileLimit || 2);
     executedStrategies.push({
       candidateCount: rerankedResults.length,
       durationMs: Math.round(performance.now() - rerankStartedAt),
@@ -1315,7 +1315,7 @@ export class SearchService {
 
     const analysis = buildStructuredQueryAnalysis(query, parsed);
     const rerankStartedAt = performance.now();
-    const rerankedResults = rerankResults(mergedResults, analysis, topK);
+    const rerankedResults = rerankResults(mergedResults, analysis, topK, this.settings.searchPerFileLimit || 2);
     executedStrategies.push({
       candidateCount: rerankedResults.length,
       durationMs: Math.round(performance.now() - rerankStartedAt),
@@ -1491,7 +1491,7 @@ export class SearchService {
     }
 
     const analysis = analyzeQuery([primaryDefinition.name, primaryDefinition.fullName, primaryDefinition.canonicalName].filter(Boolean).join(" "));
-    const rerankedResults = rerankResults(referenceResults, analysis, topK);
+    const rerankedResults = rerankResults(referenceResults, analysis, topK, this.settings.searchPerFileLimit || 2);
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const hydratedResults =
       resultMode === "full"

@@ -46,6 +46,13 @@ export interface Settings {
   llmTemperature: number;
   enableLlmReranker: boolean;
   llmRerankerMaxCandidates: number;
+  // v4.3.6: Ask Codebase limits (configurable)
+  qaMaxSourcesDefault: number;
+  qaMaxSourcesMax: number;
+  qaMaxContextTokens: number;
+  // v4.3.6: Search limits (configurable)
+  searchPerFileLimit: number;
+  searchFanoutMultiplier: number;
 }
 
 export interface CliOptions {

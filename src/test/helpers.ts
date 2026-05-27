@@ -72,6 +72,13 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     llmTemperature: 0.3,
     enableLlmReranker: false,
     llmRerankerMaxCandidates: 10,
+    // v4.3.6: Ask Codebase limits
+    qaMaxSourcesDefault: 10,
+    qaMaxSourcesMax: 50,
+    qaMaxContextTokens: 6000,
+    // v4.3.6: Search limits
+    searchPerFileLimit: 2,
+    searchFanoutMultiplier: 3,
   };
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);

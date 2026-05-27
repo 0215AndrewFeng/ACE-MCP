@@ -16,7 +16,7 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
       inputSchema: {
         projectRootPath: z.string().min(1),
         question: z.string().min(1).describe("Natural language question about the codebase"),
-        maxSources: z.number().int().min(1).max(20).default(10).describe("Max code snippets to retrieve as context"),
+        maxSources: z.number().int().min(1).max(dependencies.settings.qaMaxSourcesMax).default(dependencies.settings.qaMaxSourcesDefault).describe("Max code snippets to retrieve as context"),
         includeSummary: z.boolean().default(true).describe("Include project summary as additional context"),
         languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
       },
