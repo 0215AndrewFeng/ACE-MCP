@@ -6,6 +6,7 @@ export type StructuredSearchOperator = "AND" | "OR" | "NOT";
 export type ProjectStatus = "ready" | "indexing" | "error";
 export type VectorIndexingMode = "lazy" | "eager";
 export type IndexFreshnessPolicy = "always" | "stale" | "manual";
+export type ContextMode = "chunk" | "merged-file" | "full-file";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 50;
 export const DEFAULT_CALL_GRAPH_DEPTH = 1;

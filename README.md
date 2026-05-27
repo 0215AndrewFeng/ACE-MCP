@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.3.5`
+当前版本：`v4.3.7`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -246,7 +246,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.3.0（当前版本）
+### v4.3.7（当前版本）
+
+- **全文件/合并文件上下文模式**：`ask_codebase` 支持 `contextMode` 参数，解决跨函数问答信息缺失
+- **统一 QA 管线**：MCP `ask_codebase` 与 Web QA 共用完整管线（reranker、调用链、缓存、smart topK）
+- **搜索 Reranker 通用化**：MCP `search_context` 新增 `enableReranker` 参数
+- **动态 perFileLimit**：根据查询类型自动调整每文件结果数
+
+### v4.3.0
 
 - **智能 Sources 数量**：根据问题复杂度自动调整检索源数量
 - **LLM 响应缓存**：相同问题 5 分钟内直接返回缓存结果

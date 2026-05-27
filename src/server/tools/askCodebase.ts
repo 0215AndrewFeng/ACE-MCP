@@ -1,7 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { buildQaUserPrompt, QA_SYSTEM_PROMPT } from "../../core/llm/qaPrompt.js";
+import { runQaPipeline } from "../../core/llm/qaPipeline.js";
+import type { SupportedLanguage } from "../../core/common/types.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
@@ -12,17 +13,18 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
     "ask_codebase",
     {
       description:
-        "Ask a natural language question about the codebase. Uses RAG: retrieves relevant code and documentation, then synthesizes an answer via LLM. Requires LLM API to be configured.",
+        "Ask a natural language question about the codebase. Uses RAG: retrieves relevant code and documentation, then synthesizes an answer via LLM. Supports full-file context mode for deeper analysis. Requires LLM API to be configured.",
       inputSchema: {
         projectRootPath: z.string().min(1),
         question: z.string().min(1).describe("Natural language question about the codebase"),
         maxSources: z.number().int().min(1).max(dependencies.settings.qaMaxSourcesMax).default(dependencies.settings.qaMaxSourcesDefault).describe("Max code snippets to retrieve as context"),
         includeSummary: z.boolean().default(true).describe("Include project summary as additional context"),
         languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
+        contextMode: z.enum(["chunk", "merged-file", "full-file"]).default("chunk").describe("Context mode: chunk (snippets), merged-file (fill gaps between chunks), full-file (entire files)"),
       },
       title: "Ask Codebase",
     },
-    async ({ projectRootPath, question, maxSources, includeSummary, languages }) => {
+    async ({ projectRootPath, question, maxSources, includeSummary, languages, contextMode }) => {
       if (!dependencies.llmClient.isConfigured()) {
         const payload = buildEnvelope(
           { projectRootPath, question },
@@ -33,70 +35,42 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
         return asStructuredToolResponse(payload);
       }
 
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
-
-      // Retrieve relevant code
-      const searchResult = await dependencies.searchService.search(
-        indexResult.projectRootPath,
+      const result = await runQaPipeline(dependencies, {
         question,
-        "auto",
+        projectRootPath,
         maxSources,
-        0,
-        { languages: languages as any },
-        "full",
-      );
-
-      // Load summary if requested
-      let summaryArchitecture: string | undefined;
-      if (includeSummary) {
-        const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
-        if (summary) {
-          summaryArchitecture = summary.architecture;
-        }
-      }
-
-      // Build RAG prompt using shared template
-      const sources = searchResult.results.map((r) => ({
-        filePath: r.filePath,
-        startLine: r.startLine,
-        endLine: r.endLine,
-        language: r.language,
-        score: r.score,
-        snippet: r.snippet,
-      }));
-      const userPrompt = buildQaUserPrompt(question, sources, summaryArchitecture);
-
-      const startMs = Date.now();
-      const result = await dependencies.llmClient.complete({
-        messages: [
-          { role: "system", content: QA_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
+        includeSummary,
+        languages: languages as SupportedLanguage[] | undefined,
+        contextMode,
+        enableReranker: true,
+        enableCallChain: true,
+        enableCache: true,
       });
-      const qaMs = Date.now() - startMs;
 
       const payload = buildEnvelope(
-        { projectRootPath: indexResult.projectRootPath, question },
+        { projectRootPath, question, contextMode },
         {
-          answer: result.content,
-          sources: searchResult.results.map((r, i) => ({
+          answer: result.fallback ? null : result.answer,
+          sources: result.sources.map((s, i) => ({
             index: i + 1,
-            type: r.language === "markdown" ? "doc" : "code",
-            filePath: r.filePath,
-            startLine: r.startLine,
-            endLine: r.endLine,
-            language: r.language,
-            score: r.score,
+            type: s.language === "markdown" ? "doc" : "code",
+            filePath: s.filePath,
+            startLine: s.startLine,
+            endLine: s.endLine,
+            language: s.language,
+            score: s.score,
           })),
-          sourceCount: searchResult.results.length,
-          hadSummary: Boolean(summaryArchitecture),
+          sourceCount: result.sources.length,
+          hadSummary: result.hadSummary,
+          hadCallChain: result.hadCallChain,
+          cached: result.cached,
+          relatedQuestions: result.relatedQuestions,
         },
         {
-          searchMs: searchResult.stats.searchMs,
-          qaMs,
+          timing: result.timing,
           tokensUsed: result.usage,
         },
-        [],
+        result.fallback ? [`LLM fallback: ${result.fallbackReason}`] : [],
       );
       return asStructuredToolResponse(payload);
     },

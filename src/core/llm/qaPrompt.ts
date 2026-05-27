@@ -2,6 +2,8 @@
  * Shared QA prompt templates for RAG (used by both MCP tool and Web API)
  */
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { LlmMessage } from "./llmClient.js";
 
 export const QA_SYSTEM_PROMPT = `You are a precise code assistant. Your task is to answer questions about a codebase based ONLY on the provided source code snippets and project summary.
@@ -214,4 +216,116 @@ export function generateRelatedQuestions(
 
   // Deduplicate and limit to 3
   return [...new Set(suggestions)].slice(0, 3);
+}
+
+/**
+ * v4.3.7: Assemble full-file or merged-file context from search results.
+ * Groups sources by file, reads from disk to fill gaps or get entire files,
+ * then applies token budget prioritizing higher-scored files.
+ */
+export async function assembleFullFileContext(
+  projectRootPath: string,
+  sources: QaSource[],
+  maxTokens: number,
+  mode: "merged-file" | "full-file",
+): Promise<QaSource[]> {
+  // Group sources by filePath
+  const fileGroups = new Map<string, QaSource[]>();
+  for (const source of sources) {
+    const group = fileGroups.get(source.filePath) ?? [];
+    group.push(source);
+    fileGroups.set(source.filePath, group);
+  }
+
+  // Sort files by max score (highest first) for token budget priority
+  const sortedFiles = [...fileGroups.entries()]
+    .map(([filePath, chunks]) => ({
+      filePath,
+      chunks,
+      maxScore: Math.max(...chunks.map(c => c.score)),
+    }))
+    .sort((a, b) => b.maxScore - a.maxScore);
+
+  const assembled: QaSource[] = [];
+  let usedTokens = 0;
+
+  for (const { filePath, chunks, maxScore } of sortedFiles) {
+    if (usedTokens >= maxTokens) break;
+
+    const absolutePath = path.resolve(projectRootPath, filePath);
+    let fileContent: string;
+    try {
+      fileContent = await readFile(absolutePath, "utf-8");
+    } catch {
+      // File not readable — keep original chunks
+      for (const chunk of chunks) {
+        const tokens = estimateTokens(chunk.snippet);
+        if (usedTokens + tokens <= maxTokens) {
+          assembled.push(chunk);
+          usedTokens += tokens;
+        }
+      }
+      continue;
+    }
+
+    const lines = fileContent.split("\n");
+    const language = chunks[0].language;
+
+    if (mode === "full-file") {
+      const tokens = estimateTokens(fileContent);
+      if (usedTokens + tokens <= maxTokens) {
+        assembled.push({
+          filePath,
+          startLine: 1,
+          endLine: lines.length,
+          language,
+          score: maxScore,
+          snippet: fileContent,
+        });
+        usedTokens += tokens;
+      } else {
+        // File too large — fall back to merged-file for this file
+        const merged = buildMergedSnippet(lines, chunks, maxTokens - usedTokens, filePath, language, maxScore);
+        if (merged) {
+          assembled.push(merged);
+          usedTokens += estimateTokens(merged.snippet);
+        }
+      }
+    } else {
+      // merged-file: merge chunks into continuous range with gap filling
+      const merged = buildMergedSnippet(lines, chunks, maxTokens - usedTokens, filePath, language, maxScore);
+      if (merged) {
+        assembled.push(merged);
+        usedTokens += estimateTokens(merged.snippet);
+      }
+    }
+  }
+
+  return assembled;
+}
+
+/**
+ * Build a merged snippet covering all chunks in a file, filling gaps between them.
+ */
+function buildMergedSnippet(
+  lines: string[],
+  chunks: QaSource[],
+  remainingTokenBudget: number,
+  filePath: string,
+  language: string,
+  score: number,
+): QaSource | null {
+  const sorted = [...chunks].sort((a, b) => a.startLine - b.startLine);
+  const minLine = Math.max(1, sorted[0].startLine);
+  const maxLine = Math.min(lines.length, sorted[sorted.length - 1].endLine);
+
+  const snippet = lines.slice(minLine - 1, maxLine).join("\n");
+  const tokens = estimateTokens(snippet);
+
+  if (tokens <= remainingTokenBudget) {
+    return { filePath, startLine: minLine, endLine: maxLine, language, score, snippet };
+  }
+
+  // Merged range too large — keep original chunks that fit
+  return null;
 }

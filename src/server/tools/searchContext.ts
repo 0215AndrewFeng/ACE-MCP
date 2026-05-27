@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import { DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES } from "../../core/common/types.js";
+import { rerankWithLlm } from "../../core/search/llmReranker.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
@@ -31,10 +32,11 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
         query: z.string().min(1),
         resultMode: z.enum(SEARCH_RESULT_MODES).default("full"),
         topK: z.number().int().min(1).max(50).default(dependencies.settings.defaultTopK),
+        enableReranker: z.boolean().default(false).describe("Enable LLM reranker for search results (requires LLM API configured and enableLlmReranker=true in settings)"),
       },
       title: "Search Context",
     },
-    async ({ excludePathPrefix, includeContextLines, languages, mode, pathContains, pathPrefix, projectRootPath, query, resultMode, topK }) => {
+    async ({ excludePathPrefix, includeContextLines, languages, mode, pathContains, pathPrefix, projectRootPath, query, resultMode, topK, enableReranker }) => {
       const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -50,6 +52,30 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
         },
         resultMode,
       );
+
+      // v4.3.7: Optional LLM reranker
+      let rerankerMs = 0;
+      let usedLlmReranker = false;
+      if (enableReranker && dependencies.settings.enableLlmReranker && dependencies.llmClient.isConfigured() && response.results.length > 3) {
+        try {
+          const rerankerStart = Date.now();
+          const rerankerResult = await rerankWithLlm(
+            dependencies.llmClient,
+            query,
+            response.results,
+            topK,
+            dependencies.settings.llmRerankerMaxCandidates,
+          );
+          if (rerankerResult.usedLlm) {
+            response.results = rerankerResult.rerankedResults;
+            usedLlmReranker = true;
+          }
+          rerankerMs = Date.now() - rerankerStart;
+        } catch {
+          // Reranker is optional — silently fall back to original order
+        }
+      }
+
       const indexSync = {
         changedFiles: indexResult.changedFiles,
         chunkCount: indexResult.chunkCount,
@@ -78,6 +104,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
           query,
           resultMode,
           topK,
+          enableReranker,
         },
         {
           diagnostics: response.diagnostics,
@@ -103,10 +130,16 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
             resultCount: response.stats.resultCount,
             searchMs: response.stats.searchMs,
           },
+          reranker: enableReranker ? {
+            enabled: true,
+            usedLlm: usedLlmReranker,
+            durationMs: rerankerMs,
+          } : undefined,
         },
         [
           ...response.notes,
           ...(indexResult.failedFileCount > 0 ? ["Index sync had file-level failures; review stats.indexSync.failedFiles."] : []),
+          ...(usedLlmReranker ? [`LLM reranker applied (${rerankerMs}ms)`] : []),
         ],
       );
       return asStructuredToolResponse(payload);

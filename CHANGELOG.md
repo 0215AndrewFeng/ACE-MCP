@@ -2,6 +2,24 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.7] - 2026-05-27
+
+### 新功能
+
+- **全文件/合并文件上下文模式**：`ask_codebase` 新增 `contextMode` 参数（`"chunk"` / `"merged-file"` / `"full-file"`），支持将搜索命中的代码片段扩展为完整文件内容，解决跨函数逻辑截断导致的问答信息缺失问题。
+- **搜索 Reranker 通用化**：MCP `search_context` 工具新增 `enableReranker` 参数，允许搜索结果使用 LLM 二次排序。
+- **动态 perFileLimit**：搜索引擎根据查询类型自动调整每文件结果数限制（定义查找 5 个、引用查找 3 个、常规查询使用配置默认值）。
+
+### 架构优化
+
+- **统一 QA 管线**：提取 `QaPipeline` 服务（`src/core/llm/qaPipeline.ts`），MCP `ask_codebase` 与 Web QA 共用完整管线：
+  - LLM Reranker（搜索结果二次排序）
+  - 调用链自动提取与注入
+  - QA 响应缓存
+  - Smart TopK（根据问题复杂度自动调整检索源数量）
+  - 上下文压缩
+  - 超时与降级处理
+
 ## [4.3.6] - 2026-05-27
 
 ### 可配置性增强
