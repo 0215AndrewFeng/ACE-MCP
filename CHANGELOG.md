@@ -2,6 +2,26 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.5] - 2026-05-27
+
+### 搜索增强
+
+- **LLM Reranker（可选）**：新增 LLM 二次排序功能，使用 LLM 对搜索结果按相关性重排序，提升搜索精度。通过 `enableLlmReranker: true` 配置开启，适用于对搜索准确性要求较高的场景。默认关闭以节省 token 消耗。
+
+### 可视化增强
+
+- **调用链可视化**：Ask Codebase 回答完成后，自动将调用链关系渲染为 Mermaid 流程图，可视化展示函数之间的调用关系（谁调用了它 → 目标函数 → 它调用了谁）。支持折叠/展开操作。
+
+### 内部改进
+
+- 新增 `llmReranker.ts` 模块，提供 `rerankWithLlm()` 函数。
+- `Settings` 接口新增 `enableLlmReranker` 和 `llmRerankerMaxCandidates` 配置项。
+- `LlmClient` 新增 `getModelName()` 方法。
+- SSE `done` 事件新增 `callChains` 字段，返回完整调用链数据供前端渲染。
+- 前端新增 `renderCallChainDiagram()` 函数，使用 Mermaid.js 渲染调用链图。
+- HTML 引入 Mermaid.js CDN，新增 `#qa-callchain-diagram` 容器。
+- CSS 新增 `.qa-callchain-*` 系列样式类。
+
 ## [4.3.4] - 2026-05-27
 
 ### 上下文增强

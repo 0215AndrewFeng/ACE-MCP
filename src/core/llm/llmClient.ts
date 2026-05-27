@@ -72,6 +72,10 @@ export class LlmClient {
     };
   }
 
+  getModelName(): string {
+    return this.model_;
+  }
+
   updateConfig(apiUrl: string, apiKey: string, model?: string): void {
     this.apiUrl_ = apiUrl;
     this.apiKey_ = apiKey;
