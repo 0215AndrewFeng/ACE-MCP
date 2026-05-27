@@ -16,7 +16,7 @@ import type { Logger } from "../core/common/logger.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
-import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
+import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
@@ -1096,6 +1096,16 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
             sendEvent({ type: "token", content: chunk });
           }
           const totalMs = Date.now() - startMs;
+          // v4.3.2: Generate related questions for cached responses too
+          const compressedSourcesForCache = compressContext(sources.map(s => ({
+            filePath: s.filePath,
+            startLine: s.startLine,
+            endLine: s.endLine,
+            language: s.language,
+            score: s.score,
+            snippet: s.snippet,
+          })), 6000);
+          const relatedQuestions = generateRelatedQuestions(questionStr, cachedResponse.answer, compressedSourcesForCache);
           sendEvent({
             type: "done",
             answer: cachedResponse.answer,
@@ -1103,6 +1113,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
             hadSummary: Boolean(summaryArchitecture),
             timing: { indexMs, searchMs, llmMs: 0, totalMs },
             cached: true,
+            relatedQuestions,
           });
           dependencies.logger.info("SSE stream completed (cached)", { totalMs });
           res.end();
@@ -1167,12 +1178,16 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const totalMs = Date.now() - startMs;
       dependencies.logger.info("SSE phase: llm done", { llmMs, contentLength: fullContent.length });
 
+      // v4.3.2: Generate related questions for follow-up suggestions
+      const relatedQuestions = generateRelatedQuestions(questionStr, fullContent, compressedSources);
+
       sendEvent({
         type: "done",
         answer: fullContent,
         usage,
         hadSummary: Boolean(summaryArchitecture),
         timing: { indexMs, searchMs, llmMs, totalMs },
+        relatedQuestions,
       });
       dependencies.logger.info("SSE stream completed", { totalMs });
       res.end();

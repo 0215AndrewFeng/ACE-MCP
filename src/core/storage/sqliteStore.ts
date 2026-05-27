@@ -136,6 +136,11 @@ interface IndexEventPayload {
   metadata: {
     timings: IndexTimingStats;
     vectorIndex: IndexVectorStats;
+    // v4.3.3: Git optimization tracking
+    gitOptimization?: {
+      enabled: boolean;
+      commit: string | null;
+    };
   };
   scannedFiles: number;
 }
@@ -495,7 +500,8 @@ export class SQLiteStore {
         last_scan_at TEXT,
         last_index_at TEXT,
         status TEXT NOT NULL,
-        index_version INTEGER NOT NULL
+        index_version INTEGER NOT NULL,
+        last_indexed_commit TEXT
       );
 
       CREATE TABLE IF NOT EXISTS file (
@@ -642,6 +648,8 @@ export class SQLiteStore {
     this.ensureColumn("symbol", "canonical_name", "TEXT");
     this.ensureColumn("symbol", "container_name", "TEXT");
     this.ensureColumn("symbol", "module_path", "TEXT");
+    // v4.3.3: Git commit tracking for incremental indexing
+    this.ensureColumn("project", "last_indexed_commit", "TEXT");
     this.db.prepare("DELETE FROM chunk_vector WHERE chunk_id IS NULL").run();
 
     this.logger.info("sqlite store initialized");
@@ -1840,25 +1848,35 @@ export class SQLiteStore {
       );
   }
 
-  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus, bumpIndexVersion: boolean): void {
+  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus, bumpIndexVersion: boolean, lastIndexedCommit?: string): void {
     if (bumpIndexVersion) {
       this.db
         .prepare(
           `UPDATE project
-           SET last_scan_at = ?, last_index_at = ?, status = ?, index_version = index_version + 1
+           SET last_scan_at = ?, last_index_at = ?, status = ?, index_version = index_version + 1, last_indexed_commit = COALESCE(?, last_indexed_commit)
            WHERE project_id = ?`,
         )
-        .run(timestamp, timestamp, status, projectId);
+        .run(timestamp, timestamp, status, lastIndexedCommit ?? null, projectId);
       return;
     }
 
     this.db
       .prepare(
         `UPDATE project
-         SET last_scan_at = ?, last_index_at = ?, status = ?
+         SET last_scan_at = ?, last_index_at = ?, status = ?, last_indexed_commit = COALESCE(?, last_indexed_commit)
          WHERE project_id = ?`,
       )
-      .run(timestamp, timestamp, status, projectId);
+      .run(timestamp, timestamp, status, lastIndexedCommit ?? null, projectId);
+  }
+
+  /**
+   * v4.3.3: Get the last indexed git commit for a project
+   */
+  public getLastIndexedCommit(projectId: string): string | null {
+    const row = this.db
+      .prepare("SELECT last_indexed_commit FROM project WHERE project_id = ?")
+      .get(projectId) as { last_indexed_commit: string | null } | undefined;
+    return row?.last_indexed_commit ?? null;
   }
 
   public writeFileIndex(

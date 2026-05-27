@@ -10,6 +10,11 @@ const LOG_LEVEL_ORDER: Record<LogLevel, number> = {
   warn: 30,
 };
 
+/**
+ * v4.3.3: Structured NDJSON logger
+ * Output format: {"timestamp":"...","level":"info","message":"...","key":"value"}
+ * Compatible with jq, ELK, Loki, and other log aggregation tools.
+ */
 export class Logger {
   public constructor(
     private readonly logFilePath: string,
@@ -34,15 +39,25 @@ export class Logger {
     this.write("warn", message, meta);
   }
 
+  /**
+   * v4.3.3: NDJSON structured log format
+   * Each line is a valid JSON object for easy parsing and aggregation.
+   */
   private write(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
-    const timestamp = new Date().toISOString();
-    const suffix = meta ? ` ${JSON.stringify(meta)}` : "";
-    const line = `${timestamp} [${level.toUpperCase()}] ${message}${suffix}\n`;
+    const entry = {
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      ...meta,
+    };
+    const line = JSON.stringify(entry) + "\n";
 
     appendFileSync(this.logFilePath, line, "utf8");
 
+    // Console output: human-readable format for development
     if (LOG_LEVEL_ORDER[level] >= LOG_LEVEL_ORDER[this.minLevel]) {
-      process.stderr.write(line);
+      const suffix = meta ? ` ${JSON.stringify(meta)}` : "";
+      process.stderr.write(`${entry.timestamp} [${level.toUpperCase()}] ${message}${suffix}\n`);
     }
   }
 }

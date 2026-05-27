@@ -922,6 +922,8 @@ async function runAskQuestion() {
 
             case 'done':
               finalData = data;
+              // v4.3.2: Show related questions
+              setupRelatedQuestions(data.relatedQuestions);
               break;
 
             case 'error':
@@ -1140,3 +1142,33 @@ document.getElementById('reset-session-tokens')?.addEventListener('click', () =>
     resetSessionTokens();
   }
 });
+
+// v4.3.2: Related questions click handler
+function setupRelatedQuestions(questions) {
+  const container = document.getElementById('qa-related-questions');
+  if (!container || !questions || questions.length === 0) {
+    if (container) container.hidden = true;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="qa-related-header">相关问题</div>
+    <div class="qa-related-list">
+      ${questions.map(q => `<button class="qa-related-btn" type="button">${escapeHtml(q)}</button>`).join('')}
+    </div>
+  `;
+  container.hidden = false;
+
+  // Add click handlers
+  container.querySelectorAll('.qa-related-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const questionInput = document.getElementById('qa-question');
+      if (questionInput) {
+        questionInput.value = btn.textContent;
+        questionInput.focus();
+        // Optionally auto-submit
+        // runAskQuestion();
+      }
+    });
+  });
+}
