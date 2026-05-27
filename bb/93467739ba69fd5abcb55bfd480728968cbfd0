@@ -1,0 +1,62 @@
+README.md
+  s_0f8113dba42c56::t_66308a18f3bdf8 179-188
+package.json
+  s_0f8113dba42c56::t_e5ba652a75e77b 3
+src/web/app.ts
+  s_0f8113dba42c56::t_bb189ca5fbb5a8 977
+  s_0f8113dba42c56::t_3e05e89da8d208 17
+  s_0f8113dba42c56::t_01e26ab3b92313 1012
+  s_0f8113dba42c56::t_e7e2230294123f 1324
+  s_0f8113dba42c56::t_893637fef66e3e 105,107-155
+  s_0f8113dba42c56::t_7f74c6f1b892d5 286-360
+  s_0f8113dba42c56::t_7be021ddb204de 1152
+src/version.ts
+  s_0f8113dba42c56::t_9927b5130c30ff 2
+src/test/helpers.ts
+  s_0f8113dba42c56::t_b15b634a93762c 75-81
+CHANGELOG.md
+  s_0f8113dba42c56::t_87136a30085619 5-43
+src/core/common/types.ts
+  s_0f8113dba42c56::t_3d2df56eb00d51 49-55
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_cb484476ee96fc 1106
+  s_0f8113dba42c56::t_c1a7e2984f777a 375-376
+  s_0f8113dba42c56::t_73cc67e2cc2bd9 1318
+  s_0f8113dba42c56::t_ec950cc546da15 1494
+  s_0f8113dba42c56::t_dd248db22c6c50 888
+src/config/settings.ts
+  s_0f8113dba42c56::t_838f643ca06b2b 35-39
+  s_0f8113dba42c56::t_37c9dbb08c8d41 79-85
+  s_0f8113dba42c56::t_028517e5e175bc 267-273
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_f031bdf8c104f3 39-58
+  s_0f8113dba42c56::t_b87b528b33a908 399-402,427-432,451,459-460
+  s_0f8113dba42c56::t_9e09cd76fd0551 464
+  s_0f8113dba42c56::t_97c4ba11ac17ae 256-259,261,268-269,272,274-279,281-300,302,308
+  s_0f8113dba42c56::t_ac04dc18be7acc 260,262-266,270-271,273,280,301,303-307
+  s_0f8113dba42c56::t_ea568ee4937963 214,227-228
+  s_0f8113dba42c56::t_51b773eefa9aff 353-354,359-360
+  s_0f8113dba42c56::t_4213dd320aa7cf 135-145
+  s_0f8113dba42c56::t_f4a105655470a1 465-469,483-485,487-488,492-493,510-513,515
+  s_0f8113dba42c56::t_389b4ae468c457 548,551,555
+  s_0f8113dba42c56::t_aa2596abcd927e 557
+  s_0f8113dba42c56::t_3f96a23bf9ca62 646-653
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_3eb6de20207b0c 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "bb93467739ba69fd5abcb55bfd480728968cbfd0",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
