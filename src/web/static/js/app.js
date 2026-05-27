@@ -868,19 +868,21 @@ async function runAskQuestion() {
           switch (data.type) {
             case 'phase':
               if (data.status === 'start') {
-                const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
+                const icons = { index: '📂', search: '🔍', callchain: '🔗', summary: '📋', llm: '🤖' };
                 const labels = {
                   index: '检查项目索引...',
                   search: '搜索相关代码...',
+                  callchain: '分析调用链...',
                   summary: '加载项目摘要...',
                   llm: '生成回答中...',
                 };
                 setStep(stepsEl, data.phase, icons[data.phase] || '⏳', labels[data.phase] || data.phase, false);
               } else if (data.status === 'done') {
-                const icons = { index: '📂', search: '🔍', summary: '📋', llm: '🤖' };
+                const icons = { index: '📂', search: '🔍', callchain: '🔗', summary: '📋', llm: '🤖' };
                 let text = `${data.phase} 完成`;
                 if (data.ms) text += ` (${data.ms}ms)`;
                 if (data.resultCount !== undefined) text = `找到 ${data.resultCount} 个代码片段 (${data.ms}ms)`;
+                if (data.chainCount !== undefined) text = data.chainCount > 0 ? `发现 ${data.chainCount} 个调用链 (${data.ms}ms)` : '未发现调用链';
                 if (data.hadSummary !== undefined) text = data.hadSummary ? '摘要已加载' : '无项目摘要';
                 setStep(stepsEl, data.phase, icons[data.phase] || '✅', text, true);
               }
