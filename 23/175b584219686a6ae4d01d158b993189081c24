@@ -1,0 +1,50 @@
+src/web/static/index.html
+  s_0f8113dba42c56::t_a4f8e23d488769 77-78
+src/core/project/gitHelper.ts
+  s_0f8113dba42c56::t_eda342880bf268 1-167
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_770f953e42d0b6 221-227
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_39fd99023e9705 150-210
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_9fbac9f59f8d6e 925-926
+  s_0f8113dba42c56::t_3d0afe93871391 1145-1174
+CHANGELOG.md
+  s_0f8113dba42c56::t_a5b39b3e3c6ee2 5-23
+  s_0f8113dba42c56::t_856273b326ac94 24-36
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_03800e806251c9 1851,1856,1859,1866,1869-1879
+  s_0f8113dba42c56::t_1732be47e3134f 651-652
+  s_0f8113dba42c56::t_80214136609d51 503-504
+  s_0f8113dba42c56::t_550a1d0c37d66f 139-143
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_da1c465bc7da71 234-272,290-295,297-306,308,310
+  s_0f8113dba42c56::t_6e260e2db511dc 26
+  s_0f8113dba42c56::t_7a99fb50fb3253 444-445,466-470,483
+src/web/app.ts
+  s_0f8113dba42c56::t_207186dadb297d 1181-1183,1190
+  s_0f8113dba42c56::t_56180d1dd49f35 19
+  s_0f8113dba42c56::t_30c4c94705325d 1099-1108,1116
+src/core/common/logger.ts
+  s_0f8113dba42c56::t_b843eb5c1cf2f3 13-17,42-45,47-53,57,59-60
+package.json
+  s_0f8113dba42c56::t_e1b36859aa3ff0 3
+src/version.ts
+  s_0f8113dba42c56::t_358746d1d77a23 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "23175b584219686a6ae4d01d158b993189081c24",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
