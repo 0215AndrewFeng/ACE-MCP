@@ -1,0 +1,47 @@
+README.md
+  s_0f8113dba42c56::t_c614ba4696bf0c 5
+  s_0f8113dba42c56::t_4ebfefa825b733 249-256
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_3409e011c54e44 220-331
+  s_0f8113dba42c56::t_73e9792cae2cab 5-6
+src/core/common/types.ts
+  s_0f8113dba42c56::t_64c69cb609ab5c 9
+src/web/app.ts
+  s_0f8113dba42c56::t_1f558797a41db5 1269-1270,1278-1294
+  s_0f8113dba42c56::t_b158272bb3d6cf 1271,1275
+  s_0f8113dba42c56::t_e3874ac2e84046 1075-1076
+  s_0f8113dba42c56::t_c4e2c29cc8e9c9 19,21-22
+  s_0f8113dba42c56::t_78e068244be28e 955,958,964-984,987,991,993,995-1000,1002-1004,1010-1011,1013-1018,1020-1025
+src/server/tools/searchContext.ts
+  s_0f8113dba42c56::t_bf86f8c1a704a1 5,35,39,55-78,107,133-137,142
+CHANGELOG.md
+  s_0f8113dba42c56::t_4bb225118eb782 5-22
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_97e2f5073ffdcf 4-5,16,23,27,38,40,42-47,51,53-54,56-61,63-67,70,73
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_3f733ba05d4500 375-384
+  s_0f8113dba42c56::t_d01bcc8acdd2bb 1116,1328
+  s_0f8113dba42c56::t_d4433e925e4fb2 1504
+package.json
+  s_0f8113dba42c56::t_9cf01521a2c7a0 3
+src/version.ts
+  s_0f8113dba42c56::t_b7aaeb44739e4e 2
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_374cd6fa43d77b 1-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "4f038c53f988cf8d905386441df32a801c7ffd3f",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
