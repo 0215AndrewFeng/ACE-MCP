@@ -2,6 +2,38 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.3] - 2026-05-27
+
+### 性能优化
+
+- **Git 增量索引**：Git 项目增量索引时，使用 `git diff` 检测变更文件，而非全量文件系统扫描。首次索引后记录 commit SHA，后续索引只处理两次 commit 之间的差异 + 未跟踪文件。大型 Git 仓库（10k+ 文件）的增量索引速度可提升 10-100 倍。
+
+### 工程优化
+
+- **NDJSON 结构化日志**：日志文件输出改为 NDJSON 格式（每行一个 JSON 对象），便于使用 `jq`、ELK、Loki 等工具进行日志分析和聚合。控制台输出保持人类可读格式。
+
+### 内部改进
+
+- 新增 `gitHelper.ts` 模块，提供 `getGitChangedFiles()`、`getHeadCommit()`、`isGitRepository()` 等函数。
+- SQLite `project` 表新增 `last_indexed_commit` 列，存储上次索引的 Git commit SHA。
+- `updateProjectAfterIndex()` 方法增加 `lastIndexedCommit` 参数。
+- 新增 `getLastIndexedCommit()` 方法。
+- `IndexEventPayload.metadata` 新增 `gitOptimization` 字段，记录是否启用 Git 优化及当前 commit。
+- `Logger.write()` 改为生成 NDJSON 格式，`appendFileSync` 写入 `JSON.stringify(entry)`。
+
+## [4.3.2] - 2026-05-26
+
+### 用户体验
+
+- **相关问题推荐**：回答完成后自动推荐 3 个相关后续问题，点击即可填充到输入框，引导用户深入探索代码库。推荐算法基于回答中提取的代码实体（函数、类名）和文件名，生成如"XXX 的调用者有哪些？"、"XXX 和 YYY 是如何交互的？"等语义相关问题。
+
+### 内部改进
+
+- 新增 `generateRelatedQuestions()` 函数，从回答和问题中提取代码实体生成相关问题。
+- SSE done 事件新增 `relatedQuestions` 字段。
+- 前端新增 `setupRelatedQuestions()` 函数和 `#qa-related-questions` 容器。
+- CSS 新增 `.qa-related-*` 系列样式类。
+
 ## [4.3.1] - 2026-05-26
 
 ### 性能优化

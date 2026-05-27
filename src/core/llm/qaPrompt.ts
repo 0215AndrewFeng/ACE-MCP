@@ -147,3 +147,64 @@ export function buildQaMessagesWithHistory(
 
   return messages;
 }
+
+/**
+ * v4.3.2: Generate related questions based on the current question and answer
+ * Returns 3 suggested follow-up questions for the user
+ */
+export function generateRelatedQuestions(
+  question: string,
+  answer: string,
+  sources: QaSource[],
+): string[] {
+  // Extract key entities from question and answer
+  const codeEntities = new Set<string>();
+  const fileNames = new Set<string>();
+
+  // Extract code references (backtick-wrapped)
+  const codePattern = /`([A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?)`/g;
+  let match;
+  while ((match = codePattern.exec(answer)) !== null) {
+    codeEntities.add(match[1].replace(/\([^)]*\)/, ""));
+  }
+  while ((match = codePattern.exec(question)) !== null) {
+    codeEntities.add(match[1].replace(/\([^)]*\)/, ""));
+  }
+
+  // Extract file names from sources
+  for (const source of sources.slice(0, 5)) {
+    const fileName = source.filePath.split("/").pop()?.replace(/\.[^.]+$/, "");
+    if (fileName) fileNames.add(fileName);
+  }
+
+  const entities = [...codeEntities].slice(0, 3);
+  const files = [...fileNames].slice(0, 2);
+  const suggestions: string[] = [];
+
+  // Generate contextual follow-up questions
+  if (entities.length > 0) {
+    suggestions.push(`${entities[0]} 的调用者有哪些？`);
+    if (entities.length > 1) {
+      suggestions.push(`${entities[0]} 和 ${entities[1]} 是如何交互的？`);
+    }
+  }
+
+  if (files.length > 0) {
+    suggestions.push(`${files[0]} 的主要职责是什么？`);
+  }
+
+  // Add generic follow-ups based on question type
+  const questionLower = question.toLowerCase();
+  if (questionLower.includes("how") || questionLower.includes("怎么") || questionLower.includes("如何")) {
+    suggestions.push("有没有相关的测试用例？");
+  } else if (questionLower.includes("where") || questionLower.includes("哪里") || questionLower.includes("在哪")) {
+    suggestions.push("这个功能是什么时候添加的？");
+  } else if (questionLower.includes("why") || questionLower.includes("为什么")) {
+    suggestions.push("有没有相关的设计文档或注释？");
+  } else {
+    suggestions.push("能展示一个使用示例吗？");
+  }
+
+  // Deduplicate and limit to 3
+  return [...new Set(suggestions)].slice(0, 3);
+}

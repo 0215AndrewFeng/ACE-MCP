@@ -23,6 +23,7 @@ import { buildStableId, computeSha256, hasFileChanged } from "./fileFingerprint.
 import { analyzeSource } from "./symbolExtractor.js";
 import { AppError } from "../common/errors.js";
 import { collectSourceFiles } from "../project/fileCollector.js";
+import { getGitChangedFiles, getHeadCommit } from "../project/gitHelper.js";
 import { IgnoreManager } from "../project/ignoreManager.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { detectProject } from "../project/projectDetector.js";
@@ -230,6 +231,45 @@ export class IndexCoordinator {
       throw new AppError("INVALID_PROJECT_ROOT", `Project root does not exist or is not a directory: ${normalizedRoot}`);
     }
 
+    const projectId = buildStableId([normalizedRoot]);
+    const timestamp = new Date().toISOString();
+
+    /**
+     * v4.3.3: Git-based incremental indexing optimization
+     * For git repositories in incremental mode:
+     * 1. Check last indexed commit from database
+     * 2. Use git diff to find changed files
+     * 3. Only scan those files instead of full filesystem traversal
+     * Falls back to full scan for non-git repos or when git diff fails.
+     */
+    let gitCommit: string | null = null;
+    let gitOptimized = false;
+    let gitChangedPaths: Set<string> | null = null;
+
+    if (mode === "incremental") {
+      const lastIndexedCommit = this.store.getLastIndexedCommit(projectId);
+      const gitStatus = await getGitChangedFiles(normalizedRoot, lastIndexedCommit ?? undefined);
+
+      if (gitStatus.isGitRepo && gitStatus.currentCommit) {
+        gitCommit = gitStatus.currentCommit;
+
+        // If we have a previous index and git tells us what changed
+        if (lastIndexedCommit && gitStatus.changedFiles && gitStatus.untrackedFiles) {
+          gitChangedPaths = new Set([
+            ...gitStatus.changedFiles,
+            ...gitStatus.untrackedFiles,
+          ]);
+          gitOptimized = true;
+          this.logger.debug("using git diff for incremental index", {
+            changedFiles: gitStatus.changedFiles.length,
+            lastIndexedCommit: lastIndexedCommit.slice(0, 8),
+            currentCommit: gitCommit.slice(0, 8),
+            untrackedFiles: gitStatus.untrackedFiles.length,
+          });
+        }
+      }
+    }
+
     const collectStartedAtMs = performance.now();
     const ignoreManager = await IgnoreManager.create(normalizedRoot, this.settings.excludePatterns);
     const sourceFiles = await collectSourceFiles(normalizedRoot, this.settings, ignoreManager);
@@ -237,8 +277,6 @@ export class IndexCoordinator {
     const detectStartedAtMs = performance.now();
     const project = await detectProject(normalizedRoot, sourceFiles);
     const detectMs = Math.round(performance.now() - detectStartedAtMs);
-    const projectId = buildStableId([normalizedRoot]);
-    const timestamp = new Date().toISOString();
 
     this.store.upsertProject(projectId, project, "indexing", timestamp);
 
@@ -249,10 +287,27 @@ export class IndexCoordinator {
     const deletedFiles = [...existingFiles.keys()].filter((relativePath) => !currentPaths.has(relativePath));
     this.store.deleteFiles(projectId, deletedFiles);
 
+    /**
+     * v4.3.3: Smart file filtering
+     * - Full mode: index all files
+     * - Incremental + git optimized: only files in git diff + files with changed mtime
+     * - Incremental fallback: files with changed mtime/sha256
+     */
     const filesToIndex = sourceFiles.filter((file) => {
+      if (mode === "full") {
+        return true;
+      }
+
+      // v4.3.3: If git tells us this file changed, always re-index
+      if (gitOptimized && gitChangedPaths?.has(file.relativePath)) {
+        return true;
+      }
+
+      // Fall back to mtime/sha256 check
       const existing = existingFiles.get(file.relativePath);
-      return mode === "full" || hasFileChanged(existing, file);
+      return hasFileChanged(existing, file);
     });
+
     const changedFiles = filesToIndex.length;
     const indexingStartedAtMs = performance.now();
     let vectorMs = 0;
@@ -386,7 +441,8 @@ export class IndexCoordinator {
     }
 
     const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
-    this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion);
+    // v4.3.3: Save git commit for future incremental indexing
+    this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion, gitCommit ?? undefined);
     this.store.recordIndexEvent(projectId, {
       changedFiles,
       chunkCount,
@@ -407,6 +463,11 @@ export class IndexCoordinator {
           hydratedChunkCount,
           mode: this.settings.vectorIndexingMode,
         },
+        // v4.3.3: Track git optimization stats
+        gitOptimization: {
+          enabled: gitOptimized,
+          commit: gitCommit?.slice(0, 8) ?? null,
+        },
       },
       scannedFiles: sourceFiles.length,
     });
@@ -419,6 +480,7 @@ export class IndexCoordinator {
       detectMs,
       deletedFiles: deletedFiles.length,
       failedFileCount: failedFiles.length,
+      gitOptimized,
       indexMs,
       indexedFiles,
       projectRootPath: normalizedRoot,

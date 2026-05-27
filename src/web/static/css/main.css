@@ -218,6 +218,13 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-error-message { font-size: 13px; color: #7f1d1d; background: #fee2e2; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; font-family: ui-monospace, monospace; word-break: break-word; }
 .qa-error-hint { font-size: 13px; color: #4b5563; }
 
+/* ── v4.3.2: Related Questions ── */
+#qa-related-questions { margin-top: 16px; padding: 14px 18px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; }
+.qa-related-header { font-size: 13px; color: #0369a1; font-weight: 600; margin-bottom: 10px; }
+.qa-related-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.qa-related-btn { background: white; border: 1px solid #7dd3fc; border-radius: 20px; padding: 6px 14px; font-size: 13px; color: #0284c7; cursor: pointer; transition: all 0.2s; }
+.qa-related-btn:hover { background: #0ea5e9; color: white; border-color: #0ea5e9; transform: translateY(-1px); }
+
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .autostart-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
