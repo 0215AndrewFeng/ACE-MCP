@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.4] - 2026-05-27
+
+### 上下文增强
+
+- **调用链分析**：Ask Codebase 在回答问题时自动提取搜索结果中符号的调用链（callers/callees），将上下游调用关系作为额外上下文传递给 LLM，帮助 LLM 理解代码的完整执行流程，提供更准确的回答。SSE 流式输出新增 `callchain` 阶段（🔗 图标），展示调用链分析进度。
+
+### 内部改进
+
+- 新增 `callChainExtractor.ts` 模块，提供 `extractCallChains()`、`extractSymbolsFromResults()`、`formatCallChainsForLLM()` 等函数。
+- `buildQaUserPrompt()` 函数新增 `callChainContext` 参数，在 Source Code Snippets 前插入调用链上下文。
+- SSE 流式输出新增 Phase 3 `callchain`，位于 search 和 summary 之间。
+- 前端新增调用链阶段图标和标签（🔗 分析调用链...）。
+
 ## [4.3.3] - 2026-05-27
 
 ### 性能优化

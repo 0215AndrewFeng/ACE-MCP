@@ -89,15 +89,22 @@ export function compressContext(sources: QaSource[], maxTokens: number): QaSourc
 }
 
 /**
- * Build the user prompt for QA with optional summary context
+ * Build the user prompt for QA with optional summary and call chain context
+ * v4.3.4: Added callChainContext parameter for deeper code understanding
  */
 export function buildQaUserPrompt(
   question: string,
   sources: QaSource[],
   summaryArchitecture?: string,
+  callChainContext?: string,
 ): string {
   const summaryContext = summaryArchitecture
     ? `## Project Context\n\n${summaryArchitecture}\n\n`
+    : "";
+
+  // v4.3.4: Add call chain context if available
+  const callChainSection = callChainContext
+    ? `${callChainContext}\n\n`
     : "";
 
   const sourcesText = sources
@@ -107,7 +114,7 @@ export function buildQaUserPrompt(
     )
     .join("\n\n");
 
-  return `${summaryContext}## Source Code Snippets
+  return `${summaryContext}${callChainSection}## Source Code Snippets
 
 ${sourcesText}
 

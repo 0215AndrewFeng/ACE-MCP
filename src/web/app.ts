@@ -20,6 +20,7 @@ import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generat
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
+import { extractCallChains, formatCallChainsForLLM } from "../core/search/callChainExtractor.js";
 import { SearchService } from "../core/search/searchService.js";
 import { estimateOptimalSources } from "../core/search/queryAnalyzer.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
@@ -1060,7 +1061,43 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         return;
       }
 
-      // Phase 3: Load summary
+      // Phase 3: Extract call chains (v4.3.4)
+      dependencies.logger.info("SSE phase: callchain start");
+      sendEvent({ type: "phase", phase: "callchain", status: "start" });
+      let callChainContext = "";
+      let callChainMs = 0;
+      try {
+        const callChainStart = Date.now();
+        const callChainResult = await extractCallChains(
+          dependencies.searchService,
+          indexResult.projectRootPath,
+          searchResult.results,
+          2,  // max 2 symbols
+          3,  // max 3 callers per symbol
+          3,  // max 3 callees per symbol
+        );
+        callChainMs = Date.now() - callChainStart;
+        callChainContext = formatCallChainsForLLM(callChainResult.chains);
+        sendEvent({
+          type: "phase",
+          phase: "callchain",
+          status: "done",
+          ms: callChainMs,
+          symbolCount: callChainResult.extractedSymbols.length,
+          chainCount: callChainResult.chains.length,
+        });
+        dependencies.logger.info("SSE phase: callchain done", {
+          callChainMs,
+          extractedSymbols: callChainResult.extractedSymbols,
+          chainCount: callChainResult.chains.length,
+        });
+      } catch (error) {
+        // Call chain extraction is optional, don't fail the request
+        dependencies.logger.warn("SSE call chain extraction failed", { error: String(error) });
+        sendEvent({ type: "phase", phase: "callchain", status: "done", ms: 0, error: "skipped" });
+      }
+
+      // Phase 4: Load summary
       dependencies.logger.info("SSE phase: summary start");
       sendEvent({ type: "phase", phase: "summary", status: "start" });
       let summaryArchitecture: string | undefined;
@@ -1121,7 +1158,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         }
       }
 
-      // Phase 4: LLM streaming
+      // Phase 5: LLM streaming
       dependencies.logger.info("SSE phase: llm start");
       sendEvent({ type: "phase", phase: "llm", status: "start" });
       const llmStart = Date.now();
@@ -1135,11 +1172,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         snippet: s.snippet,
       })), 6000);
 
+      // v4.3.4: Include call chain context in prompt
       const messages = conversationHistory.length > 0
         ? buildQaMessagesWithHistory(questionStr, compressedSources, summaryArchitecture, conversationHistory)
         : [
             { role: "system" as const, content: QA_SYSTEM_PROMPT },
-            { role: "user" as const, content: buildQaUserPrompt(questionStr, compressedSources, summaryArchitecture) },
+            { role: "user" as const, content: buildQaUserPrompt(questionStr, compressedSources, summaryArchitecture, callChainContext) },
           ];
 
       let fullContent = "";
@@ -1186,7 +1224,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         answer: fullContent,
         usage,
         hadSummary: Boolean(summaryArchitecture),
-        timing: { indexMs, searchMs, llmMs, totalMs },
+        hadCallChain: callChainContext.length > 0,
+        timing: { indexMs, searchMs, callChainMs, llmMs, totalMs },
         relatedQuestions,
       });
       dependencies.logger.info("SSE stream completed", { totalMs });
