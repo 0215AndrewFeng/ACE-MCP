@@ -176,6 +176,16 @@ llmTemperature = 0.0
 - `ACE_MCP_LLM_API_KEY`
 - `ACE_MCP_LLM_MODEL`
 
+#### v4.3.6 新增配置项
+
+Ask Codebase 限制配置（解决查询不准确问题）：
+
+- `ACE_MCP_QA_MAX_SOURCES_DEFAULT` - 默认检索源数量（默认 10）
+- `ACE_MCP_QA_MAX_SOURCES_MAX` - 最大检索源数量上限（默认 50）
+- `ACE_MCP_QA_MAX_CONTEXT_TOKENS` - LLM 上下文 token 预算（默认 6000）
+- `ACE_MCP_SEARCH_PER_FILE_LIMIT` - 每个文件最多保留的搜索结果数（默认 2）
+- `ACE_MCP_SEARCH_FANOUT_MULTIPLIER` - 搜索候选集扩展倍数（默认 3）
+
 ### 远程 Embedding API
 
 通过环境变量配置远程 Embedding API，用于语义搜索的向量生成：

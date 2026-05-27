@@ -14,7 +14,7 @@ import {
 } from "../core/common/types.js";
 import type { Logger } from "../core/common/logger.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
-import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
+import { IndexCoordinator, type IndexProgressEvent } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
 import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
@@ -102,9 +102,57 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     },
   }));
 
-  // Health check
+  // Health check - v4.3.6: Enhanced with project and index stats
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", ...buildRuntimeStatus(dependencies.runtime) });
+    try {
+      const projects = dependencies.store.listProjects();
+      const readyProjects = projects.filter(p => p.status === "ready");
+
+      // Calculate aggregate stats
+      let totalFiles = 0;
+      let totalChunks = 0;
+      let totalSymbols = 0;
+      let latestIndexAt: string | null = null;
+
+      for (const project of projects) {
+        const stats = dependencies.store.getProjectStats(project.projectRootPath);
+        if (stats) {
+          totalFiles += stats.fileCount;
+          totalChunks += stats.chunkCount;
+          totalSymbols += stats.symbolCount;
+          if (stats.lastIndexAt && (!latestIndexAt || stats.lastIndexAt > latestIndexAt)) {
+            latestIndexAt = stats.lastIndexAt;
+          }
+        }
+      }
+
+      res.json({
+        status: "ok",
+        ...buildRuntimeStatus(dependencies.runtime),
+        watching: dependencies.indexCoordinator.isWatching(),
+        projects: {
+          total: projects.length,
+          ready: readyProjects.length,
+        },
+        index: {
+          totalFiles,
+          totalChunks,
+          totalSymbols,
+          latestIndexAt,
+        },
+        vector: {
+          enabled: dependencies.settings.enableVectorSearch,
+          mode: dependencies.settings.vectorIndexingMode,
+        },
+      });
+    } catch (error) {
+      // Fallback to basic health if stats fail
+      res.json({
+        status: "ok",
+        ...buildRuntimeStatus(dependencies.runtime),
+        watching: dependencies.indexCoordinator.isWatching(),
+      });
+    }
   });
 
   // API routes
@@ -232,6 +280,81 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       );
     } catch (error: unknown) {
       const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
+    }
+  });
+
+  // v4.3.6: SSE endpoint for index progress streaming
+  app.get("/api/index/stream", async (req: Request, res: Response) => {
+    const { projectRootPath, mode } = req.query;
+
+    if (!projectRootPath) {
+      res.status(400).json({ error: "projectRootPath is required" });
+      return;
+    }
+
+    // Set up SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const sendEvent = (data: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (typeof (res as unknown as { flush?: () => void }).flush === "function") {
+        (res as unknown as { flush: () => void }).flush();
+      }
+    };
+
+    // Track client disconnection
+    let disconnected = false;
+    req.on("close", () => {
+      disconnected = true;
+    });
+
+    try {
+      dependencies.logger.info("SSE index stream started", { projectRootPath });
+
+      const onProgress = (event: IndexProgressEvent) => {
+        if (!disconnected) {
+          sendEvent({ type: "progress", ...event });
+        }
+      };
+
+      const result = await dependencies.indexCoordinator.indexProject(
+        String(projectRootPath),
+        mode === "full" ? "full" : "incremental",
+        onProgress,
+      );
+
+      if (!disconnected) {
+        sendEvent({
+          type: "done",
+          result: {
+            changedFiles: result.changedFiles,
+            chunkCount: result.chunkCount,
+            deletedFiles: result.deletedFiles,
+            failedFileCount: result.failedFileCount,
+            indexedFiles: result.indexedFiles,
+            scannedFiles: result.scannedFiles,
+            timings: result.timings,
+            vectorIndex: result.vectorIndex,
+          },
+        });
+        dependencies.logger.info("SSE index stream completed", {
+          projectRootPath,
+          totalMs: result.timings.totalMs,
+          indexedFiles: result.indexedFiles,
+        });
+      }
+
+      res.end();
+    } catch (error: unknown) {
+      if (!disconnected) {
+        sendEvent({ type: "error", error: error instanceof Error ? error.message : String(error) });
+        res.end();
+      }
+      dependencies.logger.error("SSE index stream error", { error: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -851,7 +974,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       checkTimeout("index");
 
       // Phase 2: Search
-      const topK = clampInteger(maxSources, 1, 30, 10);
+      const topK = clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
       const searchStart = Date.now();
       const searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -886,7 +1009,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }));
 
       // v4.2.4: Compress context to fit token budget
-      const maxContextTokens = 6000;
+      const maxContextTokens = dependencies.settings.qaMaxContextTokens;
       const compressedSources = compressContext(sources, maxContextTokens);
 
       // v4.2.4: Build messages with conversation history if provided
@@ -1026,7 +1149,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       sendEvent({ type: "phase", phase: "search", status: "start" });
       // v4.3.0: Smart sources - auto-adjust based on question complexity
       const smartTopK = maxSources === 10 ? estimateOptimalSources(String(question ?? ""), 10) : maxSources;
-      const topK = clampInteger(smartTopK, 1, 30, 10);
+      const topK = clampInteger(smartTopK, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
       const searchStart = Date.now();
       let searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
@@ -1198,7 +1321,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         language: s.language,
         score: s.score,
         snippet: s.snippet,
-      })), 6000);
+      })), dependencies.settings.qaMaxContextTokens);
 
       // v4.3.4: Include call chain context in prompt
       const messages = conversationHistory.length > 0

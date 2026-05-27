@@ -2,6 +2,45 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.3.6] - 2026-05-27
+
+### 可配置性增强
+
+- **Ask 限制可配置**：将 Ask Codebase 的多层数量限制从硬编码改为可配置，解决用户反馈的"查询不准确"问题：
+  - `qaMaxSourcesDefault` (默认 10)：默认检索源数量
+  - `qaMaxSourcesMax` (默认 50，原 20/30)：最大检索源数量上限
+  - `qaMaxContextTokens` (默认 6000)：LLM 上下文 token 预算
+  - `searchPerFileLimit` (默认 2)：每个文件最多保留的搜索结果数
+  - `searchFanoutMultiplier` (默认 3)：搜索候选集扩展倍数
+- 支持通过环境变量配置：`ACE_MCP_QA_MAX_SOURCES_DEFAULT`、`ACE_MCP_QA_MAX_SOURCES_MAX` 等。
+
+### 稳定性增强
+
+- **索引队列机制**：新增 per-project 索引队列 + in-flight 去重，防止并发索引导致的 "database is locked" 错误。同一项目的多个索引请求会自动串行执行，后续请求复用进行中的索引结果。
+
+### 可观测性增强
+
+- **后台索引进度 SSE**：新增 `GET /api/index/stream` 端点，实时推送索引进度事件：
+  - `collect:start/done` - 文件收集阶段
+  - `parse:start/progress/done` - 文件解析阶段
+  - `index:start/progress/done` - 数据库写入阶段
+  - `vector:start/progress/done` - 向量索引阶段
+  - `semantic:start/done` - 语义索引阶段
+  - `complete:done` - 索引完成
+- **健康检查增强**：`/health` 端点新增丰富的统计信息：
+  - `watching`: 是否启用文件监控
+  - `projects`: 项目数量统计 (total, ready)
+  - `index`: 索引统计 (totalFiles, totalChunks, totalSymbols, latestIndexAt)
+  - `vector`: 向量搜索配置 (enabled, mode)
+
+### 内部改进
+
+- `IndexCoordinator` 新增 `projectQueue` 和 `inFlightIndex` Map 实现队列机制。
+- `indexProject()` 方法重构为队列包装 + `runIndexProject()` 实际逻辑。
+- 新增 `IndexProgressEvent`、`IndexProgressCallback` 类型导出。
+- `Settings` 接口新增 5 个 Ask/Search 限制配置项。
+- `settings.ts` 新增对应环境变量解析。
+
 ## [4.3.5] - 2026-05-27
 
 ### 搜索增强

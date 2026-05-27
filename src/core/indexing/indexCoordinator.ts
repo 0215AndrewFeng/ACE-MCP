@@ -36,6 +36,27 @@ interface DecodedSource {
 }
 
 /**
+ * v4.3.6: Index progress event types for SSE streaming
+ */
+export type IndexProgressPhase = "collect" | "parse" | "index" | "vector" | "semantic" | "complete";
+export type IndexProgressStatus = "start" | "progress" | "done";
+
+export interface IndexProgressEvent {
+  phase: IndexProgressPhase;
+  status: IndexProgressStatus;
+  /** Current progress (for 'progress' status) */
+  current?: number;
+  /** Total items (for 'progress' status) */
+  total?: number;
+  /** Duration in ms (for 'done' status) */
+  ms?: number;
+  /** Additional details */
+  detail?: string;
+}
+
+export type IndexProgressCallback = (event: IndexProgressEvent) => void;
+
+/**
  * v4.3.1: Extended result type for batch processing
  */
 type IndexedFileResult =
@@ -111,6 +132,17 @@ export class IndexCoordinator {
   /** Per-project cached last IndexProjectResult for skipped index calls */
   private lastIndexResult = new Map<string, IndexProjectResult>();
 
+  /**
+   * v4.3.6: Per-project index queue - serializes index requests for the same project
+   * Prevents "database is locked" errors from concurrent indexing
+   */
+  private projectQueue = new Map<string, Promise<unknown>>();
+  /**
+   * v4.3.6: In-flight index promises - allows deduplication of concurrent requests
+   * If an index is already running for a project, new requests will wait for it
+   */
+  private inFlightIndex = new Map<string, Promise<IndexProjectResult>>();
+
   public constructor(
     private readonly settings: Settings,
     private readonly store: SQLiteStore,
@@ -179,7 +211,7 @@ export class IndexCoordinator {
     this.watchAbortController = abortController;
 
     const watcher = watch(normalizedRoot, { recursive: true }, (_event, _filename) => {
-      if (this.indexingLock || abortController.signal.aborted) {
+      if (abortController.signal.aborted) {
         return;
       }
 
@@ -192,7 +224,8 @@ export class IndexCoordinator {
           return;
         }
 
-        this.indexingLock = true;
+        // v4.3.6: Use queue-based indexProject - no need for indexingLock
+        // The queue will serialize concurrent requests automatically
         this.indexProject(normalizedRoot, "incremental")
           .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
@@ -200,9 +233,6 @@ export class IndexCoordinator {
               error: message,
               projectRootPath: normalizedRoot,
             });
-          })
-          .finally(() => {
-            this.indexingLock = false;
           });
       }, 2500);
     });
@@ -223,9 +253,59 @@ export class IndexCoordinator {
     this.logger.info("file watch stopped");
   }
 
-  public async indexProject(projectRootPath: string, mode: "full" | "incremental" = "incremental"): Promise<IndexProjectResult> {
-    const startedAtMs = performance.now();
+  /**
+   * v4.3.6: Enqueue and deduplicate index requests
+   * - If an index is already in-flight for this project, reuse that promise
+   * - Otherwise, queue behind any previous request and start a new index
+   * @param onProgress Optional callback for progress events (SSE streaming)
+   */
+  public async indexProject(
+    projectRootPath: string,
+    mode: "full" | "incremental" = "incremental",
+    onProgress?: IndexProgressCallback,
+  ): Promise<IndexProjectResult> {
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+
+    // Check if there's already an in-flight index for this project
+    // Note: If onProgress is provided, we still need to run a new index to provide progress
+    // But we'll wait for the in-flight one to complete first
+    const inFlight = this.inFlightIndex.get(normalizedRoot);
+    if (inFlight && !onProgress) {
+      this.logger.debug("reusing in-flight index", { projectRootPath: normalizedRoot, mode });
+      return inFlight;
+    }
+
+    // Queue behind any previous request
+    const prev = this.projectQueue.get(normalizedRoot) ?? Promise.resolve();
+    const indexPromise = prev.then(() => this.runIndexProject(normalizedRoot, mode, onProgress));
+
+    // Track both queue and in-flight state
+    this.projectQueue.set(normalizedRoot, indexPromise.catch(() => {})); // Swallow errors in queue chain
+    this.inFlightIndex.set(normalizedRoot, indexPromise);
+
+    // Clean up when done
+    indexPromise.finally(() => {
+      this.inFlightIndex.delete(normalizedRoot);
+      // Only delete from queue if this is still the latest promise
+      if (this.projectQueue.get(normalizedRoot) === indexPromise.catch(() => {})) {
+        this.projectQueue.delete(normalizedRoot);
+      }
+    });
+
+    return indexPromise;
+  }
+
+  /**
+   * v4.3.6: Internal method that performs the actual indexing
+   * Called by indexProject after queue management
+   * @param onProgress Optional callback for progress events
+   */
+  private async runIndexProject(
+    normalizedRoot: string,
+    mode: "full" | "incremental",
+    onProgress?: IndexProgressCallback,
+  ): Promise<IndexProjectResult> {
+    const startedAtMs = performance.now();
     const rootStats = await stat(normalizedRoot).catch(() => null);
     if (!rootStats?.isDirectory()) {
       throw new AppError("INVALID_PROJECT_ROOT", `Project root does not exist or is not a directory: ${normalizedRoot}`);
@@ -270,10 +350,14 @@ export class IndexCoordinator {
       }
     }
 
+    // v4.3.6: Emit collect phase events
+    onProgress?.({ phase: "collect", status: "start" });
     const collectStartedAtMs = performance.now();
     const ignoreManager = await IgnoreManager.create(normalizedRoot, this.settings.excludePatterns);
     const sourceFiles = await collectSourceFiles(normalizedRoot, this.settings, ignoreManager);
     const collectMs = Math.round(performance.now() - collectStartedAtMs);
+    onProgress?.({ phase: "collect", status: "done", ms: collectMs, detail: `${sourceFiles.length} files scanned` });
+
     const detectStartedAtMs = performance.now();
     const project = await detectProject(normalizedRoot, sourceFiles);
     const detectMs = Math.round(performance.now() - detectStartedAtMs);
@@ -312,6 +396,10 @@ export class IndexCoordinator {
     const indexingStartedAtMs = performance.now();
     let vectorMs = 0;
 
+    // v4.3.6: Emit parse phase events
+    onProgress?.({ phase: "parse", status: "start", total: changedFiles });
+    let parsedCount = 0;
+
     /**
      * v4.3.1: Optimized indexing with batch database writes
      * 1. Parallel file read and parse (mapInBatches)
@@ -336,6 +424,12 @@ export class IndexCoordinator {
           size: file.size,
         };
 
+        // v4.3.6: Emit parse progress (every batch)
+        parsedCount++;
+        if (parsedCount % this.settings.batchSize === 0 || parsedCount === changedFiles) {
+          onProgress?.({ phase: "parse", status: "progress", current: parsedCount, total: changedFiles });
+        }
+
         // v4.3.1: Return data for batch write instead of writing immediately
         return {
           chunkCount: chunks.length,
@@ -354,6 +448,7 @@ export class IndexCoordinator {
           filePath: file.relativePath,
           projectRootPath: normalizedRoot,
         });
+        parsedCount++;
         return {
           filePath: file.relativePath,
           indexed: false as const,
@@ -361,9 +456,17 @@ export class IndexCoordinator {
         };
       }
     });
+    const parseMs = Math.round(performance.now() - indexingStartedAtMs);
+    onProgress?.({ phase: "parse", status: "done", ms: parseMs, detail: `${parsedCount} files parsed` });
 
     // v4.3.1: Batch write to database - dramatically reduces transaction overhead
     const successResults = fileResults.filter((r): r is Extract<IndexedFileResult, { indexed: true }> => r.indexed);
+
+    // v4.3.6: Emit index (database write) phase events
+    onProgress?.({ phase: "index", status: "start", total: successResults.length });
+    const indexWriteStartMs = performance.now();
+
+    const totalBatches = Math.ceil(successResults.length / DB_WRITE_BATCH_SIZE);
     for (let i = 0; i < successResults.length; i += DB_WRITE_BATCH_SIZE) {
       const batch = successResults.slice(i, i + DB_WRITE_BATCH_SIZE);
       this.store.writeFileIndexBatch(
@@ -377,10 +480,17 @@ export class IndexCoordinator {
         })),
         timestamp,
       );
+      // v4.3.6: Emit index progress per batch
+      const batchNum = Math.floor(i / DB_WRITE_BATCH_SIZE) + 1;
+      onProgress?.({ phase: "index", status: "progress", current: batchNum, total: totalBatches });
     }
+    const indexWriteMs = Math.round(performance.now() - indexWriteStartMs);
+    onProgress?.({ phase: "index", status: "done", ms: indexWriteMs, detail: `${successResults.length} files indexed` });
 
     // v4.3.1: Vector indexing (still per-file for now, but after batch write)
     if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager") {
+      onProgress?.({ phase: "vector", status: "start", total: successResults.length });
+      let vectoredCount = 0;
       for (const result of successResults) {
         if (result.chunks.length > 0) {
           const provider = this.embeddingProvider;
@@ -397,7 +507,12 @@ export class IndexCoordinator {
             projectId,
           );
         }
+        vectoredCount++;
+        if (vectoredCount % 10 === 0 || vectoredCount === successResults.length) {
+          onProgress?.({ phase: "vector", status: "progress", current: vectoredCount, total: successResults.length });
+        }
       }
+      onProgress?.({ phase: "vector", status: "done", ms: vectorMs });
     }
 
     const indexMs = Math.round(performance.now() - indexingStartedAtMs);
@@ -430,13 +545,16 @@ export class IndexCoordinator {
       this.store.resolveSymbolGraph(projectId, changedFileIds);
     }
 
+    // v4.3.6: Emit semantic phase events
     // Pre-build semantic FTS index during indexing so first search doesn't block
     if (changedFiles > 0 || deletedFiles.length > 0) {
+      onProgress?.({ phase: "semantic", status: "start" });
       const semanticStart = performance.now();
       this.store.ensureSemanticIndex(projectId);
       const semanticMs = Math.round(performance.now() - semanticStart);
+      onProgress?.({ phase: "semantic", status: "done", ms: semanticMs });
       if (semanticMs > 100) {
-        this.logger.info("semantic index built", { projectRootPath, semanticMs });
+        this.logger.info("semantic index built", { projectRootPath: normalizedRoot, semanticMs });
       }
     }
 
@@ -524,6 +642,14 @@ export class IndexCoordinator {
         mode: this.settings.vectorIndexingMode,
       },
     };
+
+    // v4.3.6: Emit complete event
+    onProgress?.({
+      phase: "complete",
+      status: "done",
+      ms: totalMs,
+      detail: `${indexedFiles} files indexed, ${chunkCount} chunks created`,
+    });
 
     this.lastIndexResult.set(normalizedRoot, result);
     return result;
