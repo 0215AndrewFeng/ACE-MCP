@@ -1,0 +1,53 @@
+README.md
+  s_0f8113dba42c56::t_f346706ae99135 5
+  s_0f8113dba42c56::t_b022523d51d629 26-27,29
+src/web/app.ts
+  s_0f8113dba42c56::t_a3fe854f7ad09e 23-24
+  s_0f8113dba42c56::t_ac750b17bb6549 1031,1040-1067
+  s_0f8113dba42c56::t_84af96379b818e 1256
+  s_0f8113dba42c56::t_9622ff2aad197a 1095,1108
+src/web/static/index.html
+  s_0f8113dba42c56::t_eec1d9d85bf401 278-282
+  s_0f8113dba42c56::t_9a2f5b44f6b823 77-86
+src/test/helpers.ts
+  s_0f8113dba42c56::t_d6ca99139c123f 73-74
+CHANGELOG.md
+  s_0f8113dba42c56::t_7ca728a08598ab 5-24
+src/version.ts
+  s_0f8113dba42c56::t_3cfc3e76e30fe3 2
+src/core/search/llmReranker.ts
+  s_0f8113dba42c56::t_8a4d3a453c789d 1-132,134-162
+  s_0f8113dba42c56::t_dfe5e2adbdf615 133
+src/config/settings.ts
+  s_0f8113dba42c56::t_1b17f998e50ab8 72-73
+  s_0f8113dba42c56::t_f264d0cba98955 19-20
+  s_0f8113dba42c56::t_46284cc919b4e7 253-254
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_521ccbd08dcf7e 934-935
+  s_0f8113dba42c56::t_9bfdebee4c6945 1184-1272
+  s_0f8113dba42c56::t_dd30fed81a5ce8 802-806
+src/core/llm/llmClient.ts
+  s_0f8113dba42c56::t_75d9fae708f256 75-78
+src/core/common/types.ts
+  s_0f8113dba42c56::t_e6185ac76cbed6 47-48
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_6ca96109184152 228-237
+package.json
+  s_0f8113dba42c56::t_6564a0c3f239d9 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "e2a1f4e4e41ff0ee2a08cd6ad1998d81ece1fd45",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
