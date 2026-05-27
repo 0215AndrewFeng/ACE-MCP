@@ -225,6 +225,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-related-btn { background: white; border: 1px solid #7dd3fc; border-radius: 20px; padding: 6px 14px; font-size: 13px; color: #0284c7; cursor: pointer; transition: all 0.2s; }
 .qa-related-btn:hover { background: #0ea5e9; color: white; border-color: #0ea5e9; transform: translateY(-1px); }
 
+/* ── v4.3.5: Call Chain Diagram ── */
+.qa-callchain-diagram { margin: 16px 0; padding: 16px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
+.qa-callchain-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.qa-callchain-title { font-size: 14px; font-weight: 600; color: #334155; }
+.qa-callchain-toggle { font-size: 12px; color: #64748b; cursor: pointer; background: none; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; transition: all 0.2s; }
+.qa-callchain-toggle:hover { background: #e2e8f0; }
+.qa-callchain-content { overflow-x: auto; }
+.qa-callchain-content .mermaid { background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 80px; }
+.qa-callchain-diagram.collapsed .qa-callchain-content { display: none; }
+
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .autostart-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }

@@ -70,6 +70,8 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     llmModel: "gpt-4o-mini",
     llmMaxTokens: 2048,
     llmTemperature: 0.3,
+    enableLlmReranker: false,
+    llmRerankerMaxCandidates: 10,
   };
   const logger = new Logger(settings.logFilePath, "error");
   const store = new SQLiteStore(settings.databasePath, logger);

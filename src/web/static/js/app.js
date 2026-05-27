@@ -799,6 +799,11 @@ async function runAskQuestion() {
   askBtn.textContent = '生成中...';
   if (stopBtn) stopBtn.hidden = false;
   [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
+  // v4.3.5: Also reset call chain diagram and related questions
+  const callchainEl = document.getElementById('qa-callchain-diagram');
+  if (callchainEl) { callchainEl.hidden = true; }
+  const relatedEl = document.getElementById('qa-related-questions');
+  if (relatedEl) { relatedEl.hidden = true; }
   rawEl.innerHTML = '';
   stepsEl.innerHTML = '';
   progressEl.hidden = false;
@@ -926,6 +931,8 @@ async function runAskQuestion() {
               finalData = data;
               // v4.3.2: Show related questions
               setupRelatedQuestions(data.relatedQuestions);
+              // v4.3.5: Render call chain diagram
+              renderCallChainDiagram(data.callChains);
               break;
 
             case 'error':
@@ -1174,3 +1181,92 @@ function setupRelatedQuestions(questions) {
     });
   });
 }
+
+// v4.3.5: Call chain diagram rendering
+function renderCallChainDiagram(chains) {
+  const container = document.getElementById('qa-callchain-diagram');
+  if (!container) return;
+
+  // Hide if no chains
+  if (!chains || chains.length === 0) {
+    container.hidden = true;
+    return;
+  }
+
+  // Generate Mermaid flowchart syntax
+  const nodeIds = new Map(); // symbol -> safe id
+  let nodeCounter = 0;
+
+  function getSafeId(symbol) {
+    if (!nodeIds.has(symbol)) {
+      nodeIds.set(symbol, `n${nodeCounter++}`);
+    }
+    return nodeIds.get(symbol);
+  }
+
+  function escapeLabel(label) {
+    // Escape special Mermaid characters
+    return label.replace(/["\\]/g, '').replace(/[<>]/g, '');
+  }
+
+  let mermaidCode = 'flowchart LR\n';
+  const edges = new Set(); // Avoid duplicate edges
+
+  for (const chain of chains) {
+    const targetId = getSafeId(chain.symbol);
+    const targetLabel = escapeLabel(chain.symbol);
+    mermaidCode += `  ${targetId}["${targetLabel}"]\n`;
+
+    // Style the main symbol node
+    mermaidCode += `  style ${targetId} fill:#dbeafe,stroke:#2563eb\n`;
+
+    // Add callers (who calls this symbol)
+    for (const caller of chain.callers) {
+      const callerId = getSafeId(caller.symbol);
+      const callerLabel = escapeLabel(caller.symbol);
+      const edgeKey = `${callerId}->${targetId}`;
+      if (!edges.has(edgeKey)) {
+        edges.add(edgeKey);
+        mermaidCode += `  ${callerId}["${callerLabel}"] --> ${targetId}\n`;
+      }
+    }
+
+    // Add callees (what this symbol calls)
+    for (const callee of chain.callees) {
+      const calleeId = getSafeId(callee.symbol);
+      const calleeLabel = escapeLabel(callee.symbol);
+      const edgeKey = `${targetId}->${calleeId}`;
+      if (!edges.has(edgeKey)) {
+        edges.add(edgeKey);
+        mermaidCode += `  ${targetId} --> ${calleeId}["${calleeLabel}"]\n`;
+      }
+    }
+  }
+
+  // Render the diagram
+  const mermaidEl = container.querySelector('.mermaid');
+  if (mermaidEl) {
+    mermaidEl.textContent = mermaidCode;
+    container.hidden = false;
+    container.classList.remove('collapsed');
+
+    // Use mermaid.run() for rendering
+    if (typeof mermaid !== 'undefined') {
+      try {
+        mermaid.run({ nodes: [mermaidEl] });
+      } catch (err) {
+        console.warn('Mermaid render error:', err);
+        mermaidEl.innerHTML = `<pre style="color:#666;font-size:12px;">${escapeHtml(mermaidCode)}</pre>`;
+      }
+    }
+  }
+}
+
+// v4.3.5: Call chain toggle button
+document.getElementById('qa-callchain-toggle')?.addEventListener('click', function() {
+  const container = document.getElementById('qa-callchain-diagram');
+  if (container) {
+    const isCollapsed = container.classList.toggle('collapsed');
+    this.textContent = isCollapsed ? '展开' : '收起';
+  }
+});

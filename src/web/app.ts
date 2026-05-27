@@ -20,7 +20,8 @@ import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generat
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
-import { extractCallChains, formatCallChainsForLLM } from "../core/search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, type CallChainContext } from "../core/search/callChainExtractor.js";
+import { rerankWithLlm } from "../core/search/llmReranker.js";
 import { SearchService } from "../core/search/searchService.js";
 import { estimateOptimalSources } from "../core/search/queryAnalyzer.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
@@ -1027,7 +1028,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const smartTopK = maxSources === 10 ? estimateOptimalSources(String(question ?? ""), 10) : maxSources;
       const topK = clampInteger(smartTopK, 1, 30, 10);
       const searchStart = Date.now();
-      const searchResult = await dependencies.searchService.search(
+      let searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
         String(question ?? ""),
         "auto",
@@ -1036,9 +1037,34 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         { languages: normalizeSupportedLanguages(languages?.split(",")) },
         "full",
       );
-      const searchMs = Date.now() - searchStart;
-      sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs, resultCount: searchResult.results.length });
-      dependencies.logger.info("SSE phase: search done", { searchMs, resultCount: searchResult.results.length, smartTopK });
+      let searchMs = Date.now() - searchStart;
+
+      // v4.3.5: Optional LLM reranking
+      let rerankerMs = 0;
+      let usedLlmReranker = false;
+      if (dependencies.settings.enableLlmReranker && searchResult.results.length > 3) {
+        try {
+          const rerankerStart = Date.now();
+          const rerankerResult = await rerankWithLlm(
+            dependencies.llmClient,
+            String(question ?? ""),
+            searchResult.results,
+            topK,
+            dependencies.settings.llmRerankerMaxCandidates,
+          );
+          if (rerankerResult.usedLlm) {
+            searchResult = { ...searchResult, results: rerankerResult.rerankedResults };
+            usedLlmReranker = true;
+          }
+          rerankerMs = Date.now() - rerankerStart;
+          dependencies.logger.info("SSE LLM reranker", { rerankerMs, usedLlm: rerankerResult.usedLlm });
+        } catch (error) {
+          dependencies.logger.warn("SSE LLM reranker failed", { error: String(error) });
+        }
+      }
+
+      sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs + rerankerMs, resultCount: searchResult.results.length, usedLlmReranker });
+      dependencies.logger.info("SSE phase: search done", { searchMs, rerankerMs, resultCount: searchResult.results.length, smartTopK });
 
       // Send sources immediately
       const sources = searchResult.results.map((r, i) => ({
@@ -1066,6 +1092,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       sendEvent({ type: "phase", phase: "callchain", status: "start" });
       let callChainContext = "";
       let callChainMs = 0;
+      let callChains: CallChainContext[] = [];
       try {
         const callChainStart = Date.now();
         const callChainResult = await extractCallChains(
@@ -1078,6 +1105,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         );
         callChainMs = Date.now() - callChainStart;
         callChainContext = formatCallChainsForLLM(callChainResult.chains);
+        callChains = callChainResult.chains;
         sendEvent({
           type: "phase",
           phase: "callchain",
@@ -1225,6 +1253,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         usage,
         hadSummary: Boolean(summaryArchitecture),
         hadCallChain: callChainContext.length > 0,
+        callChains,
         timing: { indexMs, searchMs, callChainMs, llmMs, totalMs },
         relatedQuestions,
       });

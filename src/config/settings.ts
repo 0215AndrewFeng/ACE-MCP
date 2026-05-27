@@ -16,6 +16,8 @@ type RawSettings = Partial<
     | "excludePatterns"
     | "indexFreshness"
     | "indexFreshnessSeconds"
+    | "enableLlmReranker"
+    | "llmRerankerMaxCandidates"
     | "llmApiKey"
     | "llmApiUrl"
     | "llmMaxTokens"
@@ -67,6 +69,8 @@ const DEFAULT_PUBLIC_SETTINGS = {
   llmModel: "gpt-4o-mini",
   llmMaxTokens: 2048,
   llmTemperature: 0.3,
+  enableLlmReranker: false,
+  llmRerankerMaxCandidates: 10,
 } satisfies RawSettings;
 
 function coerceArray(value: string | undefined): string[] | undefined {
@@ -246,6 +250,8 @@ export async function loadSettings(): Promise<Settings> {
     llmModel: process.env.ACE_MCP_LLM_MODEL ?? (fileSettings.llmModel as string | undefined) ?? "gpt-4o-mini",
     llmMaxTokens: Number(process.env.ACE_MCP_LLM_MAX_TOKENS ?? fileSettings.llmMaxTokens ?? 2048),
     llmTemperature: Number(process.env.ACE_MCP_LLM_TEMPERATURE ?? fileSettings.llmTemperature ?? 0.3),
+    enableLlmReranker: coerceBoolean(process.env.ACE_MCP_ENABLE_LLM_RERANKER) ?? fileSettings.enableLlmReranker ?? false,
+    llmRerankerMaxCandidates: Number(process.env.ACE_MCP_LLM_RERANKER_MAX_CANDIDATES ?? fileSettings.llmRerankerMaxCandidates ?? 10),
   };
 }
 

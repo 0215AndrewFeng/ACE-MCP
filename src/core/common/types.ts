@@ -44,6 +44,8 @@ export interface Settings {
   llmModel: string;
   llmMaxTokens: number;
   llmTemperature: number;
+  enableLlmReranker: boolean;
+  llmRerankerMaxCandidates: number;
 }
 
 export interface CliOptions {

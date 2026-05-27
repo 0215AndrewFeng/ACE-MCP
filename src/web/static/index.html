@@ -74,6 +74,16 @@
             <div id="qa-steps" class="qa-steps"></div>
           </div>
           <div id="qa-answer-body" class="qa-answer-body" hidden></div>
+          <!-- v4.3.5: Call chain visualization -->
+          <div id="qa-callchain-diagram" class="qa-callchain-diagram" hidden>
+            <div class="qa-callchain-header">
+              <span class="qa-callchain-title">🔗 调用链关系</span>
+              <button id="qa-callchain-toggle" class="qa-callchain-toggle" type="button">收起</button>
+            </div>
+            <div class="qa-callchain-content">
+              <pre class="mermaid"></pre>
+            </div>
+          </div>
           <!-- v4.3.2: Related questions -->
           <div id="qa-related-questions" hidden></div>
           <div id="qa-feedback" class="qa-feedback" hidden>
@@ -265,6 +275,11 @@
       <p>ace-mcp - 本地代码搜索 MCP 服务器 | <a href="https://gitee.com/AndrewFengCode/ace-mcp" target="_blank">项目主页</a></p>
     </footer>
 
+    <!-- v4.3.5: Mermaid for call chain visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+      mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+    </script>
     <script src="/static/js/app.js"></script>
   </body>
 </html>
