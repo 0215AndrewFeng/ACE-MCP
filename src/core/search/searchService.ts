@@ -372,6 +372,16 @@ function mergeOverlappingResults(results: SearchResult[], analysis: QueryAnalysi
   return merged;
 }
 
+/**
+ * v4.3.7: Dynamic perFileLimit based on query type.
+ * Definition lookups need more results per file (overloads, implementations).
+ */
+function getDynamicPerFileLimit(analysis: QueryAnalysis, configuredLimit: number): number {
+  if (analysis.isSymbolLike) return Math.max(configuredLimit, 5);
+  if (analysis.hasIdentifierLikeSegments) return Math.max(configuredLimit, 3);
+  return configuredLimit;
+}
+
 function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number, perFileLimit = 2): SearchResult[] {
   return dedupeSameFileResults(results, analysis, perFileLimit)
     .map((result) => {
@@ -1103,7 +1113,7 @@ export class SearchService {
 
     const rerankStartedAt = performance.now();
     const mergedResults = mergeResults(resultSets);
-    const rerankedResults = rerankResults(mergedResults, analysis, topK, this.settings.searchPerFileLimit || 2);
+    const rerankedResults = rerankResults(mergedResults, analysis, topK, getDynamicPerFileLimit(analysis, this.settings.searchPerFileLimit || 2));
     executedStrategies.push({
       candidateCount: rerankedResults.length,
       durationMs: Math.round(performance.now() - rerankStartedAt),
@@ -1315,7 +1325,7 @@ export class SearchService {
 
     const analysis = buildStructuredQueryAnalysis(query, parsed);
     const rerankStartedAt = performance.now();
-    const rerankedResults = rerankResults(mergedResults, analysis, topK, this.settings.searchPerFileLimit || 2);
+    const rerankedResults = rerankResults(mergedResults, analysis, topK, getDynamicPerFileLimit(analysis, this.settings.searchPerFileLimit || 2));
     executedStrategies.push({
       candidateCount: rerankedResults.length,
       durationMs: Math.round(performance.now() - rerankStartedAt),
@@ -1491,7 +1501,7 @@ export class SearchService {
     }
 
     const analysis = analyzeQuery([primaryDefinition.name, primaryDefinition.fullName, primaryDefinition.canonicalName].filter(Boolean).join(" "));
-    const rerankedResults = rerankResults(referenceResults, analysis, topK, this.settings.searchPerFileLimit || 2);
+    const rerankedResults = rerankResults(referenceResults, analysis, topK, getDynamicPerFileLimit(analysis, this.settings.searchPerFileLimit || 2));
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const hydratedResults =
       resultMode === "full"

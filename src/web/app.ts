@@ -16,8 +16,10 @@ import type { Logger } from "../core/common/logger.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator, type IndexProgressEvent } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
-import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
+import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, assembleFullFileContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
+import { runQaPipeline } from "../core/llm/qaPipeline.js";
+import type { ContextMode } from "../core/common/types.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { extractCallChains, formatCallChainsForLLM, type CallChainContext } from "../core/search/callChainExtractor.js";
@@ -950,124 +952,77 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
     }
   });
 
-  // ── QA endpoint ────────────────────────────────────────
+  // ── QA endpoint (v4.3.7: unified pipeline) ────────────────────────────────────────
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history } = req.body;
+      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history, contextMode } = req.body;
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
       }
 
-      const timeout = clampInteger(timeoutSeconds, 10, 600, 120) * 1000;
-      const startMs = Date.now();
-      const checkTimeout = (phase: string) => {
-        if (Date.now() - startMs > timeout) {
-          throw new AppError("TIMEOUT", `Timeout at ${phase}: exceeded ${timeout / 1000}s limit`);
-        }
-      };
-
-      // Phase 1: Index
-      const indexStart = Date.now();
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
-      const indexMs = Date.now() - indexStart;
-      checkTimeout("index");
-
-      // Phase 2: Search
-      const topK = clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
-      const searchStart = Date.now();
-      const searchResult = await dependencies.searchService.search(
-        indexResult.projectRootPath,
-        String(question ?? ""),
-        "auto",
-        topK,
-        0,
-        { languages: normalizeSupportedLanguages(languages) },
-        "full",
+      const pipelineResult = await runQaPipeline(
+        {
+          embeddingProvider: dependencies.embeddingProvider,
+          indexCoordinator: dependencies.indexCoordinator,
+          llmClient: dependencies.llmClient,
+          logger: dependencies.logger,
+          searchService: dependencies.searchService,
+          settings: dependencies.settings,
+          store: dependencies.store,
+          summaryGenerator: dependencies.summaryGenerator,
+        },
+        {
+          question: String(question ?? ""),
+          projectRootPath: String(projectRootPath ?? ""),
+          maxSources: clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault),
+          includeSummary: includeSummary !== false,
+          languages: normalizeSupportedLanguages(languages),
+          contextMode: (contextMode as ContextMode) ?? "chunk",
+          history: Array.isArray(history) ? history : [],
+          timeoutMs: clampInteger(timeoutSeconds, 10, 600, 120) * 1000,
+        },
       );
-      const searchMs = Date.now() - searchStart;
-      checkTimeout("search");
 
-      // Phase 3: Load summary
-      let summaryArchitecture: string | undefined;
-      if (includeSummary !== false) {
-        const summary = await dependencies.summaryGenerator.loadSummary(indexResult.projectRootPath);
-        if (summary) {
-          summaryArchitecture = summary.architecture;
-        }
-      }
-      checkTimeout("summary");
-
-      // Phase 4: LLM with context compression and multi-turn support
-      const sources = searchResult.results.map((r) => ({
-        filePath: r.filePath,
-        startLine: r.startLine,
-        endLine: r.endLine,
-        language: r.language,
-        score: r.score,
-        snippet: r.snippet,
-      }));
-
-      // v4.2.4: Compress context to fit token budget
-      const maxContextTokens = dependencies.settings.qaMaxContextTokens;
-      const compressedSources = compressContext(sources, maxContextTokens);
-
-      // v4.2.4: Build messages with conversation history if provided
-      const conversationHistory: QaConversationTurn[] = Array.isArray(history) ? history : [];
-      const messages = conversationHistory.length > 0
-        ? buildQaMessagesWithHistory(String(question ?? ""), compressedSources, summaryArchitecture, conversationHistory)
-        : [
-            { role: "system" as const, content: QA_SYSTEM_PROMPT },
-            { role: "user" as const, content: buildQaUserPrompt(String(question ?? ""), compressedSources, summaryArchitecture) },
-          ];
-
-      const llmStart = Date.now();
-      // v4.2.4: Add timeout and fallback support
-      const result = await dependencies.llmClient.complete({
-        messages,
-        timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
-        fallbackOnTimeout: true,
-      });
-      const llmMs = Date.now() - llmStart;
-      const totalMs = Date.now() - startMs;
-
-      // v4.2.4: Handle fallback response
-      if (result.fallback) {
+      if (pipelineResult.fallback) {
         res.json({
           answer: null,
           fallback: true,
-          fallbackReason: result.fallbackReason,
+          fallbackReason: pipelineResult.fallbackReason,
           message: "LLM 服务暂时不可用，以下是检索到的相关代码片段，您可以直接参考。",
-          sources: searchResult.results.map((r, i) => ({
+          sources: pipelineResult.sources.map((s, i) => ({
             index: i + 1,
-            filePath: r.filePath,
-            startLine: r.startLine,
-            endLine: r.endLine,
-            language: r.language,
-            score: r.score,
-            snippet: r.snippet.slice(0, 200),
+            filePath: s.filePath,
+            startLine: s.startLine,
+            endLine: s.endLine,
+            language: s.language,
+            score: s.score,
+            snippet: s.snippet.slice(0, 200),
           })),
-          usage: result.usage,
-          hadSummary: Boolean(summaryArchitecture),
-          timing: { indexMs, searchMs, llmMs, totalMs },
+          usage: pipelineResult.usage,
+          hadSummary: pipelineResult.hadSummary,
+          timing: pipelineResult.timing,
         });
         return;
       }
 
       res.json({
-        answer: result.content,
-        sources: searchResult.results.map((r, i) => ({
+        answer: pipelineResult.answer,
+        sources: pipelineResult.sources.map((s, i) => ({
           index: i + 1,
-          filePath: r.filePath,
-          startLine: r.startLine,
-          endLine: r.endLine,
-          language: r.language,
-          score: r.score,
-          snippet: r.snippet.slice(0, 200),
+          filePath: s.filePath,
+          startLine: s.startLine,
+          endLine: s.endLine,
+          language: s.language,
+          score: s.score,
+          snippet: s.snippet.slice(0, 200),
         })),
-        usage: result.usage,
-        hadSummary: Boolean(summaryArchitecture),
-        timing: { indexMs, searchMs, llmMs, totalMs },
+        usage: pipelineResult.usage,
+        hadSummary: pipelineResult.hadSummary,
+        hadCallChain: pipelineResult.hadCallChain,
+        cached: pipelineResult.cached,
+        relatedQuestions: pipelineResult.relatedQuestions,
+        timing: pipelineResult.timing,
       });
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
@@ -1117,6 +1072,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const languages = isPost ? req.body?.languages : req.query.languages as string | undefined;
       const timeoutSeconds = Number(isPost ? req.body?.timeoutSeconds : req.query.timeoutSeconds) || 120;
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
+      // v4.3.7: context mode support
+      const contextMode = ((isPost ? req.body?.contextMode : req.query.contextMode) as ContextMode) ?? "chunk";
 
       dependencies.logger.info("SSE stream started", { projectRootPath, question: question?.slice(0, 50) });
 
@@ -1309,19 +1266,32 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         }
       }
 
-      // Phase 5: LLM streaming
+      // Phase 5: Context assembly + LLM streaming
+      // v4.3.7: context assembly (full-file / merged-file)
+      let contextSources: { filePath: string; startLine: number; endLine: number; language: string; score: number; snippet: string }[] = sources.map(s => ({
+        filePath: s.filePath,
+        startLine: s.startLine,
+        endLine: s.endLine,
+        language: s.language as string,
+        score: s.score,
+        snippet: s.snippet,
+      }));
+      if (contextMode !== "chunk" && contextSources.length > 0) {
+        sendEvent({ type: "phase", phase: "context-assembly", status: "start" });
+        contextSources = await assembleFullFileContext(
+          indexResult.projectRootPath,
+          contextSources,
+          dependencies.settings.qaMaxContextTokens,
+          contextMode,
+        );
+        sendEvent({ type: "phase", phase: "context-assembly", status: "done", mode: contextMode });
+      }
+
       dependencies.logger.info("SSE phase: llm start");
       sendEvent({ type: "phase", phase: "llm", status: "start" });
       const llmStart = Date.now();
 
-      const compressedSources = compressContext(sources.map(s => ({
-        filePath: s.filePath,
-        startLine: s.startLine,
-        endLine: s.endLine,
-        language: s.language,
-        score: s.score,
-        snippet: s.snippet,
-      })), dependencies.settings.qaMaxContextTokens);
+      const compressedSources = compressContext(contextSources, dependencies.settings.qaMaxContextTokens);
 
       // v4.3.4: Include call chain context in prompt
       const messages = conversationHistory.length > 0
