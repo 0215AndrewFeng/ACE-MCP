@@ -1,0 +1,35 @@
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_a9448a731cf946 92-93,99,105-109,117
+CHANGELOG.md
+  s_0f8113dba42c56::t_c359f126cdc244 5-17
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_728cf0666cfbac 871,875,881,885
+src/web/app.ts
+  s_0f8113dba42c56::t_5e3b3ea463d5cb 23
+  s_0f8113dba42c56::t_e97050159560b6 1227-1228
+  s_0f8113dba42c56::t_47bb528316a0bf 1064-1100
+  s_0f8113dba42c56::t_bf469d3926edad 1161,1175,1180
+package.json
+  s_0f8113dba42c56::t_3a174163f501e7 3
+src/core/search/callChainExtractor.ts
+  s_0f8113dba42c56::t_324b97b4a48995 174
+  s_0f8113dba42c56::t_f9879138c6c410 1-173,175-212
+src/version.ts
+  s_0f8113dba42c56::t_52dcc687d90707 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "22fcf0955255d4a3c66f78191ebc5f5943dd991b",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
