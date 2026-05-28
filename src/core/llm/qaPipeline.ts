@@ -10,6 +10,7 @@ import type { CallChainContext } from "../search/callChainExtractor.js";
 import { extractCallChains, formatCallChainsForLLM } from "../search/callChainExtractor.js";
 import { rerankWithLlm } from "../search/llmReranker.js";
 import { estimateOptimalSources } from "../search/queryAnalyzer.js";
+import { expandQueryWithLlm } from "./queryExpander.js";
 import { qaCache, QaCache } from "./qaCache.js";
 import {
   assembleFullFileContext,
@@ -45,10 +46,12 @@ export interface QaPipelineResult {
   hadCallChain?: boolean;
   callChains?: CallChainContext[];
   relatedQuestions?: string[];
+  expandedQuery?: string;
   fallback?: boolean;
   fallbackReason?: string;
   timing: {
     indexMs: number;
+    queryExpansionMs: number;
     searchMs: number;
     rerankerMs: number;
     callChainMs: number;
@@ -84,6 +87,20 @@ export async function runQaPipeline(
   const indexMs = Date.now() - indexStart;
   checkTimeout("index");
 
+  // 1.5. Query expansion (non-ASCII → English code keywords)
+  let searchQuery = options.question;
+  let queryExpansionMs = 0;
+  if (deps.llmClient.isConfigured() && /[^\x00-\x7F]/.test(options.question)) {
+    try {
+      const qeStart = Date.now();
+      const { expandedQuery } = await expandQueryWithLlm(deps.llmClient, options.question, 8_000);
+      searchQuery = expandedQuery;
+      queryExpansionMs = Date.now() - qeStart;
+    } catch {
+      // Query expansion is optional — silently skip
+    }
+  }
+
   // 2. Search with smart topK
   const defaultTopK = deps.settings.qaMaxSourcesDefault;
   const smartTopK = (options.maxSources === undefined || options.maxSources === defaultTopK)
@@ -94,7 +111,7 @@ export async function runQaPipeline(
   const searchStart = Date.now();
   let searchResult = await deps.searchService.search(
     indexResult.projectRootPath,
-    options.question,
+    searchQuery,
     "auto",
     topK,
     0,
@@ -185,7 +202,8 @@ export async function runQaPipeline(
         hadCallChain: callChainContext.length > 0,
         callChains,
         relatedQuestions,
-        timing: { indexMs, searchMs, rerankerMs, callChainMs, llmMs: 0, totalMs: Date.now() - startMs },
+        expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+        timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs: 0, totalMs: Date.now() - startMs },
       };
     }
   }
@@ -228,7 +246,8 @@ export async function runQaPipeline(
       hadSummary: Boolean(summaryArchitecture),
       hadCallChain: callChainContext.length > 0,
       callChains,
-      timing: { indexMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
+      expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+      timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
     };
   }
 
@@ -248,6 +267,7 @@ export async function runQaPipeline(
     hadCallChain: callChainContext.length > 0,
     callChains,
     relatedQuestions,
-    timing: { indexMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
+    expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+    timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
   };
 }

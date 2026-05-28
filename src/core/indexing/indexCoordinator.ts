@@ -162,12 +162,12 @@ export class IndexCoordinator {
    * - "stale": skip if last index was within `indexFreshnessSeconds` and no watcher events fired
    * - "manual": never auto-index; return cached result or a minimal stub
    */
-  public async ensureFreshIndex(projectRootPath: string): Promise<IndexProjectResult> {
+  public async ensureFreshIndex(projectRootPath: string, timeoutMs = 30_000): Promise<IndexProjectResult> {
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
     const policy = this.settings.indexFreshness;
 
     if (policy === "always") {
-      return this.indexProject(normalizedRoot, "incremental");
+      return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
     }
 
     if (policy === "manual") {
@@ -175,8 +175,7 @@ export class IndexCoordinator {
       if (cached) {
         return cached;
       }
-      // No cached result — must do initial index
-      return this.indexProject(normalizedRoot, "incremental");
+      return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
     }
 
     // policy === "stale"
@@ -197,7 +196,54 @@ export class IndexCoordinator {
       }
     }
 
-    return this.indexProject(normalizedRoot, "incremental");
+    return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
+  }
+
+  /**
+   * v4.3.9: Wrapper around indexProject that adds timeout protection.
+   * On timeout, returns cached result or a minimal fallback so search is not blocked.
+   */
+  private async indexProjectWithTimeout(
+    normalizedRoot: string,
+    mode: "full" | "incremental",
+    timeoutMs: number,
+  ): Promise<IndexProjectResult> {
+    try {
+      const result = await Promise.race([
+        this.indexProject(normalizedRoot, mode),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`index timeout after ${timeoutMs}ms`)), timeoutMs),
+        ),
+      ]);
+      return result;
+    } catch (error) {
+      this.logger.warn("ensureFreshIndex timeout, using fallback", {
+        projectRootPath: normalizedRoot,
+        timeoutMs,
+        error: String(error),
+      });
+      // Return cached result if available
+      const cached = this.lastIndexResult.get(normalizedRoot);
+      if (cached) {
+        return cached;
+      }
+      // Minimal fallback stub
+      return {
+        projectRootPath: normalizedRoot,
+        projectId: "",
+        project: { rootPath: normalizedRoot, projectType: "single-language" as const, languages: [], markers: [] },
+        scannedFiles: 0,
+        indexedFiles: 0,
+        changedFiles: 0,
+        deletedFiles: 0,
+        chunkCount: 0,
+        failedFileCount: 0,
+        failedFiles: [],
+        createdAt: new Date().toISOString(),
+        timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: timeoutMs },
+        vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" as const },
+      };
+    }
   }
 
   public startWatching(projectRootPath: string): void {
@@ -272,7 +318,19 @@ export class IndexCoordinator {
     const inFlight = this.inFlightIndex.get(normalizedRoot);
     if (inFlight && !onProgress) {
       this.logger.debug("reusing in-flight index", { projectRootPath: normalizedRoot, mode });
-      return inFlight;
+      // v4.3.9: Add timeout when reusing in-flight promise to avoid blocking forever
+      try {
+        return await Promise.race([
+          inFlight,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("in-flight index reuse timeout")), 60_000),
+          ),
+        ]);
+      } catch {
+        // Stuck in-flight promise — clear it and start fresh
+        this.logger.warn("in-flight index stuck, clearing and restarting", { projectRootPath: normalizedRoot });
+        this.inFlightIndex.delete(normalizedRoot);
+      }
     }
 
     // Queue behind any previous request
@@ -280,14 +338,15 @@ export class IndexCoordinator {
     const indexPromise = prev.then(() => this.runIndexProject(normalizedRoot, mode, onProgress));
 
     // Track both queue and in-flight state
-    this.projectQueue.set(normalizedRoot, indexPromise.catch(() => {})); // Swallow errors in queue chain
+    const queuePromise = indexPromise.catch(() => {}); // Swallow errors in queue chain
+    this.projectQueue.set(normalizedRoot, queuePromise);
     this.inFlightIndex.set(normalizedRoot, indexPromise);
 
     // Clean up when done
     indexPromise.finally(() => {
       this.inFlightIndex.delete(normalizedRoot);
       // Only delete from queue if this is still the latest promise
-      if (this.projectQueue.get(normalizedRoot) === indexPromise.catch(() => {})) {
+      if (this.projectQueue.get(normalizedRoot) === queuePromise) {
         this.projectQueue.delete(normalizedRoot);
       }
     });

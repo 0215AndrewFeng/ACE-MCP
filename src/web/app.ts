@@ -19,6 +19,7 @@ import type { LlmClient } from "../core/llm/llmClient.js";
 import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, assembleFullFileContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../core/llm/qaPrompt.js";
 import { qaCache, QaCache } from "../core/llm/qaCache.js";
 import { runQaPipeline } from "../core/llm/qaPipeline.js";
+import { expandQueryWithLlm } from "../core/llm/queryExpander.js";
 import type { ContextMode } from "../core/common/types.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
@@ -1101,7 +1102,22 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         return;
       }
 
-      // Phase 2: Search
+      // Phase 2: Query expansion + Search
+      // v4.3.9: Expand non-ASCII queries with English code keywords
+      let searchQuery = String(question ?? "");
+      if (dependencies.llmClient.isConfigured() && /[^\x00-\x7F]/.test(searchQuery)) {
+        try {
+          sendEvent({ type: "phase", phase: "query_expansion", status: "start" });
+          const { expandedQuery, keywords } = await expandQueryWithLlm(dependencies.llmClient, searchQuery, 8_000);
+          searchQuery = expandedQuery;
+          if (keywords.length > 0) {
+            sendEvent({ type: "phase", phase: "query_expansion", status: "done", keywords });
+          }
+        } catch {
+          // Query expansion is optional
+        }
+      }
+
       dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
       // v4.3.0: Smart sources - auto-adjust based on question complexity
@@ -1110,7 +1126,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const searchStart = Date.now();
       let searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
-        String(question ?? ""),
+        searchQuery,
         "auto",
         topK,
         0,
