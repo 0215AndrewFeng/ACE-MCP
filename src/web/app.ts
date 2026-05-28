@@ -1102,14 +1102,15 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         return;
       }
 
-      // Phase 2: Query expansion + Search
-      // v4.3.9: Expand non-ASCII queries with English code keywords
-      let searchQuery = String(question ?? "");
-      if (dependencies.llmClient.isConfigured() && /[^\x00-\x7F]/.test(searchQuery)) {
+      // Phase 2: Dual-round search with query expansion
+      // v4.4.0: Round 1 with original query (benefits from semantic labels), Round 2 with expanded keywords
+      const questionStr = String(question ?? "");
+      let expandedKeywords: string[] = [];
+      if (dependencies.llmClient.isConfigured() && /[^\x00-\x7F]/.test(questionStr)) {
         try {
           sendEvent({ type: "phase", phase: "query_expansion", status: "start" });
-          const { expandedQuery, keywords } = await expandQueryWithLlm(dependencies.llmClient, searchQuery, 8_000);
-          searchQuery = expandedQuery;
+          const { keywords } = await expandQueryWithLlm(dependencies.llmClient, questionStr, 8_000);
+          expandedKeywords = keywords;
           if (keywords.length > 0) {
             sendEvent({ type: "phase", phase: "query_expansion", status: "done", keywords });
           }
@@ -1121,18 +1122,54 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
       // v4.3.0: Smart sources - auto-adjust based on question complexity
-      const smartTopK = maxSources === 10 ? estimateOptimalSources(String(question ?? ""), 10) : maxSources;
+      const smartTopK = maxSources === 10 ? estimateOptimalSources(questionStr, 10) : maxSources;
       const topK = clampInteger(smartTopK, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
+      const searchFilters = { languages: normalizeSupportedLanguages(languages?.split(",")) };
       const searchStart = Date.now();
+
+      // Round 1: Original query
       let searchResult = await dependencies.searchService.search(
         indexResult.projectRootPath,
-        searchQuery,
+        questionStr,
         "auto",
         topK,
         0,
-        { languages: normalizeSupportedLanguages(languages?.split(",")) },
+        searchFilters,
         "full",
       );
+
+      // Round 2: Expanded English keywords
+      if (expandedKeywords.length > 0) {
+        try {
+          sendEvent({ type: "phase", phase: "search_round2", status: "start" });
+          const round2Query = expandedKeywords.join(" ");
+          const round2 = await dependencies.searchService.search(
+            indexResult.projectRootPath,
+            round2Query,
+            "auto",
+            topK,
+            0,
+            searchFilters,
+            "full",
+          );
+          if (round2.results.length > 0) {
+            const seen = new Set(
+              searchResult.results.map(r => `${r.filePath}:${r.startLine}:${r.endLine}`),
+            );
+            const newResults = round2.results.filter(
+              r => !seen.has(`${r.filePath}:${r.startLine}:${r.endLine}`),
+            );
+            searchResult = {
+              ...searchResult,
+              results: [...searchResult.results, ...newResults].slice(0, topK),
+            };
+          }
+          sendEvent({ type: "phase", phase: "search_round2", status: "done" });
+        } catch {
+          // Round 2 is supplementary
+        }
+      }
+
       let searchMs = Date.now() - searchStart;
 
       // v4.3.5: Optional LLM reranking
@@ -1245,7 +1282,6 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       // v4.3.0: Check LLM response cache (only for non-conversation queries)
-      const questionStr = String(question ?? "");
       if (conversationHistory.length === 0) {
         const cachedResponse = qaCache.get(questionStr, sourceHashes);
         if (cachedResponse) {

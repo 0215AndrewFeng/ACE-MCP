@@ -87,37 +87,72 @@ export async function runQaPipeline(
   const indexMs = Date.now() - indexStart;
   checkTimeout("index");
 
-  // 1.5. Query expansion (non-ASCII → English code keywords)
-  let searchQuery = options.question;
+  // 1.5. Query expansion (non-ASCII → English code keywords) for dual-round search
+  let expandedKeywords: string[] = [];
   let queryExpansionMs = 0;
   if (deps.llmClient.isConfigured() && /[^\x00-\x7F]/.test(options.question)) {
     try {
       const qeStart = Date.now();
-      const { expandedQuery } = await expandQueryWithLlm(deps.llmClient, options.question, 8_000);
-      searchQuery = expandedQuery;
+      const { keywords } = await expandQueryWithLlm(deps.llmClient, options.question, 8_000);
+      expandedKeywords = keywords;
       queryExpansionMs = Date.now() - qeStart;
     } catch {
       // Query expansion is optional — silently skip
     }
   }
 
-  // 2. Search with smart topK
+  // 2. Dual-round search
   const defaultTopK = deps.settings.qaMaxSourcesDefault;
   const smartTopK = (options.maxSources === undefined || options.maxSources === defaultTopK)
     ? estimateOptimalSources(options.question, defaultTopK)
     : (options.maxSources ?? defaultTopK);
   const topK = Math.min(Math.max(1, smartTopK), deps.settings.qaMaxSourcesMax);
+  const searchFilters = { languages: options.languages };
 
   const searchStart = Date.now();
+
+  // Round 1: Search with original question (benefits from v4.4.0 semantic labels in FTS)
   let searchResult = await deps.searchService.search(
     indexResult.projectRootPath,
-    searchQuery,
+    options.question,
     "auto",
     topK,
     0,
-    { languages: options.languages },
+    searchFilters,
     "full",
   );
+
+  // Round 2: Search with expanded English keywords (if available)
+  if (expandedKeywords.length > 0) {
+    try {
+      const round2Query = expandedKeywords.join(" ");
+      const round2 = await deps.searchService.search(
+        indexResult.projectRootPath,
+        round2Query,
+        "auto",
+        topK,
+        0,
+        searchFilters,
+        "full",
+      );
+      // Merge round 2 results into round 1, dedup by filePath:startLine:endLine
+      if (round2.results.length > 0) {
+        const seen = new Set(
+          searchResult.results.map(r => `${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        const newResults = round2.results.filter(
+          r => !seen.has(`${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        searchResult = {
+          ...searchResult,
+          results: [...searchResult.results, ...newResults].slice(0, topK),
+        };
+      }
+    } catch {
+      // Round 2 is supplementary — silently skip on error
+    }
+  }
+
   const searchMs = Date.now() - searchStart;
   checkTimeout("search");
 
@@ -202,7 +237,7 @@ export async function runQaPipeline(
         hadCallChain: callChainContext.length > 0,
         callChains,
         relatedQuestions,
-        expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+        expandedQuery: expandedKeywords.length > 0 ? expandedKeywords.join(" ") : undefined,
         timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs: 0, totalMs: Date.now() - startMs },
       };
     }
@@ -246,7 +281,7 @@ export async function runQaPipeline(
       hadSummary: Boolean(summaryArchitecture),
       hadCallChain: callChainContext.length > 0,
       callChains,
-      expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+      expandedQuery: expandedKeywords.length > 0 ? expandedKeywords.join(" ") : undefined,
       timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
     };
   }
@@ -267,7 +302,7 @@ export async function runQaPipeline(
     hadCallChain: callChainContext.length > 0,
     callChains,
     relatedQuestions,
-    expandedQuery: searchQuery !== options.question ? searchQuery : undefined,
+    expandedQuery: expandedKeywords.length > 0 ? expandedKeywords.join(" ") : undefined,
     timing: { indexMs, queryExpansionMs, searchMs, rerankerMs, callChainMs, llmMs, totalMs: Date.now() - startMs },
   };
 }

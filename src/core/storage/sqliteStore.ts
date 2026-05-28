@@ -1974,11 +1974,13 @@ export class SQLiteStore {
           chunk.content,
           chunk.symbolNames.join(" "),
         );
+        // v4.4.0: Pass chunk-scoped symbols for Chinese semantic label generation
+        const chunkSymbols = symbols.filter(s => s.line >= chunk.startLine && s.line <= chunk.endLine);
         insertChunkSemanticFts.run(
           chunk.chunkId,
           indexedFile.relativePath,
           indexedFile.language,
-          buildSemanticText(indexedFile.relativePath, chunk.content, chunk.symbolNames),
+          buildSemanticText(indexedFile.relativePath, chunk.content, chunk.symbolNames, chunkSymbols),
         );
       }
 
@@ -2142,11 +2144,13 @@ export class SQLiteStore {
             chunk.content,
             chunk.symbolNames.join(" "),
           );
+          // v4.4.0: Pass chunk-scoped symbols for Chinese semantic label generation
+          const chunkSymbols = symbols.filter(s => s.line >= chunk.startLine && s.line <= chunk.endLine);
           insertChunkSemanticFts.run(
             chunk.chunkId,
             indexedFile.relativePath,
             indexedFile.language,
-            buildSemanticText(indexedFile.relativePath, chunk.content, chunk.symbolNames),
+            buildSemanticText(indexedFile.relativePath, chunk.content, chunk.symbolNames, chunkSymbols),
           );
         }
 
