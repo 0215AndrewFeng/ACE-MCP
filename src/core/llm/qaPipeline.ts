@@ -66,7 +66,7 @@ export async function runQaPipeline(
 ): Promise<QaPipelineResult> {
   const startMs = Date.now();
   const timeout = options.timeoutMs ?? 120_000;
-  const contextMode = options.contextMode ?? "chunk";
+  const contextMode = options.contextMode ?? "merged-file";
   const enableReranker = options.enableReranker ?? deps.settings.enableLlmReranker;
   const enableCallChain = options.enableCallChain ?? true;
   const enableCache = options.enableCache ?? true;

@@ -1073,7 +1073,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const timeoutSeconds = Number(isPost ? req.body?.timeoutSeconds : req.query.timeoutSeconds) || 120;
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
       // v4.3.7: context mode support
-      const contextMode = ((isPost ? req.body?.contextMode : req.query.contextMode) as ContextMode) ?? "chunk";
+      const contextMode = ((isPost ? req.body?.contextMode : req.query.contextMode) as ContextMode) ?? "merged-file";
 
       dependencies.logger.info("SSE stream started", { projectRootPath, question: question?.slice(0, 50) });
 

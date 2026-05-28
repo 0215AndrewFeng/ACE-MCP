@@ -79,7 +79,7 @@ async function withTimeout<T>(
   }
 }
 
-function clampSnippet(snippet: string, maxLength = 1200): string {
+function clampSnippet(snippet: string, maxLength = 2400): string {
   if (snippet.length <= maxLength) {
     return snippet;
   }
