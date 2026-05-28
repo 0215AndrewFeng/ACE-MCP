@@ -26,7 +26,6 @@ import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
 import { extractCallChains, formatCallChainsForLLM, type CallChainContext } from "../core/search/callChainExtractor.js";
 import { rerankWithLlm } from "../core/search/llmReranker.js";
 import { SearchService } from "../core/search/searchService.js";
-import { estimateOptimalSources } from "../core/search/queryAnalyzer.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
 import type { SummaryGenerator } from "../core/summary/summaryGenerator.js";
 import { buildEnvelope } from "../server/tools/responseEnvelope.js";
@@ -1121,9 +1120,8 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
       dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
-      // v4.3.0: Smart sources - auto-adjust based on question complexity
-      const smartTopK = maxSources === 10 ? estimateOptimalSources(questionStr, 10) : maxSources;
-      const topK = clampInteger(smartTopK, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
+      // v4.3.0: Use the user-selected maxSources directly; smart estimation only applies when no explicit choice
+      const topK = clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
       const searchFilters = { languages: normalizeSupportedLanguages(languages?.split(",")) };
       const searchStart = Date.now();
 
@@ -1197,7 +1195,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       }
 
       sendEvent({ type: "phase", phase: "search", status: "done", ms: searchMs + rerankerMs, resultCount: searchResult.results.length, usedLlmReranker });
-      dependencies.logger.info("SSE phase: search done", { searchMs, rerankerMs, resultCount: searchResult.results.length, smartTopK });
+      dependencies.logger.info("SSE phase: search done", { searchMs, rerankerMs, resultCount: searchResult.results.length, topK });
 
       // Send sources immediately
       const sources = searchResult.results.map((r, i) => ({

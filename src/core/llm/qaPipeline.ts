@@ -9,7 +9,6 @@ import { AppError } from "../common/errors.js";
 import type { CallChainContext } from "../search/callChainExtractor.js";
 import { extractCallChains, formatCallChainsForLLM } from "../search/callChainExtractor.js";
 import { rerankWithLlm } from "../search/llmReranker.js";
-import { estimateOptimalSources } from "../search/queryAnalyzer.js";
 import { expandQueryWithLlm } from "./queryExpander.js";
 import { qaCache, QaCache } from "./qaCache.js";
 import {
@@ -102,11 +101,7 @@ export async function runQaPipeline(
   }
 
   // 2. Dual-round search
-  const defaultTopK = deps.settings.qaMaxSourcesDefault;
-  const smartTopK = (options.maxSources === undefined || options.maxSources === defaultTopK)
-    ? estimateOptimalSources(options.question, defaultTopK)
-    : (options.maxSources ?? defaultTopK);
-  const topK = Math.min(Math.max(1, smartTopK), deps.settings.qaMaxSourcesMax);
+  const topK = Math.min(Math.max(1, options.maxSources ?? deps.settings.qaMaxSourcesDefault), deps.settings.qaMaxSourcesMax);
   const searchFilters = { languages: options.languages };
 
   const searchStart = Date.now();

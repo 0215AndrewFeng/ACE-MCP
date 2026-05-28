@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "4.4.0",
+  "version": "4.4.1",
   "private": true,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
