@@ -1,0 +1,43 @@
+src/web/app.ts
+  s_0f8113dba42c56::t_31f6e8ba4e6d4f 1105-1120,1129
+  s_0f8113dba42c56::t_107b5565342a1b 22
+src/version.ts
+  s_0f8113dba42c56::t_c0fffae3a712bf 2
+CHANGELOG.md
+  s_0f8113dba42c56::t_759d680fff137a 5-17
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_7f3ed6f6f12fe0 321-333,341-342,349
+  s_0f8113dba42c56::t_8c103f5908ea58 165,170,178,199-232,235-240,245-246
+  s_0f8113dba42c56::t_4a016855413668 233,241-243
+  s_0f8113dba42c56::t_b65bbdbbaa250c 234,244
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_40fc0e8edf0863 90-103
+  s_0f8113dba42c56::t_e534f9c44e4c23 249-250,270-271
+  s_0f8113dba42c56::t_73fb91a558392f 205-206
+  s_0f8113dba42c56::t_ba1548d1592e28 49,54
+  s_0f8113dba42c56::t_fb07be5b452a29 13
+  s_0f8113dba42c56::t_1dc3d9eca8695e 114
+README.md
+  s_0f8113dba42c56::t_72323a05df43f4 5
+  s_0f8113dba42c56::t_2606c4ad346b26 249-255
+src/core/llm/queryExpander.ts
+  s_0f8113dba42c56::t_8f44240a9233f0 1-84
+package.json
+  s_0f8113dba42c56::t_70d67af4505959 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "b0198dbde5711ef8a9e2efe33e335a89e8fc3eb1",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
