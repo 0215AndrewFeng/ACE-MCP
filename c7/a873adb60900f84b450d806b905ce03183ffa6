@@ -1,0 +1,33 @@
+CHANGELOG.md
+  s_5d09f891d079c4::t_71d619034068cc 5-11
+src/web/static/index.html
+  s_5d09f891d079c4::t_7a477f9657b8e4 49
+src/core/llm/qaPipeline.ts
+  s_5d09f891d079c4::t_0caf6a97be7f81 104
+README.md
+  s_5d09f891d079c4::t_4c36ff60649e15 28
+  s_5d09f891d079c4::t_59ecd4f931711f 5
+package.json
+  s_5d09f891d079c4::t_103eb033c519b5 3
+src/web/app.ts
+  s_5d09f891d079c4::t_4a05d92333ffa0 1123-1124
+  s_5d09f891d079c4::t_937bbe539702ff 1198
+src/version.ts
+  s_5d09f891d079c4::t_a25a0409b48f64 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "c7a873adb60900f84b450d806b905ce03183ffa6",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
