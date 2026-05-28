@@ -20,7 +20,7 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
         maxSources: z.number().int().min(1).max(dependencies.settings.qaMaxSourcesMax).default(dependencies.settings.qaMaxSourcesDefault).describe("Max code snippets to retrieve as context"),
         includeSummary: z.boolean().default(true).describe("Include project summary as additional context"),
         languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
-        contextMode: z.enum(["chunk", "merged-file", "full-file"]).default("chunk").describe("Context mode: chunk (snippets), merged-file (fill gaps between chunks), full-file (entire files)"),
+        contextMode: z.enum(["chunk", "merged-file", "full-file"]).default("merged-file").describe("Context mode: chunk (snippets), merged-file (fill gaps between chunks), full-file (entire files)"),
       },
       title: "Ask Codebase",
     },
