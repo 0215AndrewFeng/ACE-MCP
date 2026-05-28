@@ -1,0 +1,41 @@
+package.json
+  s_0f8113dba42c56::t_1fcb373febb25c 3
+src/core/search/semanticText.ts
+  s_0f8113dba42c56::t_aaa2d5310e38f1 246-257
+  s_0f8113dba42c56::t_ccc14ab8cbad38 64-136
+  s_0f8113dba42c56::t_45438ef4a7b32a 6-8
+README.md
+  s_0f8113dba42c56::t_f5da7c8bda2f2f 249-255
+  s_0f8113dba42c56::t_903f1062c5b2a2 296-303
+  s_0f8113dba42c56::t_f2457ec4175522 5
+CHANGELOG.md
+  s_0f8113dba42c56::t_3b1c7329829ef0 5-17
+src/version.ts
+  s_0f8113dba42c56::t_449cce81ff02be 2
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_442c91b8ac455c 90-91,96-97,104,110,113-114,117,121,124-155
+  s_0f8113dba42c56::t_978e6706361a46 240,284,305
+src/core/search/symbolLabeler.ts
+  s_0f8113dba42c56::t_fcec7cb6ae5189 1-452
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_0ffc3970553a8a 1977-1978,1983
+  s_0f8113dba42c56::t_b19c33e93630fb 2147-2148,2153
+src/web/app.ts
+  s_0f8113dba42c56::t_0702cb0bc9d772 1105-1109,1112-1113,1125,1127,1129-1130,1133,1137,1140-1172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d5896571c19de7fe4f55dad4b924cc3348d430a0",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
