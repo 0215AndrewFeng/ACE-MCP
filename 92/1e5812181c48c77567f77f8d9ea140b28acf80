@@ -1,0 +1,36 @@
+CHANGELOG.md
+  s_0f8113dba42c56::t_707ac861147700 5-12
+src/web/app.ts
+  s_0f8113dba42c56::t_9b2811e2854999 1076
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_5b8484469e95a9 69
+src/config/settings.ts
+  s_0f8113dba42c56::t_bcea8f362777eb 82
+  s_0f8113dba42c56::t_731f2ffe4a92cd 270
+package.json
+  s_0f8113dba42c56::t_a764d7de132b29 3
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_27b45440d64024 82
+README.md
+  s_0f8113dba42c56::t_2479cfb2085771 5
+src/version.ts
+  s_0f8113dba42c56::t_37994d1ccdb531 2
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_27f7303d96069b 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "921e5812181c48c77567f77f8d9ea140b28acf80",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
