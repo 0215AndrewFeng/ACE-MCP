@@ -47,17 +47,22 @@
               <div>
                 <label for="qa-max-sources">参考代码数量</label>
                 <input id="qa-max-sources" type="number" min="1" max="100" value="10" />
-                <span class="hint">搜索多少个代码片段作为上下文</span>
+                <span class="hint">搜索多少个代码片段作为上下文（1~100）</span>
+              </div>
+              <div>
+                <label for="qa-max-tokens">LLM 最大输出</label>
+                <input id="qa-max-tokens" type="number" min="512" max="32768" value="8192" />
+                <span class="hint">LLM 回答的最大 token 数（512~32768），越大回答越完整但越慢</span>
               </div>
               <div>
                 <label for="qa-timeout">超时时间（秒）</label>
                 <input id="qa-timeout" type="number" min="10" max="600" value="120" />
-                <span class="hint">LLM 响应的最大等待时间</span>
+                <span class="hint">LLM 响应的最大等待时间（10~600）</span>
               </div>
               <div>
                 <label for="qa-retries">失败重试次数</label>
                 <input id="qa-retries" type="number" min="0" max="5" value="2" />
-                <span class="hint">LLM 超时后自动重试几次</span>
+                <span class="hint">LLM 超时后自动重试几次（0~5）</span>
               </div>
               <label class="checkbox-label">
                 <input id="qa-include-summary" type="checkbox" checked />
