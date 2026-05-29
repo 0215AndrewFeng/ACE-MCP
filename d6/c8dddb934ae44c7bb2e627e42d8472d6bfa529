@@ -1,0 +1,22 @@
+CHANGELOG.md
+  s_5d09f891d079c4::t_fb16c5cda6bc40 25-28
+src/web/static/js/app.js
+  s_5d09f891d079c4::t_5c241a1ab7c43a 395-408
+  s_5d09f891d079c4::t_60ea5a2972bb48 363-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d6c8dddb934ae44c7bb2e627e42d8472d6bfa529",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
