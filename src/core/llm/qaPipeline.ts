@@ -31,6 +31,7 @@ export interface QaPipelineOptions {
   contextMode?: ContextMode;
   enableReranker?: boolean;
   enableCallChain?: boolean;
+  callChainDepth?: number;  // v4.4.2: Configurable call chain depth (1-3)
   enableCache?: boolean;
   history?: QaConversationTurn[];
   timeoutMs?: number;
@@ -174,6 +175,8 @@ export async function runQaPipeline(
   checkTimeout("reranker");
 
   // 4. Optional call chain extraction
+  // v4.4.2: Added configurable depth (default 1, max 3)
+  const callChainDepth = Math.min(Math.max(options.callChainDepth ?? 1, 1), 3);
   let callChainContext = "";
   let callChains: CallChainContext[] = [];
   let callChainMs = 0;
@@ -184,7 +187,7 @@ export async function runQaPipeline(
         deps.searchService,
         indexResult.projectRootPath,
         searchResult.results,
-        2, 3, 3,
+        2, 3, 3, callChainDepth,
       );
       callChainMs = Date.now() - ccStart;
       callChainContext = formatCallChainsForLLM(ccResult.chains);

@@ -250,6 +250,32 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .syn-decorator { color: #d97706; }
 .search-highlight { background: #fef08a; color: #713f12; padding: 1px 3px; border-radius: 3px; font-weight: 600; }
 
+/* ── v4.4.2: Quality Evaluation Panel ── */
+.quality-test-input { display: flex; gap: 8px; margin-bottom: 12px; }
+.quality-test-input input { flex: 1; }
+.quality-case-list { max-height: 200px; overflow-y: auto; margin-bottom: 12px; }
+.quality-case-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f9fafb; border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+.quality-case-item:hover { background: #f3f4f6; }
+.quality-case-item .case-query { font-weight: 600; color: #374151; flex: 1; }
+.quality-case-item .case-expected { color: #6b7280; font-family: ui-monospace, monospace; font-size: 12px; }
+.quality-case-item .case-remove { background: none; border: none; color: #9ca3af; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.quality-case-item .case-remove:hover { background: #fef2f2; color: #dc2626; }
+.quality-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.quality-results { border-top: 1px solid #e5e7eb; padding-top: 16px; }
+.quality-results h3 { font-size: 14px; margin-bottom: 12px; }
+.quality-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.quality-metric { background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%); padding: 12px; border-radius: 10px; text-align: center; }
+.metric-label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+.metric-value { font-size: 20px; font-weight: 700; color: #667eea; }
+.quality-case-results { max-height: 300px; overflow-y: auto; }
+.quality-case-result { padding: 10px 12px; border-radius: 8px; margin-bottom: 6px; font-size: 13px; cursor: pointer; transition: background 0.2s; }
+.quality-case-result:hover { background: #f3f4f6; }
+.quality-case-result.passed { border-left: 3px solid #10b981; background: #f0fdf4; }
+.quality-case-result.failed { border-left: 3px solid #ef4444; background: #fef2f2; }
+.quality-case-result .result-query { font-weight: 600; }
+.quality-case-result .result-rank { color: #6b7280; font-size: 12px; }
+.quality-case-result .result-files { color: #9ca3af; font-size: 11px; margin-top: 4px; }
+
 /* ── Dark Mode Support (future) ── */
 @media (prefers-color-scheme: dark) {
   /* Placeholder for dark mode styles */
