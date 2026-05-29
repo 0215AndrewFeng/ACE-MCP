@@ -1,0 +1,46 @@
+src/core/search/callChainExtractor.ts
+  s_5d09f891d079c4::t_09e371821b78ce 67-69
+  s_5d09f891d079c4::t_260c6d51317ffa 7,36-66,70-74
+src/core/llm/qaPrompt.ts
+  s_5d09f891d079c4::t_4ab1a6edc5bbb7 96,103,114-124,132
+src/core/llm/qaPipeline.ts
+  s_5d09f891d079c4::t_c587c876c38def 9-10
+  s_5d09f891d079c4::t_7bfc7f818a7ce3 202-251
+  s_5d09f891d079c4::t_ba18695671b78d 24
+  s_5d09f891d079c4::t_f08f0023771e3b 310
+src/version.ts
+  s_5d09f891d079c4::t_f2a23be1f2bf5f 2
+src/test/helpers.ts
+  s_5d09f891d079c4::t_5e666dfd72b158 77-78
+README.md
+  s_5d09f891d079c4::t_19a1829687b75d 5
+package.json
+  s_5d09f891d079c4::t_c96cc46c604915 3
+src/web/app.ts
+  s_5d09f891d079c4::t_7fa23867f8d7f5 1267-1305
+  s_5d09f891d079c4::t_a4cdd197b09ee2 1398
+  s_5d09f891d079c4::t_8a33321bbdd36c 26
+src/web/static/index.html
+  s_5d09f891d079c4::t_c5678928dfebe1 49
+CHANGELOG.md
+  s_5d09f891d079c4::t_cc877377f7805c 5-18
+src/config/settings.ts
+  s_5d09f891d079c4::t_7f99b233bf595e 269-270
+  s_5d09f891d079c4::t_346888099354ed 81-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "0f65bb00fdee0ef8fb4b89d8249cd6715a9517ce",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
