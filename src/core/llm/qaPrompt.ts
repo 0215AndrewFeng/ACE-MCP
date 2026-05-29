@@ -93,12 +93,14 @@ export function compressContext(sources: QaSource[], maxTokens: number): QaSourc
 /**
  * Build the user prompt for QA with optional summary and call chain context
  * v4.3.4: Added callChainContext parameter for deeper code understanding
+ * v4.4.3: Added callChainSources parameter for call chain source code enrichment
  */
 export function buildQaUserPrompt(
   question: string,
   sources: QaSource[],
   summaryArchitecture?: string,
   callChainContext?: string,
+  callChainSources?: QaSource[],
 ): string {
   const summaryContext = summaryArchitecture
     ? `## Project Context\n\n${summaryArchitecture}\n\n`
@@ -109,6 +111,17 @@ export function buildQaUserPrompt(
     ? `${callChainContext}\n\n`
     : "";
 
+  // v4.4.3: Add call chain source code section if available
+  const callChainSourceSection = (callChainSources && callChainSources.length > 0)
+    ? `## Call Chain Source Code\n\nThe following code snippets are from functions in the call chain of the symbols found above. Use these to understand the implementation details of callers and callees.\n\n${
+        callChainSources
+          .map((r, i) =>
+            `[call-chain-${i + 1}] ${r.filePath}:${r.startLine}-${r.endLine} (${r.language})\n\`\`\`${r.language}\n${r.snippet}\n\`\`\``,
+          )
+          .join("\n\n")
+      }\n\n`
+    : "";
+
   const sourcesText = sources
     .map(
       (r, i) =>
@@ -116,7 +129,7 @@ export function buildQaUserPrompt(
     )
     .join("\n\n");
 
-  return `${summaryContext}${callChainSection}## Source Code Snippets
+  return `${summaryContext}${callChainSection}${callChainSourceSection}## Source Code Snippets
 
 ${sourcesText}
 

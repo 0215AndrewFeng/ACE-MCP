@@ -4,6 +4,7 @@
  * providing deeper code understanding context to the LLM.
  *
  * v4.4.2: Added configurable depth for multi-hop call chain extraction
+ * v4.4.3: Added collectCallChainFilePaths for source code enrichment
  */
 
 import type { SearchResult, CallGraphSearchResponse } from "../common/types.js";
@@ -30,6 +31,47 @@ export interface CallChainResult {
   extractedSymbols: string[];
   durationMs: number;
   depth: number;  // v4.4.2: Actual depth used
+}
+
+/**
+ * v4.4.3: Collect all unique file paths and line numbers from call chain results.
+ * Used to read source code for each call chain node for LLM context enrichment.
+ */
+export interface CallChainLocation {
+  filePath: string;
+  startLine: number;
+  symbol: string;
+}
+
+export function collectCallChainLocations(chains: CallChainContext[]): CallChainLocation[] {
+  const seen = new Set<string>();
+  const locations: CallChainLocation[] = [];
+
+  function addLocation(filePath: string, line: number, symbol: string) {
+    const key = `${filePath}:${line}`;
+    if (!seen.has(key) && filePath) {
+      seen.add(key);
+      locations.push({ filePath, startLine: line, symbol });
+    }
+  }
+
+  function processEntries(entries: CallChainEntry[]) {
+    for (const entry of entries) {
+      addLocation(entry.filePath, entry.line, entry.symbol);
+      if (entry.upstream) processEntries(entry.upstream);
+      if (entry.downstream) processEntries(entry.downstream);
+    }
+  }
+
+  for (const chain of chains) {
+    if (chain.filePath) {
+      addLocation(chain.filePath, 0, chain.symbol);
+    }
+    processEntries(chain.callers);
+    processEntries(chain.callees);
+  }
+
+  return locations;
 }
 
 /**
