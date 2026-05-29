@@ -1,0 +1,30 @@
+src/web/static/js/app.js
+  s_5d09f891d079c4::t_93094e53ffb1db 866
+  s_5d09f891d079c4::t_cf8d6c95358a2f 821-822
+CHANGELOG.md
+  s_5d09f891d079c4::t_e8eeb1957acb2c 5-10
+src/web/static/index.html
+  s_5d09f891d079c4::t_00a327a1dbcb14 67-71
+package.json
+  s_5d09f891d079c4::t_3efb157a618e9c 3
+README.md
+  s_5d09f891d079c4::t_7028e1442dc329 5
+src/version.ts
+  s_5d09f891d079c4::t_1d4782d2d476a0 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d54dbef58ee99bc67bb9b43cf4ffa5ca5849aa89",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
