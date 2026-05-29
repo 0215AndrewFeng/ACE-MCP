@@ -23,7 +23,7 @@ import { expandQueryWithLlm } from "../core/llm/queryExpander.js";
 import type { ContextMode } from "../core/common/types.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
-import { extractCallChains, formatCallChainsForLLM, type CallChainContext } from "../core/search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, generateCallChainMermaid, type CallChainContext } from "../core/search/callChainExtractor.js";
 import { rerankWithLlm } from "../core/search/llmReranker.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
@@ -955,7 +955,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   // ── QA endpoint (v4.3.7: unified pipeline) ────────────────────────────────────────
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history, contextMode } = req.body;
+      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history, contextMode, callChainDepth } = req.body;
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
@@ -979,6 +979,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           includeSummary: includeSummary !== false,
           languages: normalizeSupportedLanguages(languages),
           contextMode: (contextMode as ContextMode) ?? "chunk",
+          callChainDepth: clampInteger(callChainDepth, 1, 3, 1),  // v4.4.2
           history: Array.isArray(history) ? history : [],
           timeoutMs: clampInteger(timeoutSeconds, 10, 600, 120) * 1000,
         },
@@ -1074,6 +1075,11 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
       // v4.3.7: context mode support
       const contextMode = ((isPost ? req.body?.contextMode : req.query.contextMode) as ContextMode) ?? "merged-file";
+      // v4.4.2: call chain depth support
+      const callChainDepth = clampInteger(
+        Number(isPost ? req.body?.callChainDepth : req.query.callChainDepth) || 1,
+        1, 3, 1
+      );
 
       dependencies.logger.info("SSE stream started", { projectRootPath, question: question?.slice(0, 50) });
 
@@ -1218,7 +1224,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         return;
       }
 
-      // Phase 3: Extract call chains (v4.3.4)
+      // Phase 3: Extract call chains (v4.3.4, v4.4.2: configurable depth)
       dependencies.logger.info("SSE phase: callchain start");
       sendEvent({ type: "phase", phase: "callchain", status: "start" });
       let callChainContext = "";
@@ -1233,6 +1239,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           2,  // max 2 symbols
           3,  // max 3 callers per symbol
           3,  // max 3 callees per symbol
+          callChainDepth,  // v4.4.2: configurable depth
         );
         callChainMs = Date.now() - callChainStart;
         callChainContext = formatCallChainsForLLM(callChainResult.chains);
@@ -1244,6 +1251,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           ms: callChainMs,
           symbolCount: callChainResult.extractedSymbols.length,
           chainCount: callChainResult.chains.length,
+          depth: callChainResult.depth,  // v4.4.2
         });
         dependencies.logger.info("SSE phase: callchain done", {
           callChainMs,

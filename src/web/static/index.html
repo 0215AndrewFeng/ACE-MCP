@@ -201,6 +201,54 @@
           </div>
         </div>
 
+        <!-- v4.4.2: 搜索质量评估 -->
+        <details class="card card-compact">
+          <summary><h2 style="display:inline">📏 搜索质量评估</h2></summary>
+          <p class="hint">录入测试用例，评估搜索召回率和精度</p>
+
+          <!-- 测试用例录入 -->
+          <div class="quality-test-input">
+            <input id="quality-test-query" class="mono" placeholder="搜索查询，如：订单处理" />
+            <input id="quality-test-expected" class="mono" placeholder="期望文件路径（逗号分隔），如：src/OrderService.ts" />
+            <button id="quality-add-case" type="button" class="btn-secondary btn-small">➕ 添加</button>
+          </div>
+
+          <!-- 测试用例列表 -->
+          <div id="quality-case-list" class="quality-case-list"></div>
+
+          <!-- 操作按钮 -->
+          <div class="quality-actions">
+            <button id="quality-run-eval" type="button" class="btn-primary">🚀 运行评估</button>
+            <button id="quality-save-cases" type="button" class="btn-secondary btn-small">💾 保存</button>
+            <button id="quality-load-cases" type="button" class="btn-secondary btn-small">📂 加载</button>
+            <button id="quality-clear-cases" type="button" class="btn-secondary btn-small">🗑️ 清空</button>
+          </div>
+
+          <!-- 评估结果 -->
+          <div id="quality-results" class="quality-results" hidden>
+            <h3>📊 评估结果</h3>
+            <div class="quality-metrics">
+              <div class="quality-metric">
+                <span class="metric-label">通过率</span>
+                <span id="quality-pass-rate" class="metric-value">--%</span>
+              </div>
+              <div class="quality-metric">
+                <span class="metric-label">Top1 召回</span>
+                <span id="quality-top1-recall" class="metric-value">--%</span>
+              </div>
+              <div class="quality-metric">
+                <span class="metric-label">Top5 召回</span>
+                <span id="quality-top5-recall" class="metric-value">--%</span>
+              </div>
+              <div class="quality-metric">
+                <span class="metric-label">MRR</span>
+                <span id="quality-mrr" class="metric-value">--</span>
+              </div>
+            </div>
+            <div id="quality-case-results" class="quality-case-results"></div>
+          </div>
+        </details>
+
         <!-- 文件片段查看 -->
         <div class="card card-compact">
           <h2>📄 查看代码片段</h2>

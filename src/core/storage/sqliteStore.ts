@@ -1,10 +1,12 @@
 import path from "node:path";
+import fs from "node:fs";
 
 import Database from "better-sqlite3";
 
 import { buildStableId } from "../indexing/fileFingerprint.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { buildSemanticFtsQuery, buildSemanticText } from "../search/semanticText.js";
+import { HnswIndex } from "../search/hnswIndex.js";
 import type {
   CallGraphMatch,
   ChunkRecord,
@@ -285,15 +287,28 @@ function resolveImportSourceModule(filePath: string, sourceModule: string, langu
 }
 
 const VECTOR_CACHE_MAX_PROJECTS = 10;
+const HNSW_CACHE_DIR = ".ace-mcp/data/hnsw";
+
+interface VectorCacheEntry {
+  indexVersion: number;
+  modelName: string;
+  vectors: VectorEntry[];
+  hnswIndex: HnswIndex | null;
+  hnswBuilding: boolean;
+}
 
 export class SQLiteStore {
   private readonly db: Database.Database;
-  private readonly vectorCache = new Map<string, { indexVersion: number; modelName: string; vectors: VectorEntry[] }>();
+  private readonly vectorCache = new Map<string, VectorCacheEntry>();
   private readonly vectorCacheOrder: string[] = [];
   private vectorCacheMaxProjects = VECTOR_CACHE_MAX_PROJECTS;
+  private readonly hnswCacheDir: string;
 
   public constructor(databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
+    // HNSW cache directory next to database
+    const dataDir = path.dirname(databasePath);
+    this.hnswCacheDir = path.join(dataDir, "hnsw");
   }
 
   /** Allow external configuration of vector cache size */
@@ -1591,7 +1606,7 @@ export class SQLiteStore {
 
   /**
    * 向量搜索
-   * 使用余弦相似度 + Top-K 堆，避免全量排序
+   * v4.4.2: 优先使用 HNSW 近似搜索，回退到暴力搜索
    * v4.2.3: 支持候选预过滤，只在指定的 chunkIds 范围内搜索
    */
   public searchByVector(
@@ -1602,48 +1617,72 @@ export class SQLiteStore {
     filters?: SearchFilters,
     indexVersion = Number.NaN,
     candidateChunkIds?: Set<string>,
-  ): { cacheHit: boolean; candidateCount: number; results: SearchResult[]; prefiltered: boolean } {
-    const { cacheHit, vectors } = this.getProjectVectors(projectId, modelName, indexVersion);
+  ): { cacheHit: boolean; candidateCount: number; results: SearchResult[]; prefiltered: boolean; hnswUsed: boolean } {
+    const { cacheHit, vectors, hnswIndex } = this.getProjectVectors(projectId, modelName, indexVersion);
 
     // v4.2.3: 如果提供了候选集，只在候选集中搜索
-    let filteredVectors = vectors;
     const prefiltered = candidateChunkIds !== undefined && candidateChunkIds.size > 0;
+    const hasFilters = filters !== undefined;
 
-    if (prefiltered) {
-      filteredVectors = vectors.filter((v) => candidateChunkIds.has(v.chunkId));
+    // v4.4.2: Use HNSW when no pre-filtering or filters (HNSW doesn't support filtered search)
+    const canUseHnsw = hnswIndex && !prefiltered && !hasFilters;
+
+    let topChunkIds: Array<{ id: string; score: number }>;
+    let candidateCount: number;
+    let hnswUsed = false;
+
+    if (canUseHnsw) {
+      // HNSW approximate nearest neighbor search
+      const hnswResults = hnswIndex.search(queryEmbedding, limit * 2);  // Over-fetch for safety
+      topChunkIds = hnswResults.map(r => ({
+        id: r.id,
+        score: 1 - r.distance,  // Convert distance back to similarity
+      })).slice(0, limit);
+      candidateCount = hnswIndex.size();
+      hnswUsed = true;
+    } else {
+      // Brute-force search with filters
+      let filteredVectors = vectors;
+
+      if (prefiltered) {
+        filteredVectors = vectors.filter((v) => candidateChunkIds.has(v.chunkId));
+      }
+
+      if (hasFilters) {
+        filteredVectors = filteredVectors.filter((vector) => matchesSearchFilters(vector, filters));
+      }
+
+      if (filteredVectors.length === 0) {
+        return {
+          cacheHit,
+          candidateCount: 0,
+          prefiltered,
+          results: [],
+          hnswUsed: false,
+        };
+      }
+
+      // Convert query to Float32Array once for faster cosine similarity
+      const queryVec = queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
+
+      // Use min-heap to find top-K without sorting all candidates
+      const heap = new TopKHeap(limit);
+      for (const v of filteredVectors) {
+        const score = cosineSimilarity(queryVec, v.embedding);
+        heap.push(v.chunkId, score);
+      }
+
+      topChunkIds = heap.drain();
+      candidateCount = filteredVectors.length;
     }
-
-    if (filters) {
-      filteredVectors = filteredVectors.filter((vector) => matchesSearchFilters(vector, filters));
-    }
-
-    if (filteredVectors.length === 0) {
-      return {
-        cacheHit,
-        candidateCount: 0,
-        prefiltered,
-        results: [],
-      };
-    }
-
-    // Convert query to Float32Array once for faster cosine similarity
-    const queryVec = queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding);
-
-    // Use min-heap to find top-K without sorting all candidates
-    const heap = new TopKHeap(limit);
-    for (const v of filteredVectors) {
-      const score = cosineSimilarity(queryVec, v.embedding);
-      heap.push(v.chunkId, score);
-    }
-
-    const topChunkIds = heap.drain();
 
     if (topChunkIds.length === 0) {
       return {
         cacheHit,
-        candidateCount: filteredVectors.length,
+        candidateCount,
         prefiltered,
         results: [],
+        hnswUsed,
       };
     }
 
@@ -1677,8 +1716,9 @@ export class SQLiteStore {
 
     return {
       cacheHit,
-      candidateCount: filteredVectors.length,
+      candidateCount,
       prefiltered,
+      hnswUsed,
       results: rows.map((row) => ({
         endLine: row.end_line,
         filePath: row.relative_path,
@@ -2262,7 +2302,7 @@ export class SQLiteStore {
     projectId: string,
     modelName: string,
     indexVersion = Number.NaN,
-  ): { cacheHit: boolean; vectors: VectorEntry[] } {
+  ): { cacheHit: boolean; vectors: VectorEntry[]; hnswIndex: HnswIndex | null } {
     const cached = this.vectorCache.get(projectId);
     if (
       cached &&
@@ -2275,9 +2315,16 @@ export class SQLiteStore {
         this.vectorCacheOrder.splice(orderIdx, 1);
         this.vectorCacheOrder.push(projectId);
       }
+
+      // Try to build HNSW index if not already building
+      if (!cached.hnswIndex && !cached.hnswBuilding && cached.vectors.length > 0) {
+        this.buildHnswIndexAsync(projectId, cached);
+      }
+
       return {
         cacheHit: true,
         vectors: cached.vectors,
+        hnswIndex: cached.hnswIndex,
       };
     }
 
@@ -2305,12 +2352,20 @@ export class SQLiteStore {
       language: row.language,
       modelName: row.model_name,
     }));
+
+    // Try to load HNSW from disk cache
+    let hnswIndex = this.loadHnswFromDisk(projectId, modelName, vectors.length);
+
     if (Number.isFinite(indexVersion)) {
-      this.vectorCache.set(projectId, {
+      const cacheEntry: VectorCacheEntry = {
         indexVersion,
         modelName,
         vectors,
-      });
+        hnswIndex,
+        hnswBuilding: false,
+      };
+      this.vectorCache.set(projectId, cacheEntry);
+
       // LRU: 更新访问顺序并淘汰
       const orderIdx = this.vectorCacheOrder.indexOf(projectId);
       if (orderIdx >= 0) {
@@ -2318,12 +2373,121 @@ export class SQLiteStore {
       }
       this.vectorCacheOrder.push(projectId);
       this.evictVectorCache();
+
+      // Build HNSW if not loaded from disk
+      if (!hnswIndex && vectors.length > 0) {
+        this.buildHnswIndexAsync(projectId, cacheEntry);
+      }
     }
 
     return {
       cacheHit: false,
       vectors,
+      hnswIndex,
     };
+  }
+
+  /**
+   * Build HNSW index asynchronously in the background
+   */
+  private buildHnswIndexAsync(projectId: string, cacheEntry: VectorCacheEntry): void {
+    if (cacheEntry.hnswBuilding || cacheEntry.hnswIndex || cacheEntry.vectors.length === 0) {
+      return;
+    }
+
+    cacheEntry.hnswBuilding = true;
+    const vectors = cacheEntry.vectors;
+    const dimension = vectors[0].embedding.length;
+
+    // Use setImmediate to avoid blocking the main thread
+    setImmediate(() => {
+      try {
+        const startMs = Date.now();
+        const hnswIndex = new HnswIndex({
+          dimension,
+          maxElements: Math.max(vectors.length * 2, 10000),  // Allow growth
+          efConstruction: 200,
+          efSearch: 50,
+          m: 16,
+        });
+
+        // Batch add vectors
+        hnswIndex.addBatch(vectors.map(v => ({
+          id: v.chunkId,
+          vector: [...v.embedding],
+        })));
+
+        cacheEntry.hnswIndex = hnswIndex;
+        cacheEntry.hnswBuilding = false;
+
+        const durationMs = Date.now() - startMs;
+        this.logger.info(`HNSW index built for project ${projectId}: ${vectors.length} vectors in ${durationMs}ms`);
+
+        // Save to disk for next startup
+        this.saveHnswToDisk(projectId, cacheEntry.modelName, hnswIndex);
+      } catch (error) {
+        cacheEntry.hnswBuilding = false;
+        this.logger.warn(`Failed to build HNSW index for ${projectId}: ${error}`);
+      }
+    });
+  }
+
+  /**
+   * Load HNSW index from disk cache if valid
+   */
+  private loadHnswFromDisk(projectId: string, modelName: string, expectedSize: number): HnswIndex | null {
+    try {
+      const cachePath = this.getHnswCachePath(projectId, modelName);
+      if (!fs.existsSync(cachePath)) {
+        return null;
+      }
+
+      const data = fs.readFileSync(cachePath);
+      const hnswIndex = HnswIndex.deserialize(data);
+
+      // Validate size matches (index may be stale)
+      if (hnswIndex.size() !== expectedSize) {
+        this.logger.info(`HNSW cache size mismatch for ${projectId}: ${hnswIndex.size()} vs ${expectedSize}, rebuilding`);
+        fs.unlinkSync(cachePath);
+        return null;
+      }
+
+      this.logger.info(`HNSW index loaded from disk for ${projectId}: ${hnswIndex.size()} vectors`);
+      return hnswIndex;
+    } catch (error) {
+      this.logger.warn(`Failed to load HNSW cache for ${projectId}: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Save HNSW index to disk for persistence
+   */
+  private saveHnswToDisk(projectId: string, modelName: string, hnswIndex: HnswIndex): void {
+    try {
+      const cachePath = this.getHnswCachePath(projectId, modelName);
+      const cacheDir = path.dirname(cachePath);
+
+      if (!fs.existsSync(cacheDir)) {
+        fs.mkdirSync(cacheDir, { recursive: true });
+      }
+
+      const data = hnswIndex.serialize();
+      fs.writeFileSync(cachePath, data);
+      this.logger.info(`HNSW index saved to disk for ${projectId}: ${hnswIndex.size()} vectors`);
+    } catch (error) {
+      this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
+    }
+  }
+
+  /**
+   * Get HNSW cache file path
+   */
+  private getHnswCachePath(projectId: string, modelName: string): string {
+    // Sanitize projectId for filename
+    const safeProjectId = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeModelName = modelName.replace(/[^a-zA-Z0-9_-]/g, "_");
+    return path.join(this.hnswCacheDir, `${safeProjectId}_${safeModelName}.hnsw`);
   }
 
   public hasVectorIndex(projectId: string, modelName?: string): boolean {

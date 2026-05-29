@@ -1270,3 +1270,164 @@ document.getElementById('qa-callchain-toggle')?.addEventListener('click', functi
     this.textContent = isCollapsed ? '展开' : '收起';
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v4.4.2: Quality Evaluation Panel
+// ─────────────────────────────────────────────────────────────────────────────
+const qualityTestCases = [];
+
+function renderQualityCaseList() {
+  const container = document.getElementById('quality-case-list');
+  if (!container) return;
+
+  if (qualityTestCases.length === 0) {
+    container.innerHTML = '<p class="hint">暂无测试用例，请添加</p>';
+    return;
+  }
+
+  container.innerHTML = qualityTestCases.map((tc, i) => `
+    <div class="quality-case-item" data-index="${i}">
+      <span class="case-query">${escapeHtml(tc.query)}</span>
+      <span class="case-expected">${escapeHtml(tc.expectedFiles.join(', '))}</span>
+      <button class="case-remove" type="button" title="删除">✕</button>
+    </div>
+  `).join('');
+
+  // Bind remove handlers
+  container.querySelectorAll('.case-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.closest('.quality-case-item').dataset.index);
+      qualityTestCases.splice(idx, 1);
+      renderQualityCaseList();
+    });
+  });
+}
+
+// Add test case
+document.getElementById('quality-add-case')?.addEventListener('click', () => {
+  const queryInput = document.getElementById('quality-test-query');
+  const expectedInput = document.getElementById('quality-test-expected');
+  const query = queryInput?.value?.trim();
+  const expected = expectedInput?.value?.trim();
+
+  if (!query || !expected) {
+    alert('请输入查询和期望文件路径');
+    return;
+  }
+
+  qualityTestCases.push({
+    query,
+    expectedFiles: expected.split(',').map(f => f.trim()).filter(Boolean),
+  });
+
+  queryInput.value = '';
+  expectedInput.value = '';
+  renderQualityCaseList();
+});
+
+// Run evaluation
+document.getElementById('quality-run-eval')?.addEventListener('click', async () => {
+  if (qualityTestCases.length === 0) {
+    alert('请先添加测试用例');
+    return;
+  }
+
+  const projectRootPath = document.getElementById('project-root')?.value?.trim();
+  if (!projectRootPath) {
+    alert('请先选择项目');
+    return;
+  }
+
+  const resultsContainer = document.getElementById('quality-results');
+  const caseResultsContainer = document.getElementById('quality-case-results');
+
+  try {
+    const response = await fetch('/api/evaluate-search-quality', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectRootPath,
+        cases: qualityTestCases.map(tc => ({
+          query: tc.query,
+          expectedFiles: tc.expectedFiles,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Evaluation failed');
+    }
+
+    const result = await response.json();
+
+    // Update metrics
+    document.getElementById('quality-pass-rate').textContent = `${(result.metrics.passRate * 100).toFixed(1)}%`;
+    document.getElementById('quality-top1-recall').textContent = `${(result.metrics.top1Recall * 100).toFixed(1)}%`;
+    document.getElementById('quality-top5-recall').textContent = `${(result.metrics.top5Recall * 100).toFixed(1)}%`;
+    document.getElementById('quality-mrr').textContent = result.metrics.meanReciprocalRank.toFixed(3);
+
+    // Render case results
+    caseResultsContainer.innerHTML = result.caseResults.map((cr, i) => {
+      const statusClass = cr.passed ? 'passed' : 'failed';
+      const rankText = cr.bestRank > 0 ? `排名 #${cr.bestRank}` : '未命中';
+      const foundFiles = cr.foundAt.slice(0, 3).map(f => `${f.filePath} (#${f.rank})`).join(', ');
+      return `
+        <div class="quality-case-result ${statusClass}" data-index="${i}">
+          <div class="result-query">${escapeHtml(cr.query)}</div>
+          <div class="result-rank">${cr.passed ? '✓' : '✗'} ${rankText} | 耗时 ${cr.searchMs}ms</div>
+          ${foundFiles ? `<div class="result-files">命中: ${escapeHtml(foundFiles)}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    resultsContainer.hidden = false;
+
+  } catch (err) {
+    alert('评估失败: ' + err.message);
+  }
+});
+
+// Save cases to localStorage
+document.getElementById('quality-save-cases')?.addEventListener('click', () => {
+  if (qualityTestCases.length === 0) {
+    alert('没有测试用例可保存');
+    return;
+  }
+  const projectRootPath = document.getElementById('project-root')?.value?.trim() || 'default';
+  const key = `ace-mcp-quality-cases-${projectRootPath.replace(/\//g, '_')}`;
+  localStorage.setItem(key, JSON.stringify(qualityTestCases));
+  alert(`已保存 ${qualityTestCases.length} 个测试用例`);
+});
+
+// Load cases from localStorage
+document.getElementById('quality-load-cases')?.addEventListener('click', () => {
+  const projectRootPath = document.getElementById('project-root')?.value?.trim() || 'default';
+  const key = `ace-mcp-quality-cases-${projectRootPath.replace(/\//g, '_')}`;
+  const saved = localStorage.getItem(key);
+  if (!saved) {
+    alert('未找到保存的测试用例');
+    return;
+  }
+  try {
+    const loaded = JSON.parse(saved);
+    qualityTestCases.length = 0;
+    qualityTestCases.push(...loaded);
+    renderQualityCaseList();
+    alert(`已加载 ${qualityTestCases.length} 个测试用例`);
+  } catch {
+    alert('加载失败');
+  }
+});
+
+// Clear cases
+document.getElementById('quality-clear-cases')?.addEventListener('click', () => {
+  if (qualityTestCases.length === 0) return;
+  if (!confirm('确定清空所有测试用例？')) return;
+  qualityTestCases.length = 0;
+  renderQualityCaseList();
+  document.getElementById('quality-results').hidden = true;
+});
+
+// Initialize
+renderQualityCaseList();

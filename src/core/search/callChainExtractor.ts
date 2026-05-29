@@ -1,7 +1,9 @@
 /**
- * v4.3.4: Call chain extractor for QA context enrichment
+ * v4.4.2: Call chain extractor for QA context enrichment
  * Extracts caller/callee relationships for symbols found in search results,
  * providing deeper code understanding context to the LLM.
+ *
+ * v4.4.2: Added configurable depth for multi-hop call chain extraction
  */
 
 import type { SearchResult, CallGraphSearchResponse } from "../common/types.js";
@@ -19,12 +21,15 @@ export interface CallChainEntry {
   filePath: string;
   line: number;
   snippet: string;
+  upstream?: CallChainEntry[];   // v4.4.2: Recursive upstream callers
+  downstream?: CallChainEntry[]; // v4.4.2: Recursive downstream callees
 }
 
 export interface CallChainResult {
   chains: CallChainContext[];
   extractedSymbols: string[];
   durationMs: number;
+  depth: number;  // v4.4.2: Actual depth used
 }
 
 /**
@@ -109,6 +114,9 @@ function isCommonWord(word: string): boolean {
 /**
  * Extract call chains for symbols found in search results.
  * This enriches the QA context with caller/callee relationships.
+ *
+ * v4.4.2: Added depth parameter for multi-hop call chain extraction
+ * @param depth - Depth of call chain to extract (1 = direct callers/callees, 2 = two-hop, etc.)
  */
 export async function extractCallChains(
   searchService: SearchService,
@@ -117,23 +125,41 @@ export async function extractCallChains(
   maxSymbols = 2,
   maxCallersPerSymbol = 3,
   maxCalleesPerSymbol = 3,
+  depth = 1,
 ): Promise<CallChainResult> {
   const startMs = Date.now();
   const symbols = extractSymbolsFromResults(results).slice(0, maxSymbols);
   const chains: CallChainContext[] = [];
 
+  // Clamp depth to avoid excessive recursion
+  const effectiveDepth = Math.min(Math.max(depth, 1), 3);
+
   for (const symbol of symbols) {
     try {
       // Query callers and callees in parallel
       const [callersResponse, calleesResponse] = await Promise.all([
-        searchService.findCallers(projectRootPath, symbol, maxCallersPerSymbol, 0, undefined, "metadata", 1)
+        searchService.findCallers(projectRootPath, symbol, maxCallersPerSymbol, 0, undefined, "metadata", effectiveDepth)
           .catch(() => null),
-        searchService.findCallees(projectRootPath, symbol, maxCalleesPerSymbol, 0, undefined, "metadata", 1)
+        searchService.findCallees(projectRootPath, symbol, maxCalleesPerSymbol, 0, undefined, "metadata", effectiveDepth)
           .catch(() => null),
       ]);
 
-      const callers = extractCallEntries(callersResponse, maxCallersPerSymbol);
-      const callees = extractCallEntries(calleesResponse, maxCalleesPerSymbol);
+      const callers = await extractCallEntriesWithDepth(
+        searchService,
+        projectRootPath,
+        callersResponse,
+        maxCallersPerSymbol,
+        effectiveDepth - 1,
+        "callers",
+      );
+      const callees = await extractCallEntriesWithDepth(
+        searchService,
+        projectRootPath,
+        calleesResponse,
+        maxCalleesPerSymbol,
+        effectiveDepth - 1,
+        "callees",
+      );
 
       // Only add if we found meaningful relationships
       if (callers.length > 0 || callees.length > 0) {
@@ -159,27 +185,95 @@ export async function extractCallChains(
     chains,
     extractedSymbols: symbols,
     durationMs: Date.now() - startMs,
+    depth: effectiveDepth,
   };
 }
 
-function extractCallEntries(
+/**
+ * Extract call entries with recursive depth support
+ */
+async function extractCallEntriesWithDepth(
+  searchService: SearchService,
+  projectRootPath: string,
   response: CallGraphSearchResponse | null,
   limit: number,
-): CallChainEntry[] {
+  remainingDepth: number,
+  direction: "callers" | "callees",
+): Promise<CallChainEntry[]> {
   if (!response || !response.results) {
     return [];
   }
 
-  return response.results.slice(0, limit).map(r => ({
-    symbol: r.ownerSymbol ?? r.resolvedSymbol ?? r.rawName ?? "unknown",
-    filePath: r.filePath,
-    line: r.startLine,
-    snippet: r.snippet?.slice(0, 200) ?? "",
-  }));
+  const entries: CallChainEntry[] = [];
+
+  for (const r of response.results.slice(0, limit)) {
+    const entry: CallChainEntry = {
+      symbol: r.ownerSymbol ?? r.resolvedSymbol ?? r.rawName ?? "unknown",
+      filePath: r.filePath,
+      line: r.startLine,
+      snippet: r.snippet?.slice(0, 200) ?? "",
+    };
+
+    // Recursively fetch deeper levels
+    if (remainingDepth > 0 && entry.symbol !== "unknown") {
+      try {
+        if (direction === "callers") {
+          const upstreamResponse = await searchService.findCallers(
+            projectRootPath,
+            entry.symbol,
+            Math.min(limit, 2),  // Reduce limit for deeper levels
+            0,
+            undefined,
+            "metadata",
+            1,
+          ).catch(() => null);
+
+          if (upstreamResponse && upstreamResponse.results.length > 0) {
+            entry.upstream = await extractCallEntriesWithDepth(
+              searchService,
+              projectRootPath,
+              upstreamResponse,
+              Math.min(limit, 2),
+              remainingDepth - 1,
+              direction,
+            );
+          }
+        } else {
+          const downstreamResponse = await searchService.findCallees(
+            projectRootPath,
+            entry.symbol,
+            Math.min(limit, 2),
+            0,
+            undefined,
+            "metadata",
+            1,
+          ).catch(() => null);
+
+          if (downstreamResponse && downstreamResponse.results.length > 0) {
+            entry.downstream = await extractCallEntriesWithDepth(
+              searchService,
+              projectRootPath,
+              downstreamResponse,
+              Math.min(limit, 2),
+              remainingDepth - 1,
+              direction,
+            );
+          }
+        }
+      } catch {
+        // Ignore failures in recursive calls
+      }
+    }
+
+    entries.push(entry);
+  }
+
+  return entries;
 }
 
 /**
  * Format call chains as context string for LLM
+ * v4.4.2: Updated to support recursive upstream/downstream chains
  */
 export function formatCallChainsForLLM(chains: CallChainContext[]): string {
   if (chains.length === 0) {
@@ -193,20 +287,105 @@ export function formatCallChainsForLLM(chains: CallChainContext[]): string {
 
     if (chain.callers.length > 0) {
       sections.push("\n**Called by:**");
-      for (const caller of chain.callers) {
-        sections.push(`- \`${caller.symbol}\` at ${caller.filePath}:${caller.line}`);
-      }
+      formatCallEntriesRecursive(chain.callers, sections, 0, "upstream");
     }
 
     if (chain.callees.length > 0) {
       sections.push("\n**Calls:**");
-      for (const callee of chain.callees) {
-        sections.push(`- \`${callee.symbol}\` at ${callee.filePath}:${callee.line}`);
-      }
+      formatCallEntriesRecursive(chain.callees, sections, 0, "downstream");
     }
 
     sections.push("");
   }
 
   return sections.join("\n");
+}
+
+/**
+ * Format call entries recursively with indentation
+ */
+function formatCallEntriesRecursive(
+  entries: CallChainEntry[],
+  sections: string[],
+  depth: number,
+  direction: "upstream" | "downstream",
+): void {
+  const indent = "  ".repeat(depth);
+  for (const entry of entries) {
+    sections.push(`${indent}- \`${entry.symbol}\` at ${entry.filePath}:${entry.line}`);
+
+    // Format nested entries
+    const nested = direction === "upstream" ? entry.upstream : entry.downstream;
+    if (nested && nested.length > 0) {
+      formatCallEntriesRecursive(nested, sections, depth + 1, direction);
+    }
+  }
+}
+
+/**
+ * Generate Mermaid diagram for call chains
+ * v4.4.2: Updated to support multi-level call chains
+ */
+export function generateCallChainMermaid(chains: CallChainContext[]): string {
+  if (chains.length === 0) {
+    return "";
+  }
+
+  const lines: string[] = ["flowchart LR"];
+  const nodes = new Set<string>();
+  const edges: string[] = [];
+
+  function sanitizeId(s: string): string {
+    return s.replace(/[^a-zA-Z0-9_]/g, "_");
+  }
+
+  function addNode(symbol: string): string {
+    const id = sanitizeId(symbol);
+    if (!nodes.has(id)) {
+      nodes.add(id);
+      lines.push(`  ${id}["${symbol}"]`);
+    }
+    return id;
+  }
+
+  function processCallersRecursive(entries: CallChainEntry[], targetId: string): void {
+    for (const entry of entries) {
+      const sourceId = addNode(entry.symbol);
+      const edge = `${sourceId} --> ${targetId}`;
+      if (!edges.includes(edge)) {
+        edges.push(edge);
+      }
+      if (entry.upstream) {
+        processCallersRecursive(entry.upstream, sourceId);
+      }
+    }
+  }
+
+  function processCalleesRecursive(entries: CallChainEntry[], sourceId: string): void {
+    for (const entry of entries) {
+      const targetId = addNode(entry.symbol);
+      const edge = `${sourceId} --> ${targetId}`;
+      if (!edges.includes(edge)) {
+        edges.push(edge);
+      }
+      if (entry.downstream) {
+        processCalleesRecursive(entry.downstream, targetId);
+      }
+    }
+  }
+
+  for (const chain of chains) {
+    const centerId = addNode(chain.symbol);
+    lines.push(`  style ${centerId} fill:#f9f,stroke:#333,stroke-width:2px`);
+
+    processCallersRecursive(chain.callers, centerId);
+    processCalleesRecursive(chain.callees, centerId);
+  }
+
+  // Add edges after all nodes
+  for (const edge of edges) {
+    lines.push(`  ${edge}`);
+  }
+
+  return lines.join("\n");
 }
