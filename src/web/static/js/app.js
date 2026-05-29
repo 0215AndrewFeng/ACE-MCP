@@ -818,6 +818,8 @@ async function runAskQuestion() {
   const projectRoot = projectRootInput.value;
   const maxSources = Number(document.getElementById("qa-max-sources")?.value || 10);
   const includeSummary = document.getElementById("qa-include-summary")?.checked ?? true;
+  const localCode = document.getElementById("qa-local-code")?.checked ?? true;
+  const contextMode = localCode ? "full-file" : "chunk";
 
   // Reset UI
   askBtn.disabled = true;
@@ -861,6 +863,7 @@ async function runAskQuestion() {
         question,
         maxSources,
         includeSummary,
+        contextMode,
         timeoutSeconds: timeoutSec,
         history: qaConversationHistory,
       }),
