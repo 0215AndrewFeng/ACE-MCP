@@ -1,0 +1,53 @@
+README.md
+  s_5d09f891d079c4::t_bdfac6a03f5ca8 5
+package.json
+  s_5d09f891d079c4::t_52ebe6fb8361e5 3
+src/web/app.ts
+  s_5d09f891d079c4::t_46a583fa2da7a3 958
+  s_5d09f891d079c4::t_f5d5108b24c7e3 1073
+  s_5d09f891d079c4::t_7cc880db45cc71 1409
+  s_5d09f891d079c4::t_c58170643676e3 979
+CHANGELOG.md
+  s_5d09f891d079c4::t_db727d9f6ff7c5 5-11
+src/core/llm/qaPipeline.ts
+  s_5d09f891d079c4::t_d89f9beea94ca3 318
+  s_5d09f891d079c4::t_e10783f166689a 30
+src/test/helpers.ts
+  s_5d09f891d079c4::t_e74084bac6c845 71
+src/config/settings.ts
+  s_5d09f891d079c4::t_eee21d1c53ccb5 263
+  s_5d09f891d079c4::t_ce8b504f959bcb 75
+src/web/static/js/app.js
+  s_5d09f891d079c4::t_61887714b71787 868
+  s_5d09f891d079c4::t_95dc4b202266c1 820
+src/version.ts
+  s_5d09f891d079c4::t_430343275b464c 2
+src/web/static/index.html
+  s_5d09f891d079c4::t_ebf1442c718e0e 50,55,60,65
+  s_0f8113dba42c56::t_b79287cd56d056 51
+  s_5d09f891d079c4::t_db7f89e9ce96c6 53-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "84bcc3e7d797d4280be01cbfc63cb1a0f5078588",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.5"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    },
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
