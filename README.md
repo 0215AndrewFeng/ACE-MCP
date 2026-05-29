@@ -6,6 +6,8 @@
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
+仓库地址：[GitHub](https://github.com/0215AndrewFeng/ACE-MCP) | [Gitee](https://gitee.com/AndrewFengCode/ace-mcp)
+
 ## 核心功能
 
 ### 代码搜索
