@@ -68,7 +68,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     llmApiUrl: "",
     llmApiKey: "",
     llmModel: "gpt-4o-mini",
-    llmMaxTokens: 2048,
+    llmMaxTokens: 8192,
     llmTemperature: 0.3,
     enableLlmReranker: false,
     llmRerankerMaxCandidates: 10,

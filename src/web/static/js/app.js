@@ -817,6 +817,7 @@ async function runAskQuestion() {
   const timeoutSec = Number(document.getElementById("qa-timeout")?.value || 120);
   const projectRoot = projectRootInput.value;
   const maxSources = Number(document.getElementById("qa-max-sources")?.value || 10);
+  const maxTokens = Number(document.getElementById("qa-max-tokens")?.value || 8192);
   const includeSummary = document.getElementById("qa-include-summary")?.checked ?? true;
   const localCode = document.getElementById("qa-local-code")?.checked ?? true;
   const contextMode = localCode ? "full-file" : "chunk";
@@ -864,6 +865,7 @@ async function runAskQuestion() {
         maxSources,
         includeSummary,
         contextMode,
+        maxTokens,
         timeoutSeconds: timeoutSec,
         history: qaConversationHistory,
       }),

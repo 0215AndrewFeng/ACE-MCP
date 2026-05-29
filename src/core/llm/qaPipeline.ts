@@ -27,6 +27,7 @@ export interface QaPipelineOptions {
   question: string;
   projectRootPath: string;
   maxSources?: number;
+  maxTokens?: number;
   includeSummary?: boolean;
   languages?: SupportedLanguage[];
   contextMode?: ContextMode;
@@ -314,6 +315,7 @@ export async function runQaPipeline(
   const llmStart = Date.now();
   const result = await deps.llmClient.complete({
     messages,
+    maxTokens: options.maxTokens || undefined,
     timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
     fallbackOnTimeout: true,
   });

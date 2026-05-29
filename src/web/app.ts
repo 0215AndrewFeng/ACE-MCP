@@ -955,7 +955,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   // ── QA endpoint (v4.3.7: unified pipeline) ────────────────────────────────────────
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, question, maxSources, includeSummary, languages, timeoutSeconds, history, contextMode, callChainDepth } = req.body;
+      const { projectRootPath, question, maxSources, maxTokens, includeSummary, languages, timeoutSeconds, history, contextMode, callChainDepth } = req.body;
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
@@ -976,6 +976,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           question: String(question ?? ""),
           projectRootPath: String(projectRootPath ?? ""),
           maxSources: clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault),
+          maxTokens: Number(maxTokens) || undefined,
           includeSummary: includeSummary !== false,
           languages: normalizeSupportedLanguages(languages),
           contextMode: (contextMode as ContextMode) ?? "chunk",
@@ -1069,6 +1070,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       const projectRootPath = isPost ? req.body?.projectRootPath : req.query.projectRootPath as string;
       const question = isPost ? req.body?.question : req.query.question as string;
       const maxSources = Number(isPost ? req.body?.maxSources : req.query.maxSources) || 10;
+      const maxTokens = Number(isPost ? req.body?.maxTokens : req.query.maxTokens) || 0;
       const includeSummary = isPost ? req.body?.includeSummary !== false : req.query.includeSummary !== "false";
       const languages = isPost ? req.body?.languages : req.query.languages as string | undefined;
       const timeoutSeconds = Number(isPost ? req.body?.timeoutSeconds : req.query.timeoutSeconds) || 120;
@@ -1404,6 +1406,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       dependencies.logger.info("SSE calling LLM streamComplete", { messageCount: messages.length });
       for await (const chunk of dependencies.llmClient.streamComplete({
         messages,
+        maxTokens: maxTokens || undefined,
         timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
       })) {
         // Check if client disconnected
