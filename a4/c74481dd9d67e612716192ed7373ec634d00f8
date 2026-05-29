@@ -1,0 +1,21 @@
+src/web/static/js/app.js
+  s_5d09f891d079c4::t_60ea5a2972bb48 363-377
+CHANGELOG.md
+  s_5d09f891d079c4::t_fb16c5cda6bc40 25-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "a4c74481dd9d67e612716192ed7373ec634d00f8",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
