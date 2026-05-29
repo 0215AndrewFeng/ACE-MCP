@@ -74,8 +74,8 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     llmRerankerMaxCandidates: 10,
     // v4.3.6: Ask Codebase limits
     qaMaxSourcesDefault: 10,
-    qaMaxSourcesMax: 50,
-    qaMaxContextTokens: 6000,
+    qaMaxSourcesMax: 100,
+    qaMaxContextTokens: 24000,
     // v4.3.6: Search limits
     searchPerFileLimit: 2,
     searchFanoutMultiplier: 3,

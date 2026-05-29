@@ -23,7 +23,7 @@ import { expandQueryWithLlm } from "../core/llm/queryExpander.js";
 import type { ContextMode } from "../core/common/types.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../core/project/pathNormalizer.js";
-import { extractCallChains, formatCallChainsForLLM, generateCallChainMermaid, type CallChainContext } from "../core/search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, generateCallChainMermaid, collectCallChainLocations, type CallChainContext } from "../core/search/callChainExtractor.js";
 import { rerankWithLlm } from "../core/search/llmReranker.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
@@ -1264,6 +1264,45 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         sendEvent({ type: "phase", phase: "callchain", status: "done", ms: 0, error: "skipped" });
       }
 
+      // v4.4.3: Call chain source code enrichment
+      let callChainSources: { filePath: string; startLine: number; endLine: number; language: string; score: number; snippet: string }[] = [];
+      if (callChains.length > 0) {
+        try {
+          const locations = collectCallChainLocations(callChains);
+          const searchResultKeys = new Set(searchResult.results.map(r => `${r.filePath}:${r.startLine}`));
+          const dedupedLocations = locations.filter(loc => !searchResultKeys.has(`${loc.filePath}:${loc.startLine}`));
+          const CONTEXT_PAD = 5;
+          const snippetPromises = dedupedLocations.map(async (loc) => {
+            try {
+              const snippet = await readFileSnippet(
+                indexResult.projectRootPath,
+                loc.filePath,
+                Math.max(1, loc.startLine - CONTEXT_PAD),
+                loc.startLine + CONTEXT_PAD,
+              );
+              const ext = loc.filePath.split(".").pop() ?? "";
+              const languageMap: Record<string, string> = {
+                java: "java", ts: "typescript", tsx: "typescript",
+                js: "javascript", jsx: "javascript", py: "python",
+                cs: "dotnet", go: "go", rs: "rust", kt: "kotlin",
+              };
+              return {
+                filePath: loc.filePath,
+                startLine: snippet.startLine,
+                endLine: snippet.endLine,
+                language: languageMap[ext] ?? ext,
+                score: -1,
+                snippet: snippet.snippet,
+              };
+            } catch { return null; }
+          });
+          const results = await Promise.all(snippetPromises);
+          callChainSources = results.filter((r): r is NonNullable<typeof r> => r !== null);
+        } catch {
+          // Optional enrichment — silently skip
+        }
+      }
+
       // Phase 4: Load summary
       dependencies.logger.info("SSE phase: summary start");
       sendEvent({ type: "phase", phase: "summary", status: "start" });
@@ -1356,7 +1395,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ? buildQaMessagesWithHistory(questionStr, compressedSources, summaryArchitecture, conversationHistory)
         : [
             { role: "system" as const, content: QA_SYSTEM_PROMPT },
-            { role: "user" as const, content: buildQaUserPrompt(questionStr, compressedSources, summaryArchitecture, callChainContext) },
+            { role: "user" as const, content: buildQaUserPrompt(questionStr, compressedSources, summaryArchitecture, callChainContext, callChainSources) },
           ];
 
       let fullContent = "";

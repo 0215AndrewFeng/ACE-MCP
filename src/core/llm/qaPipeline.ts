@@ -6,8 +6,8 @@
 import type { ToolDependencies } from "../../server/toolRegistry.js";
 import type { ContextMode, SupportedLanguage } from "../common/types.js";
 import { AppError } from "../common/errors.js";
-import type { CallChainContext } from "../search/callChainExtractor.js";
-import { extractCallChains, formatCallChainsForLLM } from "../search/callChainExtractor.js";
+import type { CallChainContext, CallChainLocation } from "../search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations } from "../search/callChainExtractor.js";
 import { rerankWithLlm } from "../search/llmReranker.js";
 import { expandQueryWithLlm } from "./queryExpander.js";
 import { qaCache, QaCache } from "./qaCache.js";
@@ -21,6 +21,7 @@ import {
   type QaConversationTurn,
   type QaSource,
 } from "./qaPrompt.js";
+import { readFileSnippet } from "../project/fileSnippet.js";
 
 export interface QaPipelineOptions {
   question: string;
@@ -198,6 +199,56 @@ export async function runQaPipeline(
   }
   checkTimeout("callchain");
 
+  // 4.5. v4.4.3: Call chain source code enrichment
+  // Read source code for each caller/callee node and add as extra sources
+  let callChainSources: QaSource[] = [];
+  if (enableCallChain && callChains.length > 0) {
+    try {
+      const locations = collectCallChainLocations(callChains);
+      // Deduplicate against search results
+      const searchResultKeys = new Set(
+        searchResult.results.map(r => `${r.filePath}:${r.startLine}`),
+      );
+      const dedupedLocations = locations.filter(
+        loc => !searchResultKeys.has(`${loc.filePath}:${loc.startLine}`),
+      );
+
+      // Read source snippets for each call chain node (±5 lines context)
+      const CONTEXT_PAD = 5;
+      const snippetPromises = dedupedLocations.map(async (loc): Promise<QaSource | null> => {
+        try {
+          const snippet = await readFileSnippet(
+            indexResult.projectRootPath,
+            loc.filePath,
+            Math.max(1, loc.startLine - CONTEXT_PAD),
+            loc.startLine + CONTEXT_PAD,
+          );
+          // Infer language from file extension
+          const ext = loc.filePath.split(".").pop() ?? "";
+          const languageMap: Record<string, string> = {
+            java: "java", ts: "typescript", tsx: "typescript",
+            js: "javascript", jsx: "javascript", py: "python",
+            cs: "dotnet", go: "go", rs: "rust", kt: "kotlin",
+          };
+          return {
+            filePath: loc.filePath,
+            startLine: snippet.startLine,
+            endLine: snippet.endLine,
+            language: languageMap[ext] ?? ext,
+            score: -1, // Mark as call chain source (lower priority)
+            snippet: snippet.snippet,
+          };
+        } catch {
+          return null;
+        }
+      });
+      const results = await Promise.all(snippetPromises);
+      callChainSources = results.filter((r): r is QaSource => r !== null);
+    } catch {
+      // Optional enrichment — silently skip
+    }
+  }
+
   // 5. Context assembly (chunk / merged-file / full-file)
   let sources: QaSource[] = searchResult.results.map((r) => ({
     filePath: r.filePath,
@@ -256,7 +307,7 @@ export async function runQaPipeline(
     ? buildQaMessagesWithHistory(options.question, compressedSources, summaryArchitecture, history)
     : [
         { role: "system" as const, content: QA_SYSTEM_PROMPT },
-        { role: "user" as const, content: buildQaUserPrompt(options.question, compressedSources, summaryArchitecture, callChainContext) },
+        { role: "user" as const, content: buildQaUserPrompt(options.question, compressedSources, summaryArchitecture, callChainContext, callChainSources) },
       ];
 
   // 10. LLM call
