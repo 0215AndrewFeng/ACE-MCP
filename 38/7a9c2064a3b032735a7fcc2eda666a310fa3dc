@@ -1,0 +1,19 @@
+README.md
+  s_5d09f891d079c4::t_98a0a19230463f 9-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "387a9c2064a3b032735a7fcc2eda666a310fa3dc",
+  "prompts": {},
+  "sessions": {
+    "s_5d09f891d079c4": {
+      "agent_id": {
+        "tool": "codebuddy",
+        "id": "5c75ebdb-3224-49fe-93a9-011353ef7338",
+        "model": "unknown"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
