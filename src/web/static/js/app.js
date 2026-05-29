@@ -360,6 +360,21 @@ projectRootSelect?.addEventListener("change", async () => {
 // v4.2.6: Initialize project select from LocalStorage on page load
 renderProjectSelect();
 
+// v4.4.1: Auto-sync project list from backend on page load
+(async function syncProjectsOnStartup() {
+  try {
+    const data = await request("GET", "/api/projects");
+    if (data.projects) {
+      for (const p of data.projects) {
+        addStoredProject(p.projectRootPath, 0);
+      }
+      renderProjectSelect();
+    }
+  } catch (err) {
+    console.warn('Failed to sync projects on startup:', err);
+  }
+})();
+
 // v4.2.8: Auto-preload index on page load if a project is selected
 (async function preloadOnStartup() {
   const selectedProject = getSelectedProject();
@@ -377,10 +392,20 @@ renderProjectSelect();
   }
 })();
 
-document.getElementById("run-index")?.addEventListener("click", () => run(() => request("POST", "/api/index-project", {
-  mode: indexModeInput.value,
-  projectRootPath: projectRootInput.value
-})));
+document.getElementById("run-index")?.addEventListener("click", () => run(async () => {
+  const result = await request("POST", "/api/index-project", {
+    mode: indexModeInput.value,
+    projectRootPath: projectRootInput.value
+  });
+  // Sync project to list after indexing
+  const projectPath = projectRootInput.value?.trim();
+  if (projectPath) {
+    const fileCount = result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
+    addStoredProject(projectPath, fileCount);
+    renderProjectSelect();
+  }
+  return result;
+}));
 
 document.getElementById("run-stats")?.addEventListener("click", () => run(() => request(
   "GET",
