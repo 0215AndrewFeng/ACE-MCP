@@ -1,0 +1,23 @@
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_72f083924d323f 1746,1766
+src/core/common/types.ts
+  s_0f8113dba42c56::t_24fcf439344d5a 407-410
+src/core/search/semanticText.ts
+  s_0f8113dba42c56::t_920c239f8b33f7 261
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "06c18651c88b0f0818bd6d12788f8b18c1614277",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
