@@ -1,0 +1,49 @@
+src/version.ts
+  s_0f8113dba42c56::t_865b01447aa049 2
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_4ac94384ebc508 3
+  s_0f8113dba42c56::t_7dab98657c6414 620
+  s_0f8113dba42c56::t_d1cf0280843439 2477,2489-2494
+  s_0f8113dba42c56::t_ee310563ba51d2 712
+  s_0f8113dba42c56::t_94f777be92904b 2342-2343,2374,2387-2393,2399
+  s_0f8113dba42c56::t_06b4b25a9ee447 1351-1352,1357
+  s_0f8113dba42c56::t_86d7f00ba749fd 1252-1254,1267
+  s_0f8113dba42c56::t_2ca21f043d9cd9 1196
+  s_0f8113dba42c56::t_c8cb54ceb21c21 1793,1805-1806,1809
+  s_0f8113dba42c56::t_999f6deaf6137e 1746-1748,1760,1762-1763,1768
+  s_0f8113dba42c56::t_b9488a97f6e3b0 2449,2451,2458,2464
+README.md
+  s_0f8113dba42c56::t_296ed495436580 302-309
+  s_0f8113dba42c56::t_acd8d4ef875235 5
+src/core/search/llmReranker.ts
+  s_0f8113dba42c56::t_ceaae84ae054f6 76-77
+src/core/llm/queryExpander.ts
+  s_0f8113dba42c56::t_50553adbd2cee0 113-115
+  s_0f8113dba42c56::t_b6b908adfb61af 70-73
+  s_0f8113dba42c56::t_ffd5debf65cd0d 11-40
+CHANGELOG.md
+  s_0f8113dba42c56::t_5e2870960c3c73 5-13
+package.json
+  s_0f8113dba42c56::t_891120a1afb2d0 3
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_e923d5f6dc8c29 92,96-98,101-105,115-120
+src/core/search/callChainExtractor.ts
+  s_0f8113dba42c56::t_f88c4109bacf78 254-267,269-288,290,292-307,309-310,314-316
+  s_0f8113dba42c56::t_ff72e1378dcea6 179-225,227-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "a8a1964a0703697a899de5ae7d261034b9863f66",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
