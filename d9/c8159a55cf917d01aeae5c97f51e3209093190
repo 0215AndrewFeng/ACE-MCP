@@ -1,0 +1,19 @@
+README.md
+  s_0f8113dba42c56::t_fad66969c64ac2 108-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d9c8159a55cf917d01aeae5c97f51e3209093190",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "feng.ling <feng.ling@ly.com>"
+    }
+  }
+}
