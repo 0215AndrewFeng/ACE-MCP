@@ -8,6 +8,36 @@ import type { LlmClient } from "./llmClient.js";
 
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
 
+// v4.4.6: In-memory LRU cache for query expansion (max 100 entries, 5-min TTL)
+const CACHE_MAX = 100;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface CacheEntry {
+  result: { expandedQuery: string; keywords: string[] };
+  ts: number;
+}
+
+const expansionCache = new Map<string, CacheEntry>();
+
+function getCached(question: string): { expandedQuery: string; keywords: string[] } | undefined {
+  const entry = expansionCache.get(question);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    expansionCache.delete(question);
+    return undefined;
+  }
+  return entry.result;
+}
+
+function setCached(question: string, result: { expandedQuery: string; keywords: string[] }): void {
+  // Evict oldest entry if at capacity
+  if (expansionCache.size >= CACHE_MAX) {
+    const firstKey = expansionCache.keys().next().value;
+    if (firstKey !== undefined) expansionCache.delete(firstKey);
+  }
+  expansionCache.set(question, { result, ts: Date.now() });
+}
+
 const QUERY_EXPANSION_PROMPT = `You are a code search assistant. The user asks a question about code in natural language (possibly Chinese or other non-English language). Your job is to extract likely English code identifiers (class names, method names, package paths, variable names) that the codebase might contain.
 
 Rules:
@@ -36,6 +66,10 @@ export async function expandQueryWithLlm(
   if (!NON_ASCII_PATTERN.test(question)) {
     return { expandedQuery: question, keywords: [] };
   }
+
+  // v4.4.6: Check cache first
+  const cached = getCached(question);
+  if (cached) return cached;
 
   try {
     const result = await llmClient.complete({
@@ -76,7 +110,9 @@ export async function expandQueryWithLlm(
 
     // Append keywords to the original question for broader FTS matching
     const expandedQuery = `${question} ${validKeywords.join(" ")}`;
-    return { expandedQuery, keywords: validKeywords };
+    const expansionResult = { expandedQuery, keywords: validKeywords };
+    setCached(question, expansionResult);
+    return expansionResult;
   } catch {
     // Silently fall back — query expansion is optional
     return { expandedQuery: question, keywords: [] };
