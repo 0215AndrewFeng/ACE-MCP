@@ -105,6 +105,41 @@ npm start -- --web-port 8787
 - `http://127.0.0.1:8787/health`
 - `http://127.0.0.1:8787/api/runtime`
 
+### CLI 参数
+
+| 参数 | 说明 |
+|------|------|
+| `--web-port <port>` | 启动 HTTP 调试面板，如 `--web-port 8787` |
+| `-v, --version` | 查看当前版本 |
+| `-h, --help` | 查看帮助信息 |
+| `--autostart enable` | 启用开机自启（macOS launchd / Linux systemd） |
+| `--autostart disable` | 禁用开机自启 |
+| `--autostart status` | 查看开机自启状态 |
+
+### 开机自启管理
+
+```bash
+# 启用开机自启（同时开启 Web 面板）
+node dist/index.js --autostart enable --web-port 8787
+
+# 查看自启状态
+node dist/index.js --autostart status
+
+# 禁用开机自启
+node dist/index.js --autostart disable
+```
+
+### 启动流程
+
+ace-mcp 启动时按以下顺序初始化：
+
+1. **解析 CLI 参数** — `--version`/`--help`/`--autostart` 处理后直接退出
+2. **加载配置** — 从 `~/.ace-mcp/settings.toml` 读取配置，支持环境变量覆盖
+3. **初始化核心服务** — `Logger`、`SQLiteStore`（建表）、`EmbeddingProvider`、`IndexCoordinator`、`SearchService`、`LlmClient`、`SummaryGenerator`，全部本地初始化无网络依赖
+4. **创建 MCP Server** — 注册所有工具，通过 stdin/stdout 与 MCP 宿主通信
+5. **可选启动 Web 面板** — 指定 `--web-port` 时启动 Express HTTP 服务
+6. **注册信号处理** — `SIGINT`/`SIGTERM` 触发优雅关闭
+
 ## MCP 客户端配置示例
 
 以 Claude Desktop 或其他支持 MCP 的客户端为例：
