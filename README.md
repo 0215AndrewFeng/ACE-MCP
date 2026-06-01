@@ -51,6 +51,22 @@
 - Node.js `>= 18.18.0`
 - npm `>= 9`
 
+## 一键下载与启动
+
+### GitHub
+
+```bash
+git clone https://github.com/0215AndrewFeng/ACE-MCP.git && cd ACE-MCP && npm install && npm run build && npm start -- --web-port 8787
+```
+
+### Gitee
+
+```bash
+git clone https://gitee.com/AndrewFengCode/ace-mcp.git && cd ace-mcp && npm install && npm run build && npm start -- --web-port 8787
+```
+
+> 执行完毕后访问 http://127.0.0.1:8787/ 即可使用 Web 调试面板。
+
 ## 安装
 
 ```bash
@@ -248,7 +264,23 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.4.2（当前版本）
+### v4.4.5（当前版本）
+
+- **LLM 最大输出 token 可配置**：智能问答高级选项新增 `maxTokens` 配置（默认 8192，范围 512~32768），用户可自行调整 LLM 回答的最大 token 数。此前默认 2048，结合本地代码后回答经常被截断
+- **`llmMaxTokens` 默认值从 2048 提升到 8192**：确保回答不会被截断
+
+### v4.4.4
+
+- **"结合本地代码"开关**：智能问答高级选项新增 checkbox，控制是否读取搜索命中文件的完整本地源码。开启时使用 `full-file` 模式，LLM 能看到完整实现逻辑，更准确但消耗更多 token；关闭时使用 `chunk` 模式，更快更省 token。默认开启
+
+### v4.4.3
+
+- **调用链源码补全**：QA 管线在提取调用链关系后，自动读取每个 caller/callee 的源码（上下文 ±5 行），作为独立 section 注入 LLM 上下文。此前调用链只返回符号名和位置，LLM 无法理解具体实现逻辑
+- **去重机制**：调用链源码与搜索结果按 `filePath:startLine` 去重，避免重复注入相同代码
+- **`qaMaxContextTokens` 从 12000 提升到 24000**：token 预算翻倍确保搜索结果和调用链源码都能完整注入
+- **`qaMaxSourcesMax` 从 50 提升到 100**：支持更多参考代码片段
+
+### v4.4.2
 
 - **HNSW 向量搜索**：纯 JS 实现 HNSW 近似最近邻索引，搜索复杂度从 O(n) 降到 O(log n)，大型项目性能显著提升
 - **调用链深度增强**：支持 1-3 跳调用关系追踪，递归展开上下游调用链
