@@ -258,6 +258,6 @@ export function buildSemanticText(relativePath: string, content: string, symbolN
 }
 
 export function buildSemanticFtsQuery(terms: string[]): string | null {
-  const filtered = [...new Set(terms.flatMap(splitSegment).filter(isMeaningfulToken))].slice(0, 24);
+  const filtered = [...new Set(terms.flatMap(splitSegment).filter(isMeaningfulToken))].slice(0, 8);
   return filtered.length > 0 ? filtered.map((term) => `${term}*`).join(" OR ") : null;
 }

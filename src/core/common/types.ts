@@ -404,10 +404,10 @@ export interface SearchBudget {
 }
 
 export const DEFAULT_SEARCH_BUDGET: SearchBudget = {
-  totalMs: 30000,
-  vectorMs: 10000,
-  ftsMs: 5000,
-  symbolMs: 3000,
+  totalMs: 600_000,
+  vectorMs: 200_000,
+  ftsMs: 100_000,
+  symbolMs: 60_000,
 };
 
 export interface SearchDiagnostics {

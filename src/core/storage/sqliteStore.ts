@@ -1743,9 +1743,8 @@ export class SQLiteStore {
       return [];
     }
 
-    // Use FTS for primary filtering, then verify with instr for exact substring match
+    // Use FTS5 MATCH for content filtering (prefix queries hit FTS5 index efficiently)
     const ftsMatchExpr = tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(" OR ");
-    const instrVerify = tokens.map(() => "instr(c.content, ?) > 0").join(" OR ");
     const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
@@ -1760,12 +1759,11 @@ export class SQLiteStore {
          JOIN chunk_fts fts ON fts.chunk_id = c.chunk_id
          WHERE f.project_id = ?
            AND fts.content MATCH ?
-           AND (${instrVerify})
            ${filterClause.sql}
          ORDER BY c.start_line ASC, LENGTH(f.relative_path) ASC
          LIMIT ?`,
       )
-      .all(projectId, ftsMatchExpr, ...tokens, ...filterClause.parameters, limit) as Array<{
+      .all(projectId, ftsMatchExpr, ...filterClause.parameters, limit) as Array<{
       content: string;
       end_line: number;
       language: Language;
