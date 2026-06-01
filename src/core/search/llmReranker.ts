@@ -73,6 +73,8 @@ Return the indices in order of relevance as a JSON array:`;
       ],
       maxTokens: 100,
       temperature: 0,
+      timeoutMs: 10_000,
+      fallbackOnTimeout: true,
     });
 
     const content = response.content?.trim() ?? "";

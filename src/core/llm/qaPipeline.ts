@@ -89,28 +89,20 @@ export async function runQaPipeline(
   const indexMs = Date.now() - indexStart;
   checkTimeout("index");
 
-  // 1.5. Query expansion (non-ASCII → English code keywords) for dual-round search
-  let expandedKeywords: string[] = [];
-  let queryExpansionMs = 0;
-  if (deps.llmClient.isConfigured() && /[^\x00-\x7F]/.test(options.question)) {
-    try {
-      const qeStart = Date.now();
-      const { keywords } = await expandQueryWithLlm(deps.llmClient, options.question, 8_000);
-      expandedKeywords = keywords;
-      queryExpansionMs = Date.now() - qeStart;
-    } catch {
-      // Query expansion is optional — silently skip
-    }
-  }
-
-  // 2. Dual-round search
+  // 1.5 + 2. Run query expansion and Round 1 search in parallel (v4.4.6)
   const topK = Math.min(Math.max(1, options.maxSources ?? deps.settings.qaMaxSourcesDefault), deps.settings.qaMaxSourcesMax);
   const searchFilters = { languages: options.languages };
 
+  const needsExpansion = deps.llmClient.isConfigured() && /[^\x00-\x7F]/.test(options.question);
+
+  const qeStart = Date.now();
   const searchStart = Date.now();
 
-  // Round 1: Search with original question (benefits from v4.4.0 semantic labels in FTS)
-  let searchResult = await deps.searchService.search(
+  const expansionPromise = needsExpansion
+    ? expandQueryWithLlm(deps.llmClient, options.question, 8_000).catch(() => ({ expandedQuery: options.question, keywords: [] as string[] }))
+    : Promise.resolve({ expandedQuery: options.question, keywords: [] as string[] });
+
+  const round1Promise = deps.searchService.search(
     indexResult.projectRootPath,
     options.question,
     "auto",
@@ -119,6 +111,13 @@ export async function runQaPipeline(
     searchFilters,
     "full",
   );
+
+  const [expansionResult, round1Result] = await Promise.all([expansionPromise, round1Promise]);
+
+  const expandedKeywords = expansionResult.keywords;
+  const queryExpansionMs = needsExpansion ? Date.now() - qeStart : 0;
+
+  let searchResult = round1Result;
 
   // Round 2: Search with expanded English keywords (if available)
   if (expandedKeywords.length > 0) {

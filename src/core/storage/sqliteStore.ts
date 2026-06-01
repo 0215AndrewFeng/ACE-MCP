@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 
 import Database from "better-sqlite3";
 
@@ -616,6 +617,7 @@ export class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_owner_symbol_id ON symbol_usage(owner_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_resolved_symbol_id ON symbol_usage(resolved_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_kind ON symbol_usage(usage_kind);
+      CREATE INDEX IF NOT EXISTS idx_symbol_name_lower ON symbol(LOWER(name));
 
       CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
         chunk_id UNINDEXED,
@@ -707,6 +709,7 @@ export class SQLiteStore {
 
     const rows = this.db
       .prepare(
+        // TODO: "first chunk" correlated subqueries could be optimized with a CTE when perf becomes an issue
         `SELECT
            f.relative_path,
            f.language,
@@ -1190,6 +1193,7 @@ export class SQLiteStore {
     const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
+        // TODO: "first chunk" correlated subqueries could be optimized with a CTE when perf becomes an issue
         `SELECT
            f.relative_path,
            f.language,
@@ -1245,9 +1249,9 @@ export class SQLiteStore {
             s.kind,
             s.line,
             s.signature,
-            COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS start_line,
-            COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
-            COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content,
+            COALESCE(c.start_line, s.line) AS start_line,
+            COALESCE(c.end_line, s.line) AS end_line,
+            COALESCE(c.content, s.signature) AS content,
             CASE
              WHEN LOWER(s.canonical_name) = ? THEN 1.05
               WHEN LOWER(s.full_name) = ? THEN 1.0
@@ -1260,6 +1264,7 @@ export class SQLiteStore {
             END AS score
          FROM symbol s
          JOIN file f ON f.file_id = s.file_id
+         LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
           WHERE f.project_id = ?
             AND (
              LOWER(COALESCE(s.canonical_name, '')) = ?
@@ -1343,12 +1348,13 @@ export class SQLiteStore {
            f.language,
            su.raw_name,
            su.line AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.line) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line LIMIT 1), su.raw_name) AS content,
+           COALESCE(c.end_line, su.line) AS end_line,
+           COALESCE(c.content, su.raw_name) AS content,
            su.usage_kind,
            su.owner_symbol_name
          FROM symbol_usage su
          JOIN file f ON f.file_id = su.file_id
+         LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= su.line AND c.end_line >= su.line
          WHERE f.project_id = ?
            AND su.resolved_symbol_id IN (${placeholders})
            ${filterClause.sql}
@@ -1737,7 +1743,9 @@ export class SQLiteStore {
       return [];
     }
 
-    const whereClause = tokens.map(() => "instr(c.content, ?) > 0").join(" OR ");
+    // Use FTS for primary filtering, then verify with instr for exact substring match
+    const ftsMatchExpr = tokens.map((t) => `"${t.replace(/"/g, '""')}"`).join(" OR ");
+    const instrVerify = tokens.map(() => "instr(c.content, ?) > 0").join(" OR ");
     const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
@@ -1749,13 +1757,15 @@ export class SQLiteStore {
            c.content
          FROM chunk c
          JOIN file f ON f.file_id = c.file_id
+         JOIN chunk_fts fts ON fts.chunk_id = c.chunk_id
          WHERE f.project_id = ?
-           AND (${whereClause})
+           AND fts.content MATCH ?
+           AND (${instrVerify})
            ${filterClause.sql}
          ORDER BY c.start_line ASC, LENGTH(f.relative_path) ASC
          LIMIT ?`,
       )
-      .all(projectId, ...tokens, ...filterClause.parameters, limit) as Array<{
+      .all(projectId, ftsMatchExpr, ...tokens, ...filterClause.parameters, limit) as Array<{
       content: string;
       end_line: number;
       language: Language;
@@ -1780,7 +1790,7 @@ export class SQLiteStore {
       return [];
     }
 
-    const likePatterns = tokens.map((token) => `%${token}%`);
+    const likePatterns = tokens.map((token) => `%${token.toLowerCase()}%`);
     const whereClause = likePatterns.map(() => "LOWER(s.name) LIKE ? OR LOWER(s.full_name) LIKE ?").join(" OR ");
     const parameters = likePatterns.flatMap((pattern) => [pattern, pattern]);
     const filterClause = buildSearchFilterClause(filters);
@@ -1792,10 +1802,11 @@ export class SQLiteStore {
            f.language,
            s.name,
            s.line AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.line) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line LIMIT 1), s.signature) AS content
+           COALESCE(c.end_line, s.line) AS end_line,
+           COALESCE(c.content, s.signature) AS content
           FROM symbol s
           JOIN file f ON f.file_id = s.file_id
+          LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
           WHERE f.project_id = ?
             AND (${whereClause})
             ${filterClause.sql}
@@ -2328,6 +2339,8 @@ export class SQLiteStore {
       };
     }
 
+    // SQLite query is synchronous by design (better-sqlite3 is inherently sync).
+    // This is acceptable as the query runs in-process without event loop blocking beyond the I/O.
     const rows = this.db
       .prepare(`
         SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
@@ -2353,15 +2366,12 @@ export class SQLiteStore {
       modelName: row.model_name,
     }));
 
-    // Try to load HNSW from disk cache
-    let hnswIndex = this.loadHnswFromDisk(projectId, modelName, vectors.length);
-
     if (Number.isFinite(indexVersion)) {
       const cacheEntry: VectorCacheEntry = {
         indexVersion,
         modelName,
         vectors,
-        hnswIndex,
+        hnswIndex: null,
         hnswBuilding: false,
       };
       this.vectorCache.set(projectId, cacheEntry);
@@ -2374,16 +2384,19 @@ export class SQLiteStore {
       this.vectorCacheOrder.push(projectId);
       this.evictVectorCache();
 
-      // Build HNSW if not loaded from disk
-      if (!hnswIndex && vectors.length > 0) {
-        this.buildHnswIndexAsync(projectId, cacheEntry);
-      }
+      // Try to load HNSW from disk cache asynchronously, then fall back to building
+      this.loadHnswFromDisk(projectId, modelName, vectors.length).then((hnswIndex) => {
+        cacheEntry.hnswIndex = hnswIndex;
+        if (!hnswIndex && vectors.length > 0) {
+          this.buildHnswIndexAsync(projectId, cacheEntry);
+        }
+      });
     }
 
     return {
       cacheHit: false,
       vectors,
-      hnswIndex,
+      hnswIndex: null,
     };
   }
 
@@ -2433,22 +2446,22 @@ export class SQLiteStore {
   }
 
   /**
-   * Load HNSW index from disk cache if valid
+   * Load HNSW index from disk cache if valid (async I/O to avoid blocking event loop)
    */
-  private loadHnswFromDisk(projectId: string, modelName: string, expectedSize: number): HnswIndex | null {
+  private async loadHnswFromDisk(projectId: string, modelName: string, expectedSize: number): Promise<HnswIndex | null> {
     try {
       const cachePath = this.getHnswCachePath(projectId, modelName);
       if (!fs.existsSync(cachePath)) {
         return null;
       }
 
-      const data = fs.readFileSync(cachePath);
+      const data = await fsPromises.readFile(cachePath);
       const hnswIndex = HnswIndex.deserialize(data);
 
       // Validate size matches (index may be stale)
       if (hnswIndex.size() !== expectedSize) {
         this.logger.info(`HNSW cache size mismatch for ${projectId}: ${hnswIndex.size()} vs ${expectedSize}, rebuilding`);
-        fs.unlinkSync(cachePath);
+        fsPromises.unlink(cachePath).catch(() => {}); // fire-and-forget cleanup
         return null;
       }
 
@@ -2461,7 +2474,7 @@ export class SQLiteStore {
   }
 
   /**
-   * Save HNSW index to disk for persistence
+   * Save HNSW index to disk for persistence (fire-and-forget async write)
    */
   private saveHnswToDisk(projectId: string, modelName: string, hnswIndex: HnswIndex): void {
     try {
@@ -2473,8 +2486,12 @@ export class SQLiteStore {
       }
 
       const data = hnswIndex.serialize();
-      fs.writeFileSync(cachePath, data);
-      this.logger.info(`HNSW index saved to disk for ${projectId}: ${hnswIndex.size()} vectors`);
+      // Fire-and-forget: don't block on disk write
+      fsPromises.writeFile(cachePath, data).then(() => {
+        this.logger.info(`HNSW index saved to disk for ${projectId}: ${hnswIndex.size()} vectors`);
+      }).catch((error) => {
+        this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
+      });
     } catch (error) {
       this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
     }

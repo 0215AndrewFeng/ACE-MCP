@@ -176,52 +176,57 @@ export async function extractCallChains(
   // Clamp depth to avoid excessive recursion
   const effectiveDepth = Math.min(Math.max(depth, 1), 3);
 
-  for (const symbol of symbols) {
-    try {
-      // Query callers and callees in parallel
-      const [callersResponse, calleesResponse] = await Promise.all([
-        searchService.findCallers(projectRootPath, symbol, maxCallersPerSymbol, 0, undefined, "metadata", effectiveDepth)
-          .catch(() => null),
-        searchService.findCallees(projectRootPath, symbol, maxCalleesPerSymbol, 0, undefined, "metadata", effectiveDepth)
-          .catch(() => null),
-      ]);
+  const chainResults = await Promise.all(
+    symbols.map(async (symbol) => {
+      try {
+        // Query callers and callees in parallel
+        const [callersResponse, calleesResponse] = await Promise.all([
+          searchService.findCallers(projectRootPath, symbol, maxCallersPerSymbol, 0, undefined, "metadata", effectiveDepth)
+            .catch(() => null),
+          searchService.findCallees(projectRootPath, symbol, maxCalleesPerSymbol, 0, undefined, "metadata", effectiveDepth)
+            .catch(() => null),
+        ]);
 
-      const callers = await extractCallEntriesWithDepth(
-        searchService,
-        projectRootPath,
-        callersResponse,
-        maxCallersPerSymbol,
-        effectiveDepth - 1,
-        "callers",
-      );
-      const callees = await extractCallEntriesWithDepth(
-        searchService,
-        projectRootPath,
-        calleesResponse,
-        maxCalleesPerSymbol,
-        effectiveDepth - 1,
-        "callees",
-      );
+        const callers = await extractCallEntriesWithDepth(
+          searchService,
+          projectRootPath,
+          callersResponse,
+          maxCallersPerSymbol,
+          effectiveDepth - 1,
+          "callers",
+        );
+        const callees = await extractCallEntriesWithDepth(
+          searchService,
+          projectRootPath,
+          calleesResponse,
+          maxCalleesPerSymbol,
+          effectiveDepth - 1,
+          "callees",
+        );
 
-      // Only add if we found meaningful relationships
-      if (callers.length > 0 || callees.length > 0) {
-        // Find the file where this symbol is defined
-        const definitionFile = results.find(r => r.symbol?.includes(symbol))?.filePath
-          ?? calleesResponse?.definition?.filePath
-          ?? callersResponse?.definition?.filePath
-          ?? "";
+        // Only add if we found meaningful relationships
+        if (callers.length > 0 || callees.length > 0) {
+          // Find the file where this symbol is defined
+          const definitionFile = results.find(r => r.symbol?.includes(symbol))?.filePath
+            ?? calleesResponse?.definition?.filePath
+            ?? callersResponse?.definition?.filePath
+            ?? "";
 
-        chains.push({
-          symbol,
-          filePath: definitionFile,
-          callers,
-          callees,
-        });
+          return {
+            symbol,
+            filePath: definitionFile,
+            callers,
+            callees,
+          } as CallChainContext;
+        }
+        return null;
+      } catch {
+        // Skip symbols that fail to resolve
+        return null;
       }
-    } catch {
-      // Skip symbols that fail to resolve
-    }
-  }
+    })
+  );
+  chains.push(...chainResults.filter((c): c is CallChainContext => c !== null));
 
   return {
     chains,
@@ -246,69 +251,69 @@ async function extractCallEntriesWithDepth(
     return [];
   }
 
-  const entries: CallChainEntry[] = [];
+  const entries = await Promise.all(
+    response.results.slice(0, limit).map(async (r) => {
+      const entry: CallChainEntry = {
+        symbol: r.ownerSymbol ?? r.resolvedSymbol ?? r.rawName ?? "unknown",
+        filePath: r.filePath,
+        line: r.startLine,
+        snippet: r.snippet?.slice(0, 200) ?? "",
+      };
 
-  for (const r of response.results.slice(0, limit)) {
-    const entry: CallChainEntry = {
-      symbol: r.ownerSymbol ?? r.resolvedSymbol ?? r.rawName ?? "unknown",
-      filePath: r.filePath,
-      line: r.startLine,
-      snippet: r.snippet?.slice(0, 200) ?? "",
-    };
-
-    // Recursively fetch deeper levels
-    if (remainingDepth > 0 && entry.symbol !== "unknown") {
-      try {
-        if (direction === "callers") {
-          const upstreamResponse = await searchService.findCallers(
-            projectRootPath,
-            entry.symbol,
-            Math.min(limit, 2),  // Reduce limit for deeper levels
-            0,
-            undefined,
-            "metadata",
-            1,
-          ).catch(() => null);
-
-          if (upstreamResponse && upstreamResponse.results.length > 0) {
-            entry.upstream = await extractCallEntriesWithDepth(
-              searchService,
+      // Recursively fetch deeper levels
+      if (remainingDepth > 0 && entry.symbol !== "unknown") {
+        try {
+          if (direction === "callers") {
+            const upstreamResponse = await searchService.findCallers(
               projectRootPath,
-              upstreamResponse,
-              Math.min(limit, 2),
-              remainingDepth - 1,
-              direction,
-            );
-          }
-        } else {
-          const downstreamResponse = await searchService.findCallees(
-            projectRootPath,
-            entry.symbol,
-            Math.min(limit, 2),
-            0,
-            undefined,
-            "metadata",
-            1,
-          ).catch(() => null);
+              entry.symbol,
+              Math.min(limit, 2),  // Reduce limit for deeper levels
+              0,
+              undefined,
+              "metadata",
+              1,
+            ).catch(() => null);
 
-          if (downstreamResponse && downstreamResponse.results.length > 0) {
-            entry.downstream = await extractCallEntriesWithDepth(
-              searchService,
+            if (upstreamResponse && upstreamResponse.results.length > 0) {
+              entry.upstream = await extractCallEntriesWithDepth(
+                searchService,
+                projectRootPath,
+                upstreamResponse,
+                Math.min(limit, 2),
+                remainingDepth - 1,
+                direction,
+              );
+            }
+          } else {
+            const downstreamResponse = await searchService.findCallees(
               projectRootPath,
-              downstreamResponse,
+              entry.symbol,
               Math.min(limit, 2),
-              remainingDepth - 1,
-              direction,
-            );
+              0,
+              undefined,
+              "metadata",
+              1,
+            ).catch(() => null);
+
+            if (downstreamResponse && downstreamResponse.results.length > 0) {
+              entry.downstream = await extractCallEntriesWithDepth(
+                searchService,
+                projectRootPath,
+                downstreamResponse,
+                Math.min(limit, 2),
+                remainingDepth - 1,
+                direction,
+              );
+            }
           }
+        } catch {
+          // Ignore failures in recursive calls
         }
-      } catch {
-        // Ignore failures in recursive calls
       }
-    }
 
-    entries.push(entry);
-  }
+      return entry;
+    })
+  );
 
   return entries;
 }
