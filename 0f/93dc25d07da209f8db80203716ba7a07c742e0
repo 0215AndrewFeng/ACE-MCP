@@ -1,0 +1,31 @@
+package.json
+  s_0f8113dba42c56::t_470505e830d8a9 3
+src/version.ts
+  s_0f8113dba42c56::t_8e2b4eef430fe7 2
+CHANGELOG.md
+  s_0f8113dba42c56::t_7e31f47d0cef5f 5-12
+README.md
+  s_0f8113dba42c56::t_ff70640d29a2d6 5
+  s_0f8113dba42c56::t_9512ed288a5f1b 302,304-306
+src/core/search/callChainExtractor.ts
+  s_0f8113dba42c56::t_430dc276592a26 214-279
+  s_0f8113dba42c56::t_9311e069dd6733 372
+  s_0f8113dba42c56::t_a95a417515c665 343-347,354-356
+  s_0f8113dba42c56::t_00a3a12bd22c47 506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "0f93dc25d07da209f8db80203716ba7a07c742e0",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
