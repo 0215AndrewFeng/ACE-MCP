@@ -1,0 +1,28 @@
+CHANGELOG.md
+  s_0f8113dba42c56::t_5781d5dd72b51f 5-10
+src/version.ts
+  s_0f8113dba42c56::t_f3b1fc7423153b 2
+src/core/search/callChainExtractor.ts
+  s_0f8113dba42c56::t_6802b8df248f92 260-278
+README.md
+  s_0f8113dba42c56::t_38bf781f1092ab 302,304-306
+  s_0f8113dba42c56::t_50db9877b0e43c 5
+package.json
+  s_0f8113dba42c56::t_e47547dafc1ace 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d63287cb56d0e89ca2d00aaff0abe19dced940f3",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
