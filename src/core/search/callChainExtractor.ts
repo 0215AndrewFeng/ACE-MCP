@@ -292,8 +292,8 @@ export async function findDownstreamImplementations(
   const topResults = results.slice(0, 3);
   if (topResults.length === 0) return [];
 
-  // Collect callee names from the indexed call graph
-  const calleeNames = new Set<string>();
+  // Collect callee names from the indexed call graph (method calls only)
+  const callGraphNames = new Set<string>();
 
   for (const result of topResults) {
     if (!result.symbol) continue;
@@ -315,7 +315,7 @@ export async function findDownstreamImplementations(
         for (const callee of calleeResp.results) {
           const name = callee.resolvedSymbol ?? callee.ownerSymbol ?? callee.rawName;
           if (name && name.length >= 3 && !isCommonWord(name) && !isControlFlowKeyword(name)) {
-            calleeNames.add(name);
+            callGraphNames.add(name);
           }
         }
       }
@@ -324,11 +324,25 @@ export async function findDownstreamImplementations(
     }
   }
 
-  // Always run source-level method call extraction alongside call graph.
-  // Call graph can return false positives (text-matched symbols) or nothing at all
-  // for unindexed methods (symbolId=None), so we always extract from source too.
+  // Always run source-level extraction alongside call graph.
+  // v4.5.0: Split into methodNames and typeNames so type refs (DTO/VO/Param)
+  // are prioritized and not dropped by the slice limit.
+  const methodNames = new Set<string>([...callGraphNames]);
+  const typeNames = new Set<string>();
   const SOURCE_PAD = 15;
+
   for (const result of topResults) {
+    const extractFromSnippet = (snippet: string, language: string) => {
+      const methodCalls = extractMethodCallsFromSnippet(snippet, language);
+      for (const name of methodCalls) {
+        if (name.length >= 8) methodNames.add(name);
+      }
+      const typeRefs = extractTypeReferencesFromSnippet(snippet, language);
+      for (const name of typeRefs) {
+        if (name.length >= 4) typeNames.add(name);
+      }
+    };
+
     try {
       const fileSnippet = await readFileSnippet(
         projectRootPath,
@@ -336,33 +350,27 @@ export async function findDownstreamImplementations(
         Math.max(1, result.startLine - SOURCE_PAD),
         result.endLine + SOURCE_PAD,
       );
-      const methodCalls = extractMethodCallsFromSnippet(fileSnippet.snippet, result.language);
-      for (const name of methodCalls) {
-        if (name.length >= 8) calleeNames.add(name);
-      }
-      // v4.5.0: Also extract type/class references to find DTO/VO/Param definitions
-      const typeRefs = extractTypeReferencesFromSnippet(fileSnippet.snippet, result.language);
-      for (const name of typeRefs) {
-        if (name.length >= 4) calleeNames.add(name);
-      }
+      extractFromSnippet(fileSnippet.snippet, result.language);
     } catch {
       if (result.snippet) {
-        const methodCalls = extractMethodCallsFromSnippet(result.snippet, result.language);
-        for (const name of methodCalls) {
-          if (name.length >= 8) calleeNames.add(name);
-        }
-        const typeRefs = extractTypeReferencesFromSnippet(result.snippet, result.language);
-        for (const name of typeRefs) {
-          if (name.length >= 4) calleeNames.add(name);
-        }
+        extractFromSnippet(result.snippet, result.language);
       }
     }
   }
 
-  if (calleeNames.size === 0) return [];
+  // v4.5.0: Prioritize type references (DTOs) before method calls.
+  // Type refs naturally sort after method calls in Set insertion order,
+  // which caused them to be dropped by the slice(0, 8) limit.
+  const MAX_TYPE = 8;
+  const MAX_METHOD = 12;
+  const searchNames = [...typeNames].slice(0, MAX_TYPE);
+  const remainingMethodSlots = MAX_METHOD + Math.max(0, MAX_TYPE - searchNames.length);
+  searchNames.push(...[...methodNames].slice(0, remainingMethodSlots));
 
-  // Run parallel searches for each callee name
-  const searchPromises = [...calleeNames].slice(0, 8).map(async (methodName) => {
+  if (searchNames.length === 0) return [];
+
+  // Run parallel searches for each name
+  const searchPromises = searchNames.map(async (methodName) => {
     try {
       const resp = await searchService.search(
         projectRootPath,
