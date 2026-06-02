@@ -4,6 +4,7 @@ import { buildSemanticTerms } from "./semanticText.js";
 const TOKEN_SPLIT_PATTERN = /[^\p{L}\p{N}_.$/\\#-]+/u;
 const FTS_TERM_SPLIT_PATTERN = /[.$/\\#-]+/u;
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
+const ASCII_CJK_BOUNDARY = /(?<=[\x00-\x7F])(?=[^\x00-\x7F])|(?<=[^\x00-\x7F])(?=[\x00-\x7F])/;
 const SYMBOL_TOKEN_PATTERN = /^[\p{L}_$][\p{L}\p{N}_$.#-]*$/u;
 const IDENTIFIER_SEGMENT_PATTERN = /^[\p{L}\p{N}_.$/\\#-]+$/u;
 const IDENTIFIER_BOUNDARY_PATTERN = /[._/$\\#-]|[a-z0-9][A-Z]|[A-Z]+[A-Z][a-z]/;
@@ -25,11 +26,21 @@ function isMeaningfulToken(token: string): boolean {
   return codePointLength >= 2;
 }
 
-function buildFtsQuery(tokens: string[]): string | null {
-  const terms = [...new Set(tokens
+function buildFtsQuery(tokens: string[], excludeCjk = false): string | null {
+  let terms = [...new Set(tokens
     .flatMap((token) => token.split(FTS_TERM_SPLIT_PATTERN))
     .map(normalizeToken)
     .filter(isMeaningfulToken))];
+
+  // When the query contains code identifiers, extract ASCII portions from
+  // mixed CJK+ASCII tokens to prevent NL noise from diluting bm25 ranking.
+  // e.g. "matchforshow接口的具体业务逻辑" → ["matchforshow"]
+  if (excludeCjk) {
+    terms = terms.flatMap((t) => {
+      const parts = t.split(/(?:[^\x00-\x7F])+/);
+      return parts.map((p) => p.trim()).filter((p) => p.length > 0);
+    });
+  }
 
   return terms.length > 0 ? terms.map((term) => `${term}*`).join(" OR ") : null;
 }
@@ -47,16 +58,21 @@ export function analyzeQuery(query: string): QueryAnalysis {
   const tokens = normalizedQuery
     .split(/\s+/)
     .flatMap((part) => part.split(TOKEN_SPLIT_PATTERN))
+    .flatMap((part) => part.split(ASCII_CJK_BOUNDARY))
     .map(normalizeToken)
     .filter(isMeaningfulToken);
 
   const uniqueTokens = [...new Set(tokens)];
-  const ftsQuery = buildFtsQuery(uniqueTokens);
+  const hasIdentifiers = hasIdentifierLikeSegments(normalizedQuery);
+  const isPathLike = /[/.\\]/.test(normalizedQuery);
+  // When the query has code identifiers but is NOT path-like, exclude CJK tokens
+  // from FTS to prevent NL noise from diluting bm25 ranking (e.g. "matchForShow 接口的逻辑")
+  const ftsQuery = buildFtsQuery(uniqueTokens, hasIdentifiers && !isPathLike);
 
   return {
     ftsQuery,
-    hasIdentifierLikeSegments: hasIdentifierLikeSegments(normalizedQuery),
-    isPathLike: /[/.\\]/.test(normalizedQuery),
+    hasIdentifierLikeSegments: hasIdentifiers,
+    isPathLike,
     isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? ""),
     rawQuery: normalizedQuery,
     semanticTerms: buildSemanticTerms(normalizedQuery),

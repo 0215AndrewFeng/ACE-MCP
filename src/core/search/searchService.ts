@@ -147,14 +147,22 @@ function scoreMergedResult(
   };
 
   let score = result.score;
-  const coveredTokenCount = matchedTokens.length;
-  if (analysis.tokens.length > 0) {
+  // When the query has code identifiers but is NOT path-like, CJK tokens are noise
+  // — exclude them from coverage scoring to prevent dilution of identifier-match relevance
+  const excludeCjkFromCoverage = analysis.hasIdentifierLikeSegments && !analysis.isPathLike;
+  const coverageTokens = excludeCjkFromCoverage
+    ? analysis.tokens.filter((t) => !isCjkToken(t))
+    : analysis.tokens;
+  const matchedCoverageTokens = matchedTokens.filter((t) => !excludeCjkFromCoverage || !isCjkToken(t));
+  const coveredTokenCount = coverageTokens.length > 0 ? matchedCoverageTokens.length : matchedTokens.length;
+  const effectiveTokenCount = coverageTokens.length > 0 ? coverageTokens.length : analysis.tokens.length;
+  if (effectiveTokenCount > 0) {
     explanation.tokenCoverage = {
       matched: coveredTokenCount,
-      total: analysis.tokens.length,
+      total: effectiveTokenCount,
     };
-    score += (coveredTokenCount / analysis.tokens.length) * 0.45;
-    if (coveredTokenCount === analysis.tokens.length && analysis.tokens.length > 1) {
+    score += (coveredTokenCount / effectiveTokenCount) * 0.45;
+    if (coveredTokenCount === effectiveTokenCount && effectiveTokenCount > 1) {
       score += 0.18;
     }
   }

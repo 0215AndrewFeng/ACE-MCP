@@ -16,7 +16,8 @@ test("analyzeQuery keeps Unicode tokens for natural-language queries", () => {
 test("analyzeQuery builds FTS-safe terms from path-like queries", () => {
   const analysis = analyzeQuery("src/退款.service.ts");
 
-  assert.deepEqual(analysis.tokens, ["src/退款.service.ts"]);
+  // ASCII/CJK boundary split separates the identifier parts from the CJK term
+  assert.deepEqual(analysis.tokens, ["src/", "退款", ".service.ts"]);
   assert.equal(analysis.ftsQuery, "src* OR 退款* OR service* OR ts*");
   assert.equal(analysis.isPathLike, true);
   assert.equal(analysis.isSymbolLike, false);
