@@ -257,27 +257,27 @@ export async function findDownstreamImplementations(
     }
   }
 
-  // Fallback: if call graph yields nothing, try source-level method call extraction
-  if (calleeNames.size === 0) {
-    const SOURCE_PAD = 15;
-    for (const result of topResults) {
-      try {
-        const fileSnippet = await readFileSnippet(
-          projectRootPath,
-          result.filePath,
-          Math.max(1, result.startLine - SOURCE_PAD),
-          result.endLine + SOURCE_PAD,
-        );
-        const methodCalls = extractMethodCallsFromSnippet(fileSnippet.snippet, result.language);
+  // Always run source-level method call extraction alongside call graph.
+  // Call graph can return false positives (text-matched symbols) or nothing at all
+  // for unindexed methods (symbolId=None), so we always extract from source too.
+  const SOURCE_PAD = 15;
+  for (const result of topResults) {
+    try {
+      const fileSnippet = await readFileSnippet(
+        projectRootPath,
+        result.filePath,
+        Math.max(1, result.startLine - SOURCE_PAD),
+        result.endLine + SOURCE_PAD,
+      );
+      const methodCalls = extractMethodCallsFromSnippet(fileSnippet.snippet, result.language);
+      for (const name of methodCalls) {
+        if (name.length >= 8) calleeNames.add(name);
+      }
+    } catch {
+      if (result.snippet) {
+        const methodCalls = extractMethodCallsFromSnippet(result.snippet, result.language);
         for (const name of methodCalls) {
           if (name.length >= 8) calleeNames.add(name);
-        }
-      } catch {
-        if (result.snippet) {
-          const methodCalls = extractMethodCallsFromSnippet(result.snippet, result.language);
-          for (const name of methodCalls) {
-            if (name.length >= 8) calleeNames.add(name);
-          }
         }
       }
     }
