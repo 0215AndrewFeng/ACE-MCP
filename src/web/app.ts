@@ -999,7 +999,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
             endLine: s.endLine,
             language: s.language,
             score: s.score,
-            snippet: s.snippet.slice(0, 200),
+            snippet: s.snippet.slice(0, 2000), // v4.5.0: was 200, too small for QA context
           })),
           usage: pipelineResult.usage,
           hadSummary: pipelineResult.hadSummary,
@@ -1017,7 +1017,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           endLine: s.endLine,
           language: s.language,
           score: s.score,
-          snippet: s.snippet.slice(0, 200),
+          snippet: s.snippet.slice(0, 2000), // v4.5.0: was 200, too small for QA context
         })),
         usage: pipelineResult.usage,
         hadSummary: pipelineResult.hadSummary,
