@@ -1,0 +1,40 @@
+package.json
+  s_0f8113dba42c56::t_bc86ded5dc195a 3
+src/core/search/queryAnalyzer.ts
+  s_0f8113dba42c56::t_ba7e42b482cdee 29-30,38,43
+  s_0f8113dba42c56::t_487d190c71fe30 66
+  s_0f8113dba42c56::t_644e5f00110c75 75
+  s_0f8113dba42c56::t_7dfe865193fc4a 7
+  s_0f8113dba42c56::t_e0f675c00cb416 61
+  s_0f8113dba42c56::t_aaeef1e79919ed 35-37,39-42
+  s_0f8113dba42c56::t_fd883a3b087c5e 74
+  s_0f8113dba42c56::t_6bc88ef8aa5a04 67-70
+src/version.ts
+  s_0f8113dba42c56::t_2073476829d9b6 2
+README.md
+  s_0f8113dba42c56::t_c4aa1c2844774b 5
+  s_0f8113dba42c56::t_257ee3c39fa578 302-307
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_15634688ebaaa5 150-153,156
+  s_0f8113dba42c56::t_e8955024773db5 154-155,157-159,162,164-165
+CHANGELOG.md
+  s_0f8113dba42c56::t_a889072931abb2 5-13
+src/core/search/queryAnalyzer.test.ts
+  s_0f8113dba42c56::t_4cf3168194db49 19-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "edcca4811ee75303df59a29e28f0869023a26127",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": null
+    }
+  }
+}
