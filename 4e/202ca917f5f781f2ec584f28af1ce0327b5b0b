@@ -1,0 +1,38 @@
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_366432ff5049e8 156-158,184-185
+  s_0f8113dba42c56::t_f6c1e5cf3dc04c 159-183,186-188
+  s_0f8113dba42c56::t_c15e3c91313e47 10
+CHANGELOG.md
+  s_0f8113dba42c56::t_b7805d6487704a 5-12
+package.json
+  s_0f8113dba42c56::t_48f22b83229365 3
+src/version.ts
+  s_0f8113dba42c56::t_710769a36054be 2
+src/core/search/callChainExtractor.ts
+  s_0f8113dba42c56::t_749afdf3ee47fd 215-217,225,228-229,232-236,238,240-245,247-252,256-271,273,275-281,286,288-289
+  s_0f8113dba42c56::t_47fc8a26548017 144-186
+  s_0f8113dba42c56::t_0f882dbbd9d1a3 287
+  s_0f8113dba42c56::t_1d044a4b4452ac 237,239,246,254-255,272,274,282
+  s_0f8113dba42c56::t_61babab31b756e 11
+  s_0f8113dba42c56::t_c47fd53b32394b 253,294
+  s_0f8113dba42c56::t_3c29b19e3e8514 202-214,218-224,226-227,230-231,283-285,290-293,295-325
+README.md
+  s_0f8113dba42c56::t_384365c024f2e4 5
+  s_0f8113dba42c56::t_5706dc30ec1f96 302-307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "4e202ca917f5f781f2ec584f28af1ce0327b5b0b",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
