@@ -1,0 +1,35 @@
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_e8955024773db5 154-155,157-159,162,164-165
+  s_0f8113dba42c56::t_15634688ebaaa5 150-153,156
+package.json
+  s_0f8113dba42c56::t_bc86ded5dc195a 3
+src/version.ts
+  s_0f8113dba42c56::t_2073476829d9b6 2
+README.md
+  s_0f8113dba42c56::t_c4aa1c2844774b 5
+  s_0f8113dba42c56::t_257ee3c39fa578 302-307
+CHANGELOG.md
+  s_0f8113dba42c56::t_a889072931abb2 5-13
+src/core/search/queryAnalyzer.ts
+  s_0f8113dba42c56::t_487d190c71fe30 60
+  s_0f8113dba42c56::t_644e5f00110c75 69
+  s_0f8113dba42c56::t_ba7e42b482cdee 28-29,34-38
+  s_0f8113dba42c56::t_6bc88ef8aa5a04 61-64
+  s_0f8113dba42c56::t_fd883a3b087c5e 68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "6027ced9c3097c3441e4403738f6d97f9ff8c89a",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
