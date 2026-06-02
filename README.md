@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.4.9`
+当前版本：`v4.5.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -299,9 +299,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.4.9（当前版本）
+### v4.5.0（当前版本）
 
-- **下游搜索回退逻辑修复**：修复了 `findDownstreamImplementations` 中源码级方法调用提取被调用图假阳性结果阻隔的 bug。现在调用图与源码提取并行运行，结果合并，确保未完整索引方法（symbolId=None）也能通过源码级提取发现下游实现。
+- **QA 上下文完整性修复**：下游搜索结果片段从索引原始大小（~1-3 行）展开至 ±15 行上下文，方法体实现正式可读。调用链片段截断限制从 200 提升至 600 字符。新增 `extractTypeReferencesFromSnippet`，从源码提取 PascalCase 类型引用（DTO/VO/Param 等），自动发现并注入 DTO 定义文件。
+
+### v4.4.9
 
 ### v4.4.8
 

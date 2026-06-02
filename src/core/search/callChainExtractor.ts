@@ -211,6 +211,73 @@ function isControlFlowKeyword(word: string): boolean {
 }
 
 /**
+ * v4.5.0: Extract type/class reference names from a code snippet.
+ * Complements extractMethodCallsFromSnippet — captures PascalCase identifiers
+ * used as parameter types, return types, generic type arguments, and
+ * direct class references (DTO, VO, Param, Query, etc.).
+ */
+export function extractTypeReferencesFromSnippet(snippet: string, language: string): string[] {
+  const names = new Set<string>();
+
+  const builtins = new Set([
+    "String", "Integer", "Long", "Boolean", "Double", "Float",
+    "Byte", "Short", "Character", "Object", "Class", "Enum", "Void",
+    "List", "Map", "Set", "Optional", "Stream", "Collection",
+    "Override", "Deprecated", "SuppressWarnings", "SafeVarargs",
+    "IOException", "RuntimeException", "Exception", "Error", "Throwable",
+  ]);
+
+  const isNoiseName = (name: string): boolean =>
+    builtins.has(name) ||
+    name.endsWith("Exception") ||
+    name.endsWith("Error") ||
+    name.length < 3;
+
+  if (language === "java" || language === "dotnet") {
+    const patterns = [
+      // Parameter type declarations: TypeName paramName
+      /\b([A-Z][A-Za-z0-9_]{2,})\s+[a-z_]\w*\s*[,;)]/gm,
+      // Return types: ) TypeName methodName( or static TypeName methodName(
+      /(?:\)|static)\s+([A-Z][A-Za-z0-9_]{2,})\s+[a-z_]\w*\s*\(/gm,
+      // Generic type arguments: <TypeName, TypeName>
+      /<([A-Z][A-Za-z0-9_]{2,})>/gm,
+      // PascalCase identifiers >= 4 chars (catches DTOs, VOs, etc.)
+      /\b([A-Z][A-Za-z0-9_]{3,})\b/gm,
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(snippet)) !== null) {
+        const name = match[1];
+        if (name && !isNoiseName(name)) {
+          names.add(name);
+        }
+      }
+    }
+  } else if (language === "typescript" || language === "javascript") {
+    const patterns = [
+      /:\s*([A-Z][A-Za-z0-9_]{2,})\b/gm,
+      /\b([A-Z][A-Za-z0-9_]{3,})\b/gm,
+    ];
+    const tsBuiltins = new Set([
+      "String", "Number", "Boolean", "Array", "Object", "Function",
+      "Promise", "Map", "Set", "Date", "Error", "RegExp",
+    ]);
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(snippet)) !== null) {
+        const name = match[1];
+        if (name && !tsBuiltins.has(name) && name.length >= 3) {
+          names.add(name);
+        }
+      }
+    }
+  }
+
+  return [...names];
+}
+
+/**
  * v4.4.8: Find downstream implementations for methods called from top search results.
  * Uses the indexed call graph (findCallees) to discover methods called by top-result
  * symbols, then runs supplementary searches for their definitions. Falls back to
@@ -273,11 +340,20 @@ export async function findDownstreamImplementations(
       for (const name of methodCalls) {
         if (name.length >= 8) calleeNames.add(name);
       }
+      // v4.5.0: Also extract type/class references to find DTO/VO/Param definitions
+      const typeRefs = extractTypeReferencesFromSnippet(fileSnippet.snippet, result.language);
+      for (const name of typeRefs) {
+        if (name.length >= 4) calleeNames.add(name);
+      }
     } catch {
       if (result.snippet) {
         const methodCalls = extractMethodCallsFromSnippet(result.snippet, result.language);
         for (const name of methodCalls) {
           if (name.length >= 8) calleeNames.add(name);
+        }
+        const typeRefs = extractTypeReferencesFromSnippet(result.snippet, result.language);
+        for (const name of typeRefs) {
+          if (name.length >= 4) calleeNames.add(name);
         }
       }
     }
@@ -293,7 +369,7 @@ export async function findDownstreamImplementations(
         methodName,
         "auto",
         maxDownstream,
-        0,
+        15, // v4.5.0: expand snippets with ±15 lines context (was 0)
         {},
         "full",
       );
@@ -427,7 +503,7 @@ async function extractCallEntriesWithDepth(
         symbol: r.ownerSymbol ?? r.resolvedSymbol ?? r.rawName ?? "unknown",
         filePath: r.filePath,
         line: r.startLine,
-        snippet: r.snippet?.slice(0, 200) ?? "",
+        snippet: r.snippet?.slice(0, 600) ?? "", // v4.5.0: was 200, too small for call chain context
       };
 
       // Recursively fetch deeper levels

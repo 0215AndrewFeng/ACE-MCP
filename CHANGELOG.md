@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.0] - 2026-06-02
+
+### QA 上下文完整性修复
+
+- **下游搜索片段展开**：`findDownstreamImplementations` 调用 `searchService.search()` 时 `includeContextLines` 从 0 改为 15，使下游搜索结果片段从索引原始大小（~1-3 行）展开至匹配行 ±15 行上下文，方法体实现正式可读。此前 `expandResultSnippets` 因 `includeContextLines=0` 短路，返回索引中的微小片段，LLM 只能看到方法签名而无法描述业务逻辑。
+- **调用链片段截断提升**：`extractCallEntriesWithDepth` 中 `snippet.slice(0, 200)` 改为 `slice(0, 600)`，调用链上下文纳入更多代码细节。
+- **DTO 类型自动发现**：新增 `extractTypeReferencesFromSnippet` 函数，从源码片段提取 PascalCase 类型引用（DTO/VO/Param/Query 等），与已有的方法调用提取并行运行。解决了此前 ASK 管线只能发现方法调用下游、完全遗漏 DTO 模型文件的问题。
+
 ## [4.4.9] - 2026-06-02
 
 ### 下游搜索回退逻辑修复
