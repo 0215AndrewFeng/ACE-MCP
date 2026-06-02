@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.4.8] - 2026-06-02
+
+### QA 下游实现自动发现
+
+- **调用图驱动的下游搜索**：ASK 管线搜索到方法定义后，自动通过索引调用图（`findCallees`）提取被调用方法名，执行补充搜索并将下游 Service/工具类实现注入 LLM 上下文。解决了此前只找到 Controller 方法定义、看不到核心业务实现（如 `OrderTgqServiceImpl.queryForShowBySerialNo`）的问题。
+- **源码级方法调用提取**：新增 `extractMethodCallsFromSnippet` 函数，从源码片段中提取方法调用名（而非仅定义），作为调用图索引的补充回退。支持 Java/C#、JavaScript/TypeScript、Python 四种语言。
+- **调用链提取器增强**：`findDownstreamImplementations` 优先使用索引调用图，无结果时回退到源码级正则提取（≥8 字符的方法名过滤，±15 行上下文窗口）。
+
 ## [4.4.7] - 2026-06-02
 
 ### FTS 中文噪声过滤

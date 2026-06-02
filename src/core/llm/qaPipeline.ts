@@ -7,7 +7,7 @@ import type { ToolDependencies } from "../../server/toolRegistry.js";
 import type { ContextMode, SupportedLanguage } from "../common/types.js";
 import { AppError } from "../common/errors.js";
 import type { CallChainContext, CallChainLocation } from "../search/callChainExtractor.js";
-import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations } from "../search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations, findDownstreamImplementations } from "../search/callChainExtractor.js";
 import { rerankWithLlm } from "../search/llmReranker.js";
 import { expandQueryWithLlm } from "./queryExpander.js";
 import { qaCache, QaCache } from "./qaCache.js";
@@ -152,6 +152,39 @@ export async function runQaPipeline(
 
   const searchMs = Date.now() - searchStart;
   checkTimeout("search");
+
+  // 2.5. v4.4.8: Find downstream implementations via indexed call graph.
+  // Uses the symbol index to find callees of top-result methods, then searches for
+  // their definitions so that service/utility implementations are included in context.
+  let downstreamSearchMs = 0;
+  if (searchResult.results.length > 0) {
+    try {
+      const dsStart = Date.now();
+      const downstreamResults = await findDownstreamImplementations(
+        deps.searchService,
+        indexResult.projectRootPath,
+        searchResult.results,
+        Math.min(topK, 5),
+      );
+      downstreamSearchMs = Date.now() - dsStart;
+      if (downstreamResults.length > 0) {
+        const existingKeys = new Set(
+          searchResult.results.map(r => `${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        const newResults = downstreamResults.filter(
+          r => !existingKeys.has(`${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        if (newResults.length > 0) {
+          searchResult = {
+            ...searchResult,
+            results: [...searchResult.results, ...newResults],
+          };
+        }
+      }
+    } catch {
+      // Downstream search is supplementary — silently skip on error
+    }
+  }
 
   // 3. Optional LLM reranker
   let rerankerMs = 0;

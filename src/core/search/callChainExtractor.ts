@@ -8,6 +8,7 @@
  */
 
 import type { SearchResult, CallGraphSearchResponse } from "../common/types.js";
+import { readFileSnippet } from "../project/fileSnippet.js";
 import type { SearchService } from "./searchService.js";
 
 export interface CallChainContext {
@@ -140,6 +141,50 @@ function extractSymbolsFromSnippet(snippet: string, language: string): string[] 
 }
 
 /**
+ * v4.4.8: Extract method CALL names from a code snippet (not just definitions).
+ * For a method body like matchForShow() that calls orderTgqService.queryForShowBySerialNo(),
+ * this extracts "queryForShowBySerialNo" so we can search for downstream implementations.
+ */
+export function extractMethodCallsFromSnippet(snippet: string, language: string): string[] {
+  const calls = new Set<string>();
+
+  if (language === "java" || language === "dotnet") {
+    // Java/C#: .methodName( or methodName( (but not keywords)
+    // Match both obj.method() and static ClassName.method()
+    const callPattern = /(?:\.\s*|^|\s)([a-z_]\w*)\s*\(/gm;
+    let match;
+    while ((match = callPattern.exec(snippet)) !== null) {
+      const name = match[1];
+      if (name && name.length >= 3 && !isCommonWord(name) && !isControlFlowKeyword(name)) {
+        calls.add(name);
+      }
+    }
+  } else if (language === "javascript" || language === "typescript") {
+    // JS/TS: .methodName(, methodName(, await methodName(
+    const callPattern = /(?:\.\s*|await\s+)?([a-z_$][\w$]*)\s*\(/gm;
+    let match;
+    while ((match = callPattern.exec(snippet)) !== null) {
+      const name = match[1];
+      if (name && name.length >= 3 && !isCommonWord(name) && !isControlFlowKeyword(name)) {
+        calls.add(name);
+      }
+    }
+  } else if (language === "python") {
+    // Python: .method_name( or method_name(
+    const callPattern = /(?:\.\s*)?([a-z_]\w*)\s*\(/gm;
+    let match;
+    while ((match = callPattern.exec(snippet)) !== null) {
+      const name = match[1];
+      if (name && name.length >= 3 && !isCommonWord(name) && !isControlFlowKeyword(name)) {
+        calls.add(name);
+      }
+    }
+  }
+
+  return [...calls];
+}
+
+/**
  * Filter out common words that are unlikely to be meaningful symbol names
  */
 function isCommonWord(word: string): boolean {
@@ -151,6 +196,131 @@ function isCommonWord(word: string): boolean {
     "static", "final", "override", "abstract", "interface", "extends", "implements",
   ]);
   return commonWords.has(word.toLowerCase());
+}
+
+/**
+ * Filter out control flow keywords that look like method calls but aren't
+ */
+function isControlFlowKeyword(word: string): boolean {
+  const keywords = new Set([
+    "if", "for", "while", "switch", "catch", "try", "throw", "return",
+    "synchronized", "assert", "instanceof", "typeof", "yield", "with",
+    "break", "continue", "case", "default", "finally", "do",
+  ]);
+  return keywords.has(word.toLowerCase());
+}
+
+/**
+ * v4.4.8: Find downstream implementations for methods called from top search results.
+ * Uses the indexed call graph (findCallees) to discover methods called by top-result
+ * symbols, then runs supplementary searches for their definitions. Falls back to
+ * source-level method call extraction if the call graph returns no results.
+ */
+export async function findDownstreamImplementations(
+  searchService: SearchService,
+  projectRootPath: string,
+  results: SearchResult[],
+  maxDownstream: number = 5,
+): Promise<SearchResult[]> {
+  const topResults = results.slice(0, 3);
+  if (topResults.length === 0) return [];
+
+  // Collect callee names from the indexed call graph
+  const calleeNames = new Set<string>();
+
+  for (const result of topResults) {
+    if (!result.symbol) continue;
+    // Extract the simple name from qualified symbol (e.g., "Foo.bar" or "Foo#bar" → "bar")
+    const simpleName = result.symbol.split(/[.#$]/).pop() ?? result.symbol;
+    if (!simpleName || simpleName.length < 3) continue;
+
+    try {
+      const calleeResp = await searchService.findCallees(
+        projectRootPath,
+        simpleName,
+        5,
+        0,
+        undefined,
+        "metadata",
+        1,
+      );
+      if (calleeResp?.results) {
+        for (const callee of calleeResp.results) {
+          const name = callee.resolvedSymbol ?? callee.ownerSymbol ?? callee.rawName;
+          if (name && name.length >= 3 && !isCommonWord(name) && !isControlFlowKeyword(name)) {
+            calleeNames.add(name);
+          }
+        }
+      }
+    } catch {
+      // findCallees may fail for symbols without call graph data — skip
+    }
+  }
+
+  // Fallback: if call graph yields nothing, try source-level method call extraction
+  if (calleeNames.size === 0) {
+    const SOURCE_PAD = 15;
+    for (const result of topResults) {
+      try {
+        const fileSnippet = await readFileSnippet(
+          projectRootPath,
+          result.filePath,
+          Math.max(1, result.startLine - SOURCE_PAD),
+          result.endLine + SOURCE_PAD,
+        );
+        const methodCalls = extractMethodCallsFromSnippet(fileSnippet.snippet, result.language);
+        for (const name of methodCalls) {
+          if (name.length >= 8) calleeNames.add(name);
+        }
+      } catch {
+        if (result.snippet) {
+          const methodCalls = extractMethodCallsFromSnippet(result.snippet, result.language);
+          for (const name of methodCalls) {
+            if (name.length >= 8) calleeNames.add(name);
+          }
+        }
+      }
+    }
+  }
+
+  if (calleeNames.size === 0) return [];
+
+  // Run parallel searches for each callee name
+  const searchPromises = [...calleeNames].slice(0, 8).map(async (methodName) => {
+    try {
+      const resp = await searchService.search(
+        projectRootPath,
+        methodName,
+        "auto",
+        maxDownstream,
+        0,
+        {},
+        "full",
+      );
+      return resp.results;
+    } catch {
+      return [];
+    }
+  });
+
+  const allResults = await Promise.all(searchPromises);
+  const seen = new Set(results.map(r => `${r.filePath}:${r.startLine}:${r.endLine}`));
+  const downstream: SearchResult[] = [];
+
+  for (const batch of allResults) {
+    for (const r of batch) {
+      const key = `${r.filePath}:${r.startLine}:${r.endLine}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        // Mark as downstream source (lower priority than direct matches)
+        downstream.push({ ...r, score: r.score * 0.85 });
+      }
+    }
+  }
+
+  // Sort by score descending, take top results
+  downstream.sort((a, b) => b.score - a.score);
+  return downstream.slice(0, maxDownstream * 2);
 }
 
 /**
