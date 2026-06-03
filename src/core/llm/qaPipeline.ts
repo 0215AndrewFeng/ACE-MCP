@@ -301,6 +301,33 @@ export async function runQaPipeline(
     );
   }
 
+  // 5.5. v4.5.0: Window snippets around matched lines so the most relevant code
+  // is always visible regardless of web API or compressContext truncation.
+  // Without this, single-chunk files produce full-file snippets starting from
+  // line 1, and large files get the core matched region cut off.
+  const SNIPPET_WINDOW = 80;
+  sources = await Promise.all(
+    sources.map(async (s) => {
+      const centerLine = Math.floor((s.startLine + s.endLine) / 2);
+      const winStart = Math.max(1, centerLine - SNIPPET_WINDOW);
+      const winEnd = centerLine + SNIPPET_WINDOW;
+      // Only re-read if snippet starts far from center (gap > window means full-file chunk)
+      const gap = centerLine - s.startLine;
+      if (gap <= SNIPPET_WINDOW) return s; // already windowed around match
+      try {
+        const windowed = await readFileSnippet(
+          indexResult.projectRootPath,
+          s.filePath,
+          winStart,
+          winEnd,
+        );
+        return { ...s, startLine: windowed.startLine, endLine: windowed.endLine, snippet: windowed.snippet };
+      } catch {
+        return s; // keep original on error
+      }
+    }),
+  );
+
   // 6. Context compression
   const compressedSources = compressContext(sources, deps.settings.qaMaxContextTokens);
 
