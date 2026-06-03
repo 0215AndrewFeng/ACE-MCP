@@ -1,0 +1,19 @@
+README.md
+  s_0f8113dba42c56::t_d6fc6a65033d97 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "fbde18b5a319f33f29a5466ab1fd21e75ff8de34",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "xopglm51"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
