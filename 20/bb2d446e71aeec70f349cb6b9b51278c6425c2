@@ -1,0 +1,42 @@
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_54117c31aa825a 1134
+  s_0f8113dba42c56::t_ce30d7bd1960c4 36
+  s_0f8113dba42c56::t_ff0a1b1b1dcc53 1123-1133,1135-1154
+src/core/search/queryAnalyzer.test.ts
+  s_0f8113dba42c56::t_11a8c1aea1c612 57-65
+  s_0f8113dba42c56::t_eca7ebac21f096 49-54
+src/core/common/types.ts
+  s_0f8113dba42c56::t_d569636b062a88 189,192
+src/version.ts
+  s_0f8113dba42c56::t_789930afad4688 2
+CHANGELOG.md
+  s_0f8113dba42c56::t_7c8bf6f6e03646 5-12
+README.md
+  s_0f8113dba42c56::t_be35fea231b4c9 5
+  s_0f8113dba42c56::t_4a6192be86df33 302-307
+package.json
+  s_0f8113dba42c56::t_dd5da4b54aa16c 3
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_4936ecebb2638a 56-57,75,84-87,90,99-122
+src/core/search/queryAnalyzer.ts
+  s_0f8113dba42c56::t_c78f70575f4cbb 96-98
+  s_0f8113dba42c56::t_72fdcc92d1ea75 56-60,78-79,99-101,105,108
+  s_0f8113dba42c56::t_e538c7d9db9959 61-77
+  s_0f8113dba42c56::t_1ffa01fa52185a 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "20bb2d446e71aeec70f349cb6b9b51278c6425c2",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
