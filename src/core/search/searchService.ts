@@ -33,7 +33,7 @@ import {
 } from "../common/types.js";
 import { AppError } from "../common/errors.js";
 import { readFileSnippet } from "../project/fileSnippet.js";
-import { analyzeQuery } from "./queryAnalyzer.js";
+import { analyzeQuery, buildFtsQuery } from "./queryAnalyzer.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
 import { collectPositiveStructuredTerms, parseStructuredQuery, type ParsedStructuredQuery, type StructuredQueryNode, type StructuredQueryTerm } from "./structuredQuery.js";
@@ -1120,8 +1120,38 @@ export class SearchService {
     );
 
     const rerankStartedAt = performance.now();
-    const mergedResults = mergeResults(resultSets);
-    const rerankedResults = rerankResults(mergedResults, analysis, topK, getDynamicPerFileLimit(analysis, this.settings.searchPerFileLimit || 2));
+    let mergedResults = mergeResults(resultSets);
+    let rerankedResults = rerankResults(mergedResults, analysis, topK, getDynamicPerFileLimit(analysis, this.settings.searchPerFileLimit || 2));
+
+    // v4.5.1: Identifier-priority boost. When the query contains both code identifiers
+    // and natural language (CJK or English), the FTS match is diluted by NL tokens.
+    // Run a focused identifier-only FTS search and boost matching results' scores.
+    if (analysis.identifiers.length > 0 && analysis.naturalLanguage.length > 0) {
+      try {
+        const idFtsQuery = buildFtsQuery(analysis.identifiers, false);
+        if (idFtsQuery) {
+          const idResults = this.store.searchByText(
+            project.project_id, idFtsQuery, topK * 3, {},
+          );
+          if (idResults.length > 0) {
+            const boostMap = new Map<string, number>();
+            for (const r of idResults) {
+              const key = `${r.filePath}:${r.startLine}:${r.endLine}`;
+              boostMap.set(key, (boostMap.get(key) ?? 0) + r.score * 0.5);
+            }
+            for (const r of rerankedResults) {
+              const key = `${r.filePath}:${r.startLine}:${r.endLine}`;
+              const boost = boostMap.get(key);
+              if (boost) r.score += boost;
+            }
+            rerankedResults.sort((a, b) => b.score - a.score);
+            notes.push(`Identifier boost applied: ${idResults.length} id-matches, ${boostMap.size} boosted`);
+          }
+        }
+      } catch {
+        // Identifier boost is best-effort; never fail the main search
+      }
+    }
     executedStrategies.push({
       candidateCount: rerankedResults.length,
       durationMs: Math.round(performance.now() - rerankStartedAt),

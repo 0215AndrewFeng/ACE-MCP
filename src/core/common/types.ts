@@ -186,8 +186,10 @@ export interface IndexEventSummary {
 export interface QueryAnalysis {
   ftsQuery: string | null;
   hasIdentifierLikeSegments: boolean;
+  identifiers: string[];       // v4.5.1: camelCase/snake_case/PascalCase identifiers extracted from query
   isPathLike: boolean;
   isSymbolLike: boolean;
+  naturalLanguage: string[];   // v4.5.1: non-identifier tokens (CJK words, plain English)
   rawQuery: string;
   semanticTerms: string[];
   structuredQuery?: {

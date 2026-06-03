@@ -53,6 +53,8 @@ export function estimateTokens(text: string): number {
 /**
  * Compress sources to fit within token budget
  * Prioritizes higher-score sources and truncates snippets if needed
+ * v4.5.1: When truncating, center the snippet around the matched line range
+ * instead of always starting from line 1 of the file.
  */
 export function compressContext(sources: QaSource[], maxTokens: number): QaSource[] {
   if (sources.length === 0) return sources;
@@ -70,7 +72,7 @@ export function compressContext(sources: QaSource[], maxTokens: number): QaSourc
   // Truncate snippets starting from lowest-score sources
   const result = [...sorted];
   const tokensPerSource = Math.floor(maxTokens / result.length);
-  const minSnippetChars = 200; // Keep at least this many chars
+  const minSnippetChars = 200;
 
   for (let i = result.length - 1; i >= 0 && totalTokens > maxTokens; i--) {
     const source = result[i];
@@ -79,15 +81,45 @@ export function compressContext(sources: QaSource[], maxTokens: number): QaSourc
 
     if (currentTokens > targetTokens) {
       const targetChars = targetTokens * 4;
+      // v4.5.1: Center truncation around matched line range
+      // Without this, full-file snippets always start from line 1, and the
+      // matched method at line 100+ gets cut off before it appears.
+      const truncatedSnippet = centerTruncate(source.snippet, targetChars, source.startLine, source.endLine);
       result[i] = {
         ...source,
-        snippet: source.snippet.slice(0, targetChars) + "\n// ... (truncated)",
+        snippet: truncatedSnippet,
       };
       totalTokens -= currentTokens - targetTokens;
     }
   }
 
   return result;
+}
+
+/**
+ * v4.5.1: Truncate a snippet by centering it around the matched line range,
+ * rather than always taking the first N characters (which are imports/package
+ * declarations in Java files).
+ */
+function centerTruncate(snippet: string, maxChars: number, startLine: number, endLine: number): string {
+  if (snippet.length <= maxChars) return snippet;
+
+  const lines = snippet.split("\n");
+  const centerLine = Math.floor((startLine + endLine) / 2) - startLine + 1; // relative to snippet start
+  const safeCenterLine = Math.min(Math.max(centerLine, 1), lines.length);
+
+  // Find the character offset of the center line
+  let charOffset = 0;
+  for (let i = 0; i < safeCenterLine - 1; i++) {
+    charOffset += lines[i].length + 1; // +1 for the \n
+  }
+
+  // Start 1/3 of budget before center, extend 2/3 after
+  const start = Math.max(0, charOffset - Math.floor(maxChars / 3));
+  const truncated = snippet.slice(start, start + maxChars);
+  const prefix = start > 0 ? "// ... (earlier lines omitted)\n" : "";
+  const suffix = (start + maxChars) < snippet.length ? "\n// ... (truncated)" : "";
+  return prefix + truncated + suffix;
 }
 
 /**

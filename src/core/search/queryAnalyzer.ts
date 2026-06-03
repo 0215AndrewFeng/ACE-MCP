@@ -26,7 +26,7 @@ function isMeaningfulToken(token: string): boolean {
   return codePointLength >= 2;
 }
 
-function buildFtsQuery(tokens: string[], excludeCjk = false): string | null {
+export function buildFtsQuery(tokens: string[], excludeCjk = false): string | null {
   let terms = [...new Set(tokens
     .flatMap((token) => token.split(FTS_TERM_SPLIT_PATTERN))
     .map(normalizeToken)
@@ -53,6 +53,30 @@ function hasIdentifierLikeSegments(query: string): boolean {
     .some((segment) => IDENTIFIER_SEGMENT_PATTERN.test(segment) && segment.length >= 8 && IDENTIFIER_BOUNDARY_PATTERN.test(segment));
 }
 
+const IDENTIFIER_PATTERN = /^[\p{L}_$][\p{L}\p{N}_$.#-]*$/u;
+const CAMEL_SNAKE_PATTERN = /[a-z][A-Z]|[A-Z][A-Z][a-z]|_/;
+// Noise tokens that should not be treated as identifiers even if they pass the pattern
+const NOISE_TOKENS = new Set(["the", "for", "and", "not", "but", "how", "what", "where", "when", "why", "this", "that", "with", "from", "into", "can", "has"]);
+
+/**
+ * v4.5.1: Extract code identifiers from the ORIGINAL (pre-normalized) query segments.
+ * Must run before lowercasing so camelCase boundaries are preserved for detection.
+ * Returns normalized (lowercased) identifier tokens.
+ */
+function extractIdentifiersFromRaw(query: string): string[] {
+  const segments = query
+    .split(/\s+/)
+    .flatMap((part) => part.split(TOKEN_SPLIT_PATTERN))
+    .flatMap((part) => part.split(ASCII_CJK_BOUNDARY))
+    .filter((segment) =>
+      segment.length >= 3 &&
+      IDENTIFIER_PATTERN.test(segment) &&
+      (CAMEL_SNAKE_PATTERN.test(segment) || /^[A-Z][\p{L}\p{N}]*$/u.test(segment)) &&
+      !NOISE_TOKENS.has(segment.toLowerCase()),
+    );
+  return [...new Set(segments.map(s => s.toLowerCase()))];
+}
+
 export function analyzeQuery(query: string): QueryAnalysis {
   const normalizedQuery = query.normalize("NFKC");
   const tokens = normalizedQuery
@@ -69,11 +93,19 @@ export function analyzeQuery(query: string): QueryAnalysis {
   // from FTS to prevent NL noise from diluting bm25 ranking (e.g. "matchForShow 接口的逻辑")
   const ftsQuery = buildFtsQuery(uniqueTokens, hasIdentifiers && !isPathLike);
 
+  // v4.5.1: Extract code identifiers from the ORIGINAL query (before lowercasing)
+  // so camelCase/PascalCase boundaries are preserved for detection
+  const identifiers = extractIdentifiersFromRaw(normalizedQuery);
+  const identifierSet = new Set(identifiers);
+  const naturalLanguage = uniqueTokens.filter(t => !identifierSet.has(t));
+
   return {
     ftsQuery,
     hasIdentifierLikeSegments: hasIdentifiers,
+    identifiers,
     isPathLike,
     isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? ""),
+    naturalLanguage,
     rawQuery: normalizedQuery,
     semanticTerms: buildSemanticTerms(normalizedQuery),
     tokens: uniqueTokens,

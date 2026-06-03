@@ -46,6 +46,23 @@ test("analyzeQuery flags compound identifiers inside mixed natural-language quer
     "query",
     "flow",
   ]);
+  // v4.5.1: identifiers should extract camelCase/PascalCase tokens
+  assert.ok(analysis.identifiers.includes("myworkordercontroller"));
+  assert.ok(analysis.identifiers.includes("getmyworkorders"));
+  // naturalLanguage should contain the non-identifier tokens
+  assert.ok(analysis.naturalLanguage.includes("work"));
+  assert.ok(analysis.naturalLanguage.includes("order"));
+});
+
+test("analyzeQuery separates identifiers from CJK natural language (v4.5.1 P0)", () => {
+  const analysis = analyzeQuery("matchForShow接口的具体业务逻辑");
+
+  // identifiers should contain the camelCase code identifier
+  assert.ok(analysis.identifiers.length > 0);
+  assert.ok(analysis.identifiers.some(id => id.includes("matchforshow")));
+  // naturalLanguage should contain the CJK tokens
+  assert.ok(analysis.naturalLanguage.length > 0);
+  assert.ok(analysis.naturalLanguage.some(t => /接口|具体|业务|逻辑/.test(t)));
 });
 
 test("parseStructuredQuery handles scoped fields boolean operators and phrases", () => {
