@@ -1,0 +1,64 @@
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_7ea5ef5247ac49 360-362
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_6267ea140b4732 249-250
+  s_0f8113dba42c56::t_ae62d7ec3d790a 205
+  s_0f8113dba42c56::t_a1f42efadc82a9 229
+  s_0f8113dba42c56::t_7cff39419e0c0e 149,185,206,230,275,282
+  s_0f8113dba42c56::t_981658deb89034 281
+  s_0f8113dba42c56::t_369905c2367084 184
+  s_0f8113dba42c56::t_be44cf4025082a 274
+  s_0f8113dba42c56::t_77add3bedd3eac 148
+package.json
+  s_0f8113dba42c56::t_b3d994f22ddba6 3
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_b6895928896474 1134
+src/server/tools/searchContext.ts
+  s_0f8113dba42c56::t_3845e44e5dc176 75
+src/version.ts
+  s_0f8113dba42c56::t_2529bc0fd2102f 2
+ROADMAP.md
+  s_0f8113dba42c56::t_4006a9301f373a 11-12
+  s_0f8113dba42c56::t_28c9e87b8ff427 1-10,13-19,21-22,25,27-37,39-54
+  s_0f8113dba42c56::t_1071a83d94417d 24
+  s_0f8113dba42c56::t_ea1b0f6c548779 26
+  s_0f8113dba42c56::t_8e9e8294e6541f 38
+  s_0f8113dba42c56::t_0e29d4b28919a4 20
+  s_0f8113dba42c56::t_f6947d9e084357 23
+src/core/search/hnswIndex.ts
+  s_0f8113dba42c56::t_e94f55f2a17005 477-480,482-483,486,506,509,516
+  s_0f8113dba42c56::t_4824eac62876ca 29-132
+CHANGELOG.md
+  s_0f8113dba42c56::t_5d9da6e0a3fac0 5-15
+src/web/app.ts
+  s_0f8113dba42c56::t_b601a35522a607 1182
+  s_0f8113dba42c56::t_c7900c5fbf0285 1306
+  s_0f8113dba42c56::t_f69baee22ce5ea 1132
+  s_0f8113dba42c56::t_8cf52be9bad0b1 1311
+  s_0f8113dba42c56::t_ed41be6ba113a0 1334
+  s_0f8113dba42c56::t_3e6befb809d839 478
+README.md
+  s_0f8113dba42c56::t_87195ab14d01d5 303,305-310,312
+  s_0f8113dba42c56::t_c7e91d37971e28 5
+  s_0f8113dba42c56::t_6bee57fdfc06f7 408
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_3c0b272eff3910 1205-1224
+  s_0f8113dba42c56::t_3fff4312e0d272 620-621
+  s_0f8113dba42c56::t_f27e56771a761f 714-731
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "3cbc1c32b7eb3207af7406662fdcff0a3822d633",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
