@@ -6,20 +6,20 @@
 
 1. ✅ **QA 缓存一致性**：缓存键加入文件内容 hash，避免代码变更后返回旧答案；提供手动清除 API（v4.5.2）
 2. ✅ **索引健康监控**：`/health` 端点暴露 in-flight 索引列表和耗时（v4.5.2）
-3. **符号解析消歧**：symbol graph resolve 只取 resolved[0]，同名方法（如多个类的 `process`）易误解析导致调用链断链；findCallers 定义消歧只取第一个结果
-4. **Java Lambda/方法引用**：正则解析器漏掉 `Foo::bar` 方法引用和 Lambda 内调用，流式 API 项目调用链大面积断链
+3. ✅ **符号解析消歧**：resolveRows 排序新增同文件/同模块优先排序键（v4.5.4）
+4. ✅ **Java Lambda/方法引用**：新增 METHOD_REF_PATTERN 和 LAMBDA_PATTERN，方法引用和 Lambda 内调用可被调用链追踪（v4.5.5）
 5. ✅ **HNSW searchLayer 用 Array.sort 替代 heap**：实现 MinHeap/MaxHeap 替代，搜索复杂度从 O(ef·n·log n) 降至 O(ef·log n)（v4.5.3）
 6. ✅ **N+1 关联子查询 → CTE**：getFilePreviewResults/searchByPath 用 CTE + LEFT JOIN 替代 3N 次子查询（v4.5.3）
 7. **增量索引 vector 缓存全量清空**：改 5 个文件导致 10 万向量全部重新加载，应只失效受影响 chunk 的向量
 
 ## P1 — 性能/体验
 
-8. **vectorCache 内存控制**：10 项目常驻可达 600MB，HNSW 可用时不再保留 vectors 数组
-9. **HNSW 二进制序列化**：JSON 序列化 10K 向量产生 ~200MB 临时内存，改用紧凑二进制格式
+8. ✅ **vectorCache 内存控制**：HNSW 可用时释放 vectors 数组，暴力搜索时从 SQLite 懒加载（v4.5.4）
+9. ✅ **HNSW 二进制序列化**：JSON 替换为紧凑二进制格式（Float32 + 变长 ID），体积缩小约 5 倍；向后兼容旧 JSON 格式（v4.5.5）
 10. **better-sqlite3 阻塞事件循环**：同步查询阻塞所有并发请求，大结果集应移 worker_thread 或分页
 11. ✅ **symbol_usage 组合索引**：添加双列组合索引加速 findCallGraph/findResolvedReferences（v4.5.3）
 12. **HNSW 构建不阻塞**：setImmediate 启动但纯 CPU 操作仍阻塞数十秒，应分批 yield 或移 worker_thread
-13. **多源分数归一化**：lexical/symbol/semantic 分数范围不同但直接相加，语义搜索贡献被低估
+13. ✅ **多源分数归一化**：mergeResults 合并前对每个源 min-max 归一化至 [0,1]，消除量级差异（v4.5.5）
 14. ✅ **searchBySymbols 按匹配度打分**：当前按行号位置递减打分，应改为符号名精确/模糊匹配度（v4.5.3 identifier boost 过滤修复）
 15. ✅ **QA call chain 上下文扩展**：上下文从 ±5 行提升到 ±15 行（v4.5.3）
 16. **JS 跨文件类型传播**：`foo.method()` 无法解析到 `Bar.method`，import 端缺失 export 端的 variableTypes
@@ -28,8 +28,8 @@
 
 ## P2 — 中等优化
 
-19. **FTS 删除批量化**：`DELETE FROM chunk_fts WHERE chunk_id IN (SELECT ...)` 替代逐条删除
-20. **readFileSnippet LRU 缓存**：避免每次全量读取再切片，缓存 `{path → lines[], mtime}`
+19. ✅ **FTS 删除批量化**：WHERE IN 批量删除替代逐条 DELETE（v4.5.4）
+20. ✅ **readFileSnippet LRU 缓存**：200 条上限 + mtime 失效（v4.5.4）
 21. **symbol full_name 函数索引**：添加 `idx_symbol_full_name_lower ON symbol(LOWER(full_name))`
 22. **callChain 同层并行**：递归 extractCallEntriesWithDepth 内部串行 await，同层 entries 应 Promise.all
 23. **scoreMergedResult 缓存**：dedupe/rerank 中重复调用 600 次，应合并阶段一次计算

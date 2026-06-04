@@ -329,43 +329,135 @@ export class HnswIndex {
    * Serialize index to Buffer for persistence
    */
   serialize(): Buffer {
-    const data: {
-      config: Required<HnswIndexConfig>;
-      entryPointId: string | null;
-      maxLevel: number;
-      nodes: Array<{
-        id: string;
-        vector: number[];
-        level: number;
-        neighbors: Array<[number, string[]]>;
-      }>;
-    } = {
-      config: this.config,
-      entryPointId: this.entryPointId,
-      maxLevel: this.maxLevel,
-      nodes: [],
-    };
+    const MAGIC = 0x484e5357; // "HNSW"
+    const VERSION = 1;
+    const numNodes = this.nodes.size;
+    const dim = this.config.dimension;
 
+    // Pre-calculate buffer size
+    // Header: magic(4) + version(2) + numNodes(4) + dim(4) + efConstruction(4) + efSearch(4) + m(4) + mL(8) + maxLevel(4) + entryPointId
+    let headerSize = 4 + 2 + 4 + 4 + 4 + 4 + 4 + 8 + 4;
+    const entryId = this.entryPointId ?? "";
+    headerSize += 2 + entryId.length; // idLen + id
+
+    // Per node: idLen(2) + id + level(2) + numLevels(2) + [level(2) + numNeighbors(2) + neighborIds...] + vector(dim*4)
+    let nodesSize = 0;
     for (const [id, node] of this.nodes) {
-      const neighbors: Array<[number, string[]]> = [];
-      for (const [level, neighborSet] of node.neighbors) {
-        neighbors.push([level, [...neighborSet]]);
+      let nodeSize = 2 + id.length + 2 + 2; // idLen + id + level + numLevels
+      for (const [, neighborSet] of node.neighbors) {
+        nodeSize += 2 + 2; // level + numNeighbors
+        for (const neighborId of neighborSet) {
+          nodeSize += 2 + neighborId.length; // idLen + id
+        }
       }
-      data.nodes.push({
-        id,
-        vector: [...node.vector],
-        level: node.level,
-        neighbors,
-      });
+      nodeSize += dim * 4; // vector as Float32
+      nodesSize += nodeSize;
     }
 
-    return Buffer.from(JSON.stringify(data), "utf-8");
+    const totalSize = headerSize + nodesSize;
+    const buf = Buffer.alloc(totalSize);
+    let offset = 0;
+
+    // Write header
+    buf.writeUInt32BE(MAGIC, offset); offset += 4;
+    buf.writeUInt16BE(VERSION, offset); offset += 2;
+    buf.writeUInt32BE(numNodes, offset); offset += 4;
+    buf.writeUInt32BE(dim, offset); offset += 4;
+    buf.writeUInt32BE(this.config.efConstruction, offset); offset += 4;
+    buf.writeUInt32BE(this.config.efSearch, offset); offset += 4;
+    buf.writeUInt32BE(this.config.m, offset); offset += 4;
+    buf.writeDoubleBE(this.config.mL, offset); offset += 8;
+    buf.writeUInt32BE(this.maxLevel, offset); offset += 4;
+    // entryPointId
+    buf.writeUInt16BE(entryId.length, offset); offset += 2;
+    buf.write(entryId, offset, "utf-8"); offset += entryId.length;
+
+    // Write nodes
+    for (const [id, node] of this.nodes) {
+      buf.writeUInt16BE(id.length, offset); offset += 2;
+      buf.write(id, offset, "utf-8"); offset += id.length;
+      buf.writeUInt16BE(node.level, offset); offset += 2;
+      buf.writeUInt16BE(node.neighbors.size, offset); offset += 2;
+      for (const [level, neighborSet] of node.neighbors) {
+        buf.writeUInt16BE(level, offset); offset += 2;
+        buf.writeUInt16BE(neighborSet.size, offset); offset += 2;
+        for (const neighborId of neighborSet) {
+          buf.writeUInt16BE(neighborId.length, offset); offset += 2;
+          buf.write(neighborId, offset, "utf-8"); offset += neighborId.length;
+        }
+      }
+      // Write vector as Float32
+      const vecBuf = Buffer.from(node.vector.buffer, node.vector.byteOffset, dim * 4);
+      vecBuf.copy(buf, offset); offset += dim * 4;
+    }
+
+    return buf.subarray(0, offset);
   }
 
   /**
    * Deserialize index from Buffer
    */
   static deserialize(buffer: Buffer): HnswIndex {
+    // Try binary format first (magic = "HNSW")
+    if (buffer.length >= 4 && buffer.readUInt32BE(0) === 0x484e5357) {
+      return HnswIndex.deserializeBinary(buffer);
+    }
+    // Fallback to legacy JSON format
+    return HnswIndex.deserializeJson(buffer);
+  }
+
+  private static deserializeBinary(buffer: Buffer): HnswIndex {
+    let offset = 0;
+    const magic = buffer.readUInt32BE(offset); offset += 4;
+    if (magic !== 0x484e5357) throw new Error("Invalid HNSW binary magic");
+    const version = buffer.readUInt16BE(offset); offset += 2;
+    if (version !== 1) throw new Error(`Unsupported HNSW binary version: ${version}`);
+    const numNodes = buffer.readUInt32BE(offset); offset += 4;
+    const dimension = buffer.readUInt32BE(offset); offset += 4;
+    const efConstruction = buffer.readUInt32BE(offset); offset += 4;
+    const efSearch = buffer.readUInt32BE(offset); offset += 4;
+    const m = buffer.readUInt32BE(offset); offset += 4;
+    const mL = buffer.readDoubleBE(offset); offset += 8;
+    const maxLevel = buffer.readUInt32BE(offset); offset += 4;
+    const entryIdLen = buffer.readUInt16BE(offset); offset += 2;
+    const entryId = buffer.toString("utf-8", offset, offset + entryIdLen); offset += entryIdLen;
+
+    const index = new HnswIndex({ dimension, maxElements: numNodes, efConstruction, efSearch, m, mL });
+    index.maxLevel = maxLevel;
+    index.entryPointId = entryId || null;
+
+    for (let i = 0; i < numNodes; i++) {
+      const idLen = buffer.readUInt16BE(offset); offset += 2;
+      const id = buffer.toString("utf-8", offset, offset + idLen); offset += idLen;
+      const level = buffer.readUInt16BE(offset); offset += 2;
+      const numLevels = buffer.readUInt16BE(offset); offset += 2;
+      const neighbors = new Map<number, Set<string>>();
+      for (let l = 0; l < numLevels; l++) {
+        const lvl = buffer.readUInt16BE(offset); offset += 2;
+        const numNeighbors = buffer.readUInt16BE(offset); offset += 2;
+        const neighborSet = new Set<string>();
+        for (let n = 0; n < numNeighbors; n++) {
+          const nIdLen = buffer.readUInt16BE(offset); offset += 2;
+          const nId = buffer.toString("utf-8", offset, offset + nIdLen); offset += nIdLen;
+          neighborSet.add(nId);
+        }
+        neighbors.set(lvl, neighborSet);
+      }
+      // Read vector
+      const vector = new Float32Array(dimension);
+      const vecBuf = buffer.subarray(offset, offset + dimension * 4);
+      for (let d = 0; d < dimension; d++) {
+        vector[d] = vecBuf.readFloatLE(d * 4);
+      }
+      offset += dimension * 4;
+
+      index.nodes.set(id, { id, vector, level, neighbors });
+    }
+
+    return index;
+  }
+
+  private static deserializeJson(buffer: Buffer): HnswIndex {
     const data = JSON.parse(buffer.toString("utf-8")) as {
       config: Required<HnswIndexConfig>;
       entryPointId: string | null;

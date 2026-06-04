@@ -441,11 +441,28 @@ function applyResultMode(results: SearchResult[], resultMode: SearchResultMode):
   }));
 }
 
+function normalizeSourceScores(results: SearchResult[]): SearchResult[] {
+  if (results.length <= 1) return results;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const r of results) {
+    if (r.score < min) min = r.score;
+    if (r.score > max) max = r.score;
+  }
+  const range = max - min;
+  if (range === 0) return results;
+  for (const r of results) {
+    r.score = (r.score - min) / range;
+  }
+  return results;
+}
+
 function mergeResults(resultSets: SearchResult[][]): SearchResult[] {
   const byLocation = new Map<string, SearchResult>();
 
   for (const results of resultSets) {
-    for (const result of results) {
+    const normalized = normalizeSourceScores(results);
+    for (const result of normalized) {
       const key = `${result.filePath}:${result.startLine}:${result.endLine}:${result.symbol ?? ""}`;
       const existing = byLocation.get(key);
       if (!existing) {

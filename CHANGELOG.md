@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.5] - 2026-06-04
+
+### 多源分数归一化 + Java Lambda/方法引用解析 + HNSW 二进制序列化
+
+- **多源分数归一化**：`mergeResults` 合并前对每个搜索源的分数做 min-max 归一化至 [0,1]。此前各源分数量级差异大（lexical ~0-1, symbol ~0-0.8, path ~0-0.65, semantic ~0.35-1），直接求和导致高量级源垄断排序；归一化后每个源等权贡献，跨源命中结果排名更合理。
+- **Java Lambda/方法引用解析**：Java 适配器新增 `METHOD_REF_PATTERN`（`Foo::bar`、`this::process`、`var::method`）和 `LAMBDA_PATTERN`（`x -> foo(x)`）的调用关系提取。方法引用解析接收者类型（通过 variableTypes/importMap），生成与普通方法调用一致的 candidateNames；Lambda 体中的方法调用额外补录。此前 `stream().map(Foo::getBar)` 等函数式调用无法被调用链追踪。
+- **HNSW 二进制序列化**：`HnswIndex.serialize()` 从 JSON 替换为紧凑二进制格式（magic + version + config header + per-node 变长 ID + Float32 向量）。1536 维向量 JSON 约 30KB/node，二进制仅 6KB/node，总体缩小约 5 倍。`deserialize()` 自动检测 magic 字节区分新旧格式，向后兼容旧 JSON 缓存文件。
+
 ## [4.5.4] - 2026-06-04
 
 ### vectorCache 内存控制 + FTS 批量删除 + 文件片段缓存 + callChain 并行 + 符号解析消歧

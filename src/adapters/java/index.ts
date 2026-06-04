@@ -19,6 +19,8 @@ const METHOD_PATTERN =
 const VARIABLE_INIT_PATTERN =
   /\b([A-Z][A-Za-z0-9_]*)\s+([a-zA-Z_]\w*)\s*=\s*new\s+([A-Z][A-Za-z0-9_]*)\s*\(/;
 const METHOD_CALL_PATTERN = /\b(?:(this|super|[A-Za-z_]\w*)\s*\.\s*)?([A-Za-z_]\w*)\s*\(/g;
+const LAMBDA_PATTERN = /(?:\([^)]*\)|[A-Za-z_]\w*)\s*->\s/g;
+const METHOD_REF_PATTERN = /([A-Za-z_]\w*)\s*::\s*([A-Za-z_]\w*)/g;
 const KEYWORDS = new Set(["if", "for", "while", "switch", "catch", "return", "new", "throw", "super", "this"]);
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -396,6 +398,69 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
           ownerSymbol: currentMethod.fullName,
           rawName: receiver ? `${receiver}.${methodName}` : methodName,
         });
+      }
+
+      // Method references: ClassName::methodName, this::methodName, var::methodName
+      for (const match of trimmed.matchAll(METHOD_REF_PATTERN)) {
+        const receiver = match[1];
+        const methodName = match[2];
+        if (!methodName || KEYWORDS.has(methodName) || !receiver) continue;
+
+        const candidateNames = [methodName];
+        if (receiver === "this" || receiver === "super") {
+          candidateNames.unshift(`${currentMethod.className}.${methodName}`);
+        } else if (currentMethod.variableTypes.has(receiver)) {
+          const recvType = currentMethod.variableTypes.get(receiver)!;
+          candidateNames.unshift(`${recvType}.${methodName}`);
+          const resolvedRecvType = importMap.get(recvType);
+          if (resolvedRecvType) candidateNames.unshift(`${resolvedRecvType}.${methodName}`);
+        } else if (/^[A-Z]/.test(receiver)) {
+          candidateNames.unshift(`${receiver}.${methodName}`);
+          const resolvedReceiver = importMap.get(receiver);
+          if (resolvedReceiver) candidateNames.unshift(`${resolvedReceiver}.${methodName}`);
+        }
+
+        pushUsage(usages, {
+          candidateNames,
+          kind: "call",
+          line: index + 1,
+          ownerSymbol: currentMethod.fullName,
+          rawName: `${receiver}::${methodName}`,
+        });
+      }
+
+      // Lambda expressions: extract method calls inside lambda bodies
+      // e.g. list.forEach(item -> process(item)) — the `process(item)` call
+      if (LAMBDA_PATTERN.test(trimmed)) {
+        // Reset regex state for nested matches
+        for (const callMatch of trimmed.matchAll(METHOD_CALL_PATTERN)) {
+          const receiver = callMatch[1];
+          const methodName = callMatch[2];
+          if (!methodName || KEYWORDS.has(methodName)) continue;
+          const key = `${receiver ?? ""}.${methodName}:${index + 1}`;
+          const alreadyTracked = usages.some(
+            (u) => u.line === index + 1 && u.kind === "call" && u.rawName === (receiver ? `${receiver}.${methodName}` : methodName),
+          );
+          if (alreadyTracked) continue;
+
+          const candidateNames = [methodName];
+          if (receiver === "this" || receiver === "super") {
+            candidateNames.unshift(`${currentMethod.className}.${methodName}`);
+          } else if (receiver && currentMethod.variableTypes.has(receiver)) {
+            const recvType = currentMethod.variableTypes.get(receiver)!;
+            candidateNames.unshift(`${recvType}.${methodName}`);
+          } else if (receiver && /^[A-Z]/.test(receiver)) {
+            candidateNames.unshift(`${receiver}.${methodName}`);
+          }
+
+          pushUsage(usages, {
+            candidateNames,
+            kind: "call",
+            line: index + 1,
+            ownerSymbol: currentMethod.fullName,
+            rawName: receiver ? `${receiver}.${methodName}` : methodName,
+          });
+        }
       }
     }
 

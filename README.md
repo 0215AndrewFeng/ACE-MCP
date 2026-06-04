@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.4`
+当前版本：`v4.5.5`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.4（当前版本）
+### v4.5.5（当前版本）
+
+- **多源分数归一化**：`mergeResults` 合并前对每个搜索源（lexical/symbol/semantic/path）的分数做 min-max 归一化至 [0,1]，消除不同源分数量级差异导致的排序偏差
+- **Java Lambda/方法引用解析**：Java 适配器新增 Lambda 表达式（`x -> foo(x)`）和方法引用（`Foo::bar`、`this::process`）的调用关系提取，调用链分析可追踪函数式调用路径
+- **HNSW 二进制序列化**：HNSW 索引磁盘存储从 JSON 替换为紧凑二进制格式（Float32 向量 + 变长 ID），体积缩小约 5 倍，加载速度提升 3-10 倍；向后兼容自动识别旧 JSON 格式
+
+### v4.5.4
 
 - **vectorCache 内存控制**：HNSW 可用时释放 vectors 数组，省 600MB/10 项目
 - **FTS 删除批量化**：逐条 DELETE → WHERE IN 批量删除
