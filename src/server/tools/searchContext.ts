@@ -72,7 +72,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
           }
           rerankerMs = Date.now() - rerankerStart;
         } catch {
-          // Reranker is optional — silently fall back to original order
+          dependencies.logger.debug("reranker failed in search_context");
         }
       }
 

@@ -26,6 +26,110 @@ export interface HnswSearchResult {
   distance: number;
 }
 
+/** Min-heap: smallest distance at top (for candidates) */
+class MinHeap {
+  private readonly data: Array<{ id: string; distance: number }> = [];
+
+  get size(): number { return this.data.length; }
+  get isEmpty(): boolean { return this.data.length === 0; }
+
+  peek(): { id: string; distance: number } | undefined { return this.data[0]; }
+
+  push(item: { id: string; distance: number }): void {
+    this.data.push(item);
+    this.bubbleUp(this.data.length - 1);
+  }
+
+  pop(): { id: string; distance: number } {
+    const top = this.data[0];
+    const last = this.data.pop()!;
+    if (this.data.length > 0) {
+      this.data[0] = last;
+      this.sinkDown(0);
+    }
+    return top;
+  }
+
+  toArray(): Array<{ id: string; distance: number }> {
+    return [...this.data].sort((a, b) => a.distance - b.distance);
+  }
+
+  private bubbleUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.data[i].distance >= this.data[parent].distance) break;
+      [this.data[i], this.data[parent]] = [this.data[parent], this.data[i]];
+      i = parent;
+    }
+  }
+
+  private sinkDown(i: number): void {
+    const n = this.data.length;
+    while (true) {
+      let smallest = i;
+      const left = 2 * i + 1;
+      const right = 2 * i + 2;
+      if (left < n && this.data[left].distance < this.data[smallest].distance) smallest = left;
+      if (right < n && this.data[right].distance < this.data[smallest].distance) smallest = right;
+      if (smallest === i) break;
+      [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+      i = smallest;
+    }
+  }
+}
+
+/** Max-heap: largest distance at top (for results — pop farthest to evict) */
+class MaxHeap {
+  private readonly data: Array<{ id: string; distance: number }> = [];
+
+  get size(): number { return this.data.length; }
+  get isEmpty(): boolean { return this.data.length === 0; }
+
+  peek(): { id: string; distance: number } | undefined { return this.data[0]; }
+
+  push(item: { id: string; distance: number }): void {
+    this.data.push(item);
+    this.bubbleUp(this.data.length - 1);
+  }
+
+  pop(): { id: string; distance: number } {
+    const top = this.data[0];
+    const last = this.data.pop()!;
+    if (this.data.length > 0) {
+      this.data[0] = last;
+      this.sinkDown(0);
+    }
+    return top;
+  }
+
+  toArray(): Array<{ id: string; distance: number }> {
+    return [...this.data].sort((a, b) => a.distance - b.distance);
+  }
+
+  private bubbleUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.data[i].distance <= this.data[parent].distance) break;
+      [this.data[i], this.data[parent]] = [this.data[parent], this.data[i]];
+      i = parent;
+    }
+  }
+
+  private sinkDown(i: number): void {
+    const n = this.data.length;
+    while (true) {
+      let largest = i;
+      const left = 2 * i + 1;
+      const right = 2 * i + 2;
+      if (left < n && this.data[left].distance > this.data[largest].distance) largest = left;
+      if (right < n && this.data[right].distance > this.data[largest].distance) largest = right;
+      if (largest === i) break;
+      [this.data[i], this.data[largest]] = [this.data[largest], this.data[i]];
+      i = largest;
+    }
+  }
+}
+
 /**
  * HNSW Index for approximate nearest neighbor search
  *
@@ -370,22 +474,16 @@ export class HnswIndex {
     const startNode = this.nodes.get(startId)!;
     const startDist = this.cosineDistance(query, startNode.vector);
 
-    // Candidates: min-heap by distance (closest first)
-    const candidates: Array<{ id: string; distance: number }> = [
-      { id: startId, distance: startDist },
-    ];
-    // Results: sorted by distance
-    const results: Array<{ id: string; distance: number }> = [
-      { id: startId, distance: startDist },
-    ];
+    const candidates = new MinHeap();
+    candidates.push({ id: startId, distance: startDist });
+    const results = new MaxHeap();
+    results.push({ id: startId, distance: startDist });
 
-    while (candidates.length > 0) {
-      // Get closest candidate
-      candidates.sort((a, b) => a.distance - b.distance);
-      const current = candidates.shift()!;
+    while (!candidates.isEmpty) {
+      const current = candidates.pop();
 
       // If closest candidate is farther than farthest result, stop
-      if (results.length >= ef && current.distance > results[results.length - 1].distance) {
+      if (results.size >= ef && current.distance > results.peek()!.distance) {
         break;
       }
 
@@ -405,18 +503,17 @@ export class HnswIndex {
         const dist = this.cosineDistance(query, neighbor.vector);
 
         // Add to results if closer than farthest, or if results not full
-        if (results.length < ef || dist < results[results.length - 1].distance) {
+        if (results.size < ef || dist < results.peek()!.distance) {
           candidates.push({ id: neighborId, distance: dist });
           results.push({ id: neighborId, distance: dist });
-          results.sort((a, b) => a.distance - b.distance);
-          if (results.length > ef) {
+          if (results.size > ef) {
             results.pop();
           }
         }
       }
     }
 
-    return results;
+    return results.toArray();
   }
 
   /**

@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.2`
+当前版本：`v4.5.3`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,13 +300,16 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.2（当前版本）
+### v4.5.3（当前版本）
 
-- **QA 缓存一致性**：缓存键加入搜索结果内容 hash（前 512 字符），文件内容变更后旧缓存自动失效，不再返回过时答案。新增 `POST /api/qa/cache/clear` 手动清除 API
-- **索引健康监控**：`/health` 端点新增 `indexing` 字段，暴露正在索引的项目列表和已耗时，方便排查索引卡死问题
-- **cache_stats 增强**：MCP 工具返回加入 QA 缓存统计信息
+- **HNSW heap 优化**：searchLayer 中 Array.sort 替代为 MinHeap/MaxHeap，搜索复杂度从 O(ef·n·log n) 降至 O(ef·log n)
+- **N+1 → CTE**：getFilePreviewResults/searchByPath 关联子查询替换为 CTE + LEFT JOIN
+- **QA 上下文扩展**：call chain 节点上下文 ±5→±15 行
+- **identifier boost 过滤修复**：boost 搜索尊重用户指定的 languages/pathPrefix
+- **空 catch 加日志**：qaPipeline/app/searchContext/indexCoordinator 空 catch 改为 debug/warn 日志
+- **symbol_usage 组合索引**：双列索引加速调用链查询
 
-### v4.5.1
+### v4.5.2
 
 - **代码标识符优先搜索策略**：当查询同时包含代码标识符（camelCase/snake_case/PascalCase）和自然语言（中文/英文）时，新增标识符优先搜索轮次。纯标识符 FTS 搜索结果获得 0.5× 分数加成，使目标 Controller/Service 在混合查询中排名显著提升
 - **上下文截断居中**：`compressContext` 截断逻辑从"从文件头开始截断"改为"以匹配行范围为中心截断"，确保大文件中目标方法始终在 LLM 上下文中可见
@@ -402,13 +405,7 @@ Web 面板提供完整的可视化调试体验：
 
 ## 路线图
 
-按优先级排序：
-
-1. **QA 缓存一致性**：缓存键加入文件内容 hash，避免代码变更后返回旧答案；提供手动清除 API
-2. **根目录索引防护**：拒绝对 `/`、`$HOME` 等过大路径的索引请求，从源头杜绝卡死
-3. **索引健康监控**：`/health` 端点暴露 in-flight 索引列表和耗时
-4. **查询扩展缓存**：相似问题复用 LLM 提取的关键词，减少 token 消耗（已有内存 LRU，可考虑持久化）
-5. **语言适配器插件化**：Java/Python/.NET/JS 符号提取拆成独立插件，方便扩展 Go/Rust 等（架构已就绪）
+详见 [ROADMAP.md](./ROADMAP.md)
 
 ## 开发建议
 

@@ -475,7 +475,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         ...(model ? { llmModel: String(model) } : {}),
       });
     } catch {
-      // best-effort persist
+      dependencies.logger.debug("failed to persist LLM config");
     }
 
     res.json(dependencies.llmClient.getConfig());
@@ -1129,7 +1129,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
             sendEvent({ type: "phase", phase: "query_expansion", status: "done", keywords });
           }
         } catch {
-          // Query expansion is optional
+          dependencies.logger.debug("query expansion failed in SSE");
         }
       }
 
@@ -1179,7 +1179,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           }
           sendEvent({ type: "phase", phase: "search_round2", status: "done" });
         } catch {
-          // Round 2 is supplementary
+          dependencies.logger.debug("round-2 search failed in SSE");
         }
       }
 
@@ -1303,12 +1303,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
                 score: -1,
                 snippet: snippet.snippet,
               };
-            } catch { return null; }
+            } catch (err) { return null; }
           });
           const results = await Promise.all(snippetPromises);
           callChainSources = results.filter((r): r is NonNullable<typeof r> => r !== null);
         } catch {
-          // Optional enrichment — silently skip
+          dependencies.logger.debug("call chain enrichment failed in SSE");
         }
       }
 
@@ -1331,7 +1331,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
         try {
           conversationHistory = typeof historyData === 'string' ? JSON.parse(historyData) : historyData;
         } catch {
-          // Ignore parse errors
+          dependencies.logger.debug("conversation history parse failed");
         }
       }
 

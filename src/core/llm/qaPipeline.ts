@@ -145,8 +145,8 @@ export async function runQaPipeline(
           results: [...searchResult.results, ...newResults].slice(0, topK),
         };
       }
-    } catch {
-      // Round 2 is supplementary — silently skip on error
+    } catch (err) {
+      deps.logger.debug("round-2 search failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -181,8 +181,8 @@ export async function runQaPipeline(
           };
         }
       }
-    } catch {
-      // Downstream search is supplementary — silently skip on error
+    } catch (err) {
+      deps.logger.debug("downstream search failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -202,8 +202,8 @@ export async function runQaPipeline(
         searchResult = { ...searchResult, results: rerankerResult.rerankedResults };
       }
       rerankerMs = Date.now() - rerankerStart;
-    } catch {
-      // Reranker is optional — silently fall back to original order
+    } catch (err) {
+      deps.logger.debug("reranker failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
   checkTimeout("reranker");
@@ -226,8 +226,8 @@ export async function runQaPipeline(
       callChainMs = Date.now() - ccStart;
       callChainContext = formatCallChainsForLLM(ccResult.chains);
       callChains = ccResult.chains;
-    } catch {
-      // Optional — silently skip
+    } catch (err) {
+      deps.logger.debug("call chain extraction failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
   checkTimeout("callchain");
@@ -246,8 +246,8 @@ export async function runQaPipeline(
         loc => !searchResultKeys.has(`${loc.filePath}:${loc.startLine}`),
       );
 
-      // Read source snippets for each call chain node (±5 lines context)
-      const CONTEXT_PAD = 5;
+      // Read source snippets for each call chain node (±15 lines context)
+      const CONTEXT_PAD = 15;
       const snippetPromises = dedupedLocations.map(async (loc): Promise<QaSource | null> => {
         try {
           const snippet = await readFileSnippet(
@@ -271,14 +271,15 @@ export async function runQaPipeline(
             score: -1, // Mark as call chain source (lower priority)
             snippet: snippet.snippet,
           };
-        } catch {
+        } catch (err) {
+          deps.logger.debug("call chain snippet read failed", { filePath: loc.filePath, error: err instanceof Error ? err.message : String(err) });
           return null;
         }
       });
       const results = await Promise.all(snippetPromises);
       callChainSources = results.filter((r): r is QaSource => r !== null);
-    } catch {
-      // Optional enrichment — silently skip
+    } catch (err) {
+      deps.logger.debug("call chain enrichment failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 

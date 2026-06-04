@@ -1131,7 +1131,7 @@ export class SearchService {
         const idFtsQuery = buildFtsQuery(analysis.identifiers, false);
         if (idFtsQuery) {
           const idResults = this.store.searchByText(
-            project.project_id, idFtsQuery, topK * 3, {},
+            project.project_id, idFtsQuery, topK * 3, normalizedFilters,
           );
           if (idResults.length > 0) {
             const boostMap = new Map<string, number>();

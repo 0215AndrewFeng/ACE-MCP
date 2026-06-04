@@ -617,6 +617,8 @@ export class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_owner_symbol_id ON symbol_usage(owner_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_resolved_symbol_id ON symbol_usage(resolved_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_kind ON symbol_usage(usage_kind);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_owner_resolved ON symbol_usage(owner_symbol_id, resolved_symbol_id);
+      CREATE INDEX IF NOT EXISTS idx_symbol_usage_resolved_owner ON symbol_usage(resolved_symbol_id, owner_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_name_lower ON symbol(LOWER(name));
 
       CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
@@ -709,17 +711,24 @@ export class SQLiteStore {
 
     const rows = this.db
       .prepare(
-        // TODO: "first chunk" correlated subqueries could be optimized with a CTE when perf becomes an issue
-        `SELECT
-           f.relative_path,
-           f.language,
-           COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), '') AS content
-         FROM file f
-         WHERE f.project_id = ?
-           AND f.relative_path IN (${relativePaths.map(() => "?").join(", ")})
-         ORDER BY LENGTH(f.relative_path) ASC, f.relative_path ASC`,
+        `WITH first_chunks AS (
+             SELECT file_id, start_line, end_line, content
+             FROM chunk
+             WHERE (file_id, start_line) IN (
+               SELECT file_id, MIN(start_line) FROM chunk GROUP BY file_id
+             )
+           )
+           SELECT
+             f.relative_path,
+             f.language,
+             COALESCE(fc.start_line, 1) AS start_line,
+             COALESCE(fc.end_line, 1) AS end_line,
+             COALESCE(fc.content, '') AS content
+           FROM file f
+           LEFT JOIN first_chunks fc ON fc.file_id = f.file_id
+           WHERE f.project_id = ?
+             AND f.relative_path IN (${relativePaths.map(() => "?").join(", ")})
+           ORDER BY LENGTH(f.relative_path) ASC, f.relative_path ASC`,
       )
       .all(projectId, ...relativePaths) as Array<{
       content: string;
@@ -1193,19 +1202,26 @@ export class SQLiteStore {
     const filterClause = buildSearchFilterClause(filters);
     const rows = this.db
       .prepare(
-        // TODO: "first chunk" correlated subqueries could be optimized with a CTE when perf becomes an issue
-        `SELECT
-           f.relative_path,
-           f.language,
-           COALESCE((SELECT c.start_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS start_line,
-           COALESCE((SELECT c.end_line FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), 1) AS end_line,
-           COALESCE((SELECT c.content FROM chunk c WHERE c.file_id = f.file_id ORDER BY c.start_line LIMIT 1), '') AS content
-          FROM file f
-          WHERE f.project_id = ?
-            AND (${whereClause})
-            ${filterClause.sql}
-          ORDER BY LENGTH(f.relative_path) ASC
-          LIMIT ?`,
+        `WITH first_chunks AS (
+             SELECT file_id, start_line, end_line, content
+             FROM chunk
+             WHERE (file_id, start_line) IN (
+               SELECT file_id, MIN(start_line) FROM chunk GROUP BY file_id
+             )
+           )
+           SELECT
+             f.relative_path,
+             f.language,
+             COALESCE(fc.start_line, 1) AS start_line,
+             COALESCE(fc.end_line, 1) AS end_line,
+             COALESCE(fc.content, '') AS content
+           FROM file f
+           LEFT JOIN first_chunks fc ON fc.file_id = f.file_id
+           WHERE f.project_id = ?
+             AND (${whereClause})
+             ${filterClause.sql}
+           ORDER BY LENGTH(f.relative_path) ASC
+           LIMIT ?`,
       )
       .all(projectId, ...likePatterns, ...filterClause.parameters, limit) as Array<{
       content: string;

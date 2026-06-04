@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.3] - 2026-06-04
+
+### HNSW heap 优化 + CTE 查询 + QA 上下文扩展 + 过滤修复 + catch 日志 + 组合索引
+
+- **HNSW searchLayer heap 替代 Array.sort**：实现 `MinHeap` 和 `MaxHeap` 替代 `searchLayer` 中的 `Array.sort()` 操作。此前每次 neighbor 扩展都做全量排序，复杂度 O(ef·n·log n)；现在 push/pop 操作 O(log n)，整体搜索性能显著提升。
+- **N+1 关联子查询 → CTE**：`getFilePreviewResults` 和 `searchByPath` 中的 3 个关联子查询（获取 first chunk 的 start_line/end_line/content）替换为 CTE + LEFT JOIN。此前 N 个文件产生 3N 次子查询；现在 CTE 一次计算所有 first chunk，再 LEFT JOIN 关联，查询效率大幅提升。
+- **QA call chain 上下文扩展**：call chain 节点上下文从 ±5 行扩展到 ±15 行（CONTEXT_PAD: 5→15）。此前 Java/C# 方法（通常 15-30 行）在 ±5 行窗口中方法体大概率截断；现在 30 行窗口覆盖大部分方法，QA 答案质量显著提升。
+- **identifier boost 过滤修复**：identifier-priority boost 二次搜索传入的 filters 从 `{}` 改为 `normalizedFilters`。此前用户指定 `languages: ["java"]` 时 boost 搜索会跨所有语言执行，返回不相关结果污染分数。
+- **空 catch 加日志**：qaPipeline.ts（6 处）、app.ts（6 处）、searchContext.ts（1 处）、indexCoordinator.ts（1 处 `.catch(() => {})`）中的空 catch 块改为 `catch (err)` 并加 `logger.debug/warn` 日志。此前生产环境空 catch 吞错误，难以诊断问题。
+- **symbol_usage 组合索引**：新增 `idx_symbol_usage_owner_resolved ON symbol_usage(owner_symbol_id, resolved_symbol_id)` 和 `idx_symbol_usage_resolved_owner ON symbol_usage(resolved_symbol_id, owner_symbol_id)` 双列组合索引，加速 findCallGraph/findResolvedReferences 的核心查询。
+
 ## [4.5.2] - 2026-06-03
 
 ### QA 缓存一致性 + 索引健康监控

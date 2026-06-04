@@ -357,7 +357,9 @@ export class IndexCoordinator {
     const indexPromise = prev.then(() => this.runIndexProject(normalizedRoot, mode, onProgress));
 
     // Track both queue and in-flight state
-    const queuePromise = indexPromise.catch(() => {}); // Swallow errors in queue chain
+    const queuePromise = indexPromise.catch((err) => {
+          this.logger.warn("queued index failed", { projectRootPath, error: err instanceof Error ? err.message : String(err) });
+        }); // Swallow errors in queue chain
     this.projectQueue.set(normalizedRoot, queuePromise);
     this.inFlightIndex.set(normalizedRoot, indexPromise);
     this.inFlightStartTimes.set(normalizedRoot, Date.now());
