@@ -1,3 +1,4 @@
+import { qaCache } from "../../core/llm/qaCache.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
@@ -12,9 +13,11 @@ export function registerCacheStatsTool(server: McpServer, dependencies: ToolDepe
     },
     async () => {
       const searchCacheStats = dependencies.searchService.getCacheStats();
+      const qaCacheStats = qaCache.getStats();
       const payload = buildEnvelope(
         {},
         {
+          qaCache: qaCacheStats,
           searchCache: searchCacheStats,
         },
         {},

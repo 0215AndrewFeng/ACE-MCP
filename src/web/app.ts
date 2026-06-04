@@ -142,6 +142,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
           totalSymbols,
           latestIndexAt,
         },
+        indexing: dependencies.indexCoordinator.getInFlightIndexInfo(),
         vector: {
           enabled: dependencies.settings.enableVectorSearch,
           mode: dependencies.settings.vectorIndexingMode,
@@ -444,6 +445,12 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
   app.post("/api/watch/stop", (_req: Request, res: Response) => {
     dependencies.indexCoordinator.stopWatching();
     res.json({ watching: false });
+  });
+
+  // ── QA cache ──────────────────────────────
+  app.post("/api/qa/cache/clear", (_req, res) => {
+    qaCache.clear();
+    res.json({ success: true });
   });
 
   // ── LLM config endpoints ──────────────────────────────
@@ -1218,7 +1225,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
       sendEvent({ type: "sources", sources });
 
       // v4.3.0: Generate source hashes for caching
-      const sourceHashes = sources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine));
+      const sourceHashes = sources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine, s.snippet));
 
       if (Date.now() - startMs > timeout) {
         sendEvent({ type: "error", error: "Timeout at search phase" });

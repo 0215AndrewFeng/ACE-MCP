@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.2] - 2026-06-03
+
+### QA 缓存一致性 + 索引健康监控
+
+- **QA 缓存键加入内容 hash**：`QaCache.hashSource()` 新增可选参数 `contentSnippet`，将搜索结果 snippet 前 512 字符纳入 MD5 计算。此前缓存键仅基于 `filePath:startLine-endLine`，文件内容变更后 5 分钟内再问同样问题会命中旧缓存、返回过时答案。现在内容变更自动导致缓存键变化，旧缓存自然失效。
+- **QA 缓存清除 API**：新增 `POST /api/qa/cache/clear` 路由，支持手动清除 QA 缓存。
+- **cache_stats 加入 QA 缓存统计**：MCP `cache_stats` 工具返回新增 `qaCache` 字段（size、maxSize、ttlMs），与已有 searchCache 统计并列。
+- **索引健康监控**：`/health` 端点新增 `indexing` 字段，暴露当前正在索引的项目列表和已耗时（elapsedMs）。`IndexCoordinator` 新增 `inFlightStartTimes` Map 记录索引开始时间，`getInFlightIndexInfo()` 方法实时计算 elapsedMs。此前排查索引卡死问题时无法看到哪些项目正在索引、已耗时多久。
+
 ## [4.5.1] - 2026-06-03
 
 ### 搜索召回优化 + 上下文装配修复

@@ -33,8 +33,10 @@ export class QaCache {
   /**
    * Generate hash for a source snippet
    */
-  static hashSource(filePath: string, startLine: number, endLine: number): string {
-    return createHash("md5").update(`${filePath}:${startLine}-${endLine}`).digest("hex").slice(0, 8);
+  static hashSource(filePath: string, startLine: number, endLine: number, contentSnippet?: string): string {
+    const base = `${filePath}:${startLine}-${endLine}`;
+    const content = contentSnippet ? `${base}:${contentSnippet.slice(0, 512)}` : base;
+    return createHash("md5").update(content).digest("hex").slice(0, 8);
   }
 
   /**

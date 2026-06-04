@@ -305,7 +305,7 @@ export async function runQaPipeline(
   const compressedSources = compressContext(sources, deps.settings.qaMaxContextTokens);
 
   // 7. Cache check (only for non-conversation queries)
-  const sourceHashes = compressedSources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine));
+  const sourceHashes = compressedSources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine, s.snippet));
   if (enableCache && history.length === 0) {
     const cached = qaCache.get(options.question, sourceHashes);
     if (cached) {

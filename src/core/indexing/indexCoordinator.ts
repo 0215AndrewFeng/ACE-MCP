@@ -142,6 +142,24 @@ export class IndexCoordinator {
    * If an index is already running for a project, new requests will wait for it
    */
   private inFlightIndex = new Map<string, Promise<IndexProjectResult>>();
+  /** v4.5.2: Track start time for in-flight indices */
+  private inFlightStartTimes = new Map<string, number>();
+
+  /**
+   * v4.5.2: Return info about currently in-flight index operations
+   */
+  public getInFlightIndexInfo(): Array<{ projectRootPath: string; elapsedMs: number }> {
+    const result: Array<{ projectRootPath: string; elapsedMs: number }> = [];
+    const now = Date.now();
+    for (const [projectRootPath] of this.inFlightIndex) {
+      const startTime = this.inFlightStartTimes.get(projectRootPath);
+      result.push({
+        projectRootPath,
+        elapsedMs: startTime ? now - startTime : 0,
+      });
+    }
+    return result;
+  }
 
   public constructor(
     private readonly settings: Settings,
@@ -330,6 +348,7 @@ export class IndexCoordinator {
         // Stuck in-flight promise — clear it and start fresh
         this.logger.warn("in-flight index stuck, clearing and restarting", { projectRootPath: normalizedRoot });
         this.inFlightIndex.delete(normalizedRoot);
+        this.inFlightStartTimes.delete(normalizedRoot);
       }
     }
 
@@ -341,10 +360,12 @@ export class IndexCoordinator {
     const queuePromise = indexPromise.catch(() => {}); // Swallow errors in queue chain
     this.projectQueue.set(normalizedRoot, queuePromise);
     this.inFlightIndex.set(normalizedRoot, indexPromise);
+    this.inFlightStartTimes.set(normalizedRoot, Date.now());
 
     // Clean up when done
     indexPromise.finally(() => {
       this.inFlightIndex.delete(normalizedRoot);
+      this.inFlightStartTimes.delete(normalizedRoot);
       // Only delete from queue if this is still the latest promise
       if (this.projectQueue.get(normalizedRoot) === queuePromise) {
         this.projectQueue.delete(normalizedRoot);
