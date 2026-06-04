@@ -433,7 +433,7 @@ export async function extractCallChains(
   const chainResults = await Promise.all(
     symbols.map(async (symbol) => {
       try {
-        // Query callers and callees in parallel
+        // v4.5.4: Query callers and callees in parallel, then extract entries in parallel
         const [callersResponse, calleesResponse] = await Promise.all([
           searchService.findCallers(projectRootPath, symbol, maxCallersPerSymbol, 0, undefined, "metadata", effectiveDepth)
             .catch(() => null),
@@ -441,22 +441,11 @@ export async function extractCallChains(
             .catch(() => null),
         ]);
 
-        const callers = await extractCallEntriesWithDepth(
-          searchService,
-          projectRootPath,
-          callersResponse,
-          maxCallersPerSymbol,
-          effectiveDepth - 1,
-          "callers",
-        );
-        const callees = await extractCallEntriesWithDepth(
-          searchService,
-          projectRootPath,
-          calleesResponse,
-          maxCalleesPerSymbol,
-          effectiveDepth - 1,
-          "callees",
-        );
+        // v4.5.4: Extract caller and callee entries in parallel
+        const [callers, callees] = await Promise.all([
+          extractCallEntriesWithDepth(searchService, projectRootPath, callersResponse, maxCallersPerSymbol, effectiveDepth - 1, "callers"),
+          extractCallEntriesWithDepth(searchService, projectRootPath, calleesResponse, maxCalleesPerSymbol, effectiveDepth - 1, "callees"),
+        ]);
 
         // Only add if we found meaningful relationships
         if (callers.length > 0 || callees.length > 0) {

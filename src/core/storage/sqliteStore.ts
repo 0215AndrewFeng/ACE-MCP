@@ -362,32 +362,33 @@ export class SQLiteStore {
       )
       .all(projectId, ...relativePaths) as Array<{ file_id: string }>;
 
-    const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
-    const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
-    const deleteImports = this.db.prepare("DELETE FROM import_alias WHERE file_id = ?");
-    const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
-    const deleteUsages = this.db.prepare("DELETE FROM symbol_usage WHERE file_id = ?");
-    const deleteFile = this.db.prepare("DELETE FROM file WHERE file_id = ?");
-    const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id = ?");
-    const deleteChunks = this.db.prepare("DELETE FROM chunk WHERE file_id = ?");
+    const deleteImports = this.db.prepare("DELETE FROM import_alias WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
+    const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
+    const deleteUsages = this.db.prepare("DELETE FROM symbol_usage WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
+    const deleteFile = this.db.prepare("DELETE FROM file WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
+    const selectChunkIds = this.db.prepare("SELECT chunk_id FROM chunk WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
+    const deleteChunks = this.db.prepare("DELETE FROM chunk WHERE file_id IN (" + fileIds.map(() => "?").join(", ") + ")");
 
-    const tx = this.db.transaction((ids: string[]) => {
-      for (const fileId of ids) {
-        const chunkIds = selectChunkIds.all(fileId) as Array<{ chunk_id: string }>;
-        for (const chunkId of chunkIds) {
-          deleteChunkFts.run(chunkId.chunk_id);
-          deleteChunkSemanticFts.run(chunkId.chunk_id);
-        }
+    const ids = fileIds.map((row) => row.file_id);
 
-        deleteImports.run(fileId);
-        deleteSymbols.run(fileId);
-        deleteUsages.run(fileId);
-        deleteChunks.run(fileId);
-        deleteFile.run(fileId);
+    const tx = this.db.transaction(() => {
+      // v4.5.4: Batch FTS deletion — collect all chunk IDs first, then delete in bulk
+      const chunkIds = selectChunkIds.all(...ids) as Array<{ chunk_id: string }>;
+      if (chunkIds.length > 0) {
+        const chunkIdList = chunkIds.map(c => c.chunk_id);
+        const ftsPlaceholders = chunkIdList.map(() => "?").join(", ");
+        this.db.prepare(`DELETE FROM chunk_fts WHERE chunk_id IN (${ftsPlaceholders})`).run(...chunkIdList);
+        this.db.prepare(`DELETE FROM chunk_semantic_fts WHERE chunk_id IN (${ftsPlaceholders})`).run(...chunkIdList);
       }
+
+      deleteImports.run(...ids);
+      deleteSymbols.run(...ids);
+      deleteUsages.run(...ids);
+      deleteChunks.run(...ids);
+      deleteFile.run(...ids);
     });
 
-    tx(fileIds.map((row) => row.file_id));
+    tx();
     this.clearVectorCache(projectId);
   }
 
@@ -1094,6 +1095,9 @@ export class SQLiteStore {
         .sort(
           (left, right) =>
             right.score - left.score ||
+            // v4.5.4: Prefer symbols in the same file or module as the caller (disambiguation)
+            (left.row.file_id === fileId ? 0 : 1) - (right.row.file_id === fileId ? 0 : 1) ||
+            (left.row.module_path === normalizedFileModule ? 0 : 1) - (right.row.module_path === normalizedFileModule ? 0 : 1) ||
             left.row.relative_path.localeCompare(right.row.relative_path) ||
             left.row.line - right.row.line,
         )
@@ -1646,6 +1650,12 @@ export class SQLiteStore {
     const prefiltered = candidateChunkIds !== undefined && candidateChunkIds.size > 0;
     const hasFilters = filters !== undefined;
 
+    // v4.5.4: If vectors were released after HNSW build, lazily reload from SQLite when brute-force search is needed.
+    let effectiveVectors = vectors;
+    if (vectors.length === 0 && hnswIndex && (prefiltered || hasFilters)) {
+      effectiveVectors = this.reloadVectorsFromDb(projectId, modelName);
+    }
+
     // v4.4.2: Use HNSW when no pre-filtering or filters (HNSW doesn't support filtered search)
     const canUseHnsw = hnswIndex && !prefiltered && !hasFilters;
 
@@ -1664,10 +1674,10 @@ export class SQLiteStore {
       hnswUsed = true;
     } else {
       // Brute-force search with filters
-      let filteredVectors = vectors;
+      let filteredVectors = effectiveVectors;
 
       if (prefiltered) {
-        filteredVectors = vectors.filter((v) => candidateChunkIds.has(v.chunkId));
+        filteredVectors = effectiveVectors.filter((v) => candidateChunkIds.has(v.chunkId));
       }
 
       if (hasFilters) {
@@ -2401,7 +2411,11 @@ export class SQLiteStore {
       // Try to load HNSW from disk cache asynchronously, then fall back to building
       this.loadHnswFromDisk(projectId, modelName, vectors.length).then((hnswIndex) => {
         cacheEntry.hnswIndex = hnswIndex;
-        if (!hnswIndex && vectors.length > 0) {
+        if (hnswIndex) {
+          // v4.5.4: Release vectors after successful HNSW load from disk
+          cacheEntry.vectors = [];
+          this.logger.info(`HNSW loaded from disk for ${projectId}, vectors array released`);
+        } else if (vectors.length > 0) {
           this.buildHnswIndexAsync(projectId, cacheEntry);
         }
       });
@@ -2412,6 +2426,37 @@ export class SQLiteStore {
       vectors,
       hnswIndex: null,
     };
+  }
+
+  /**
+   * v4.5.4: Reload vectors from SQLite when brute-force search is needed
+   * after vectors were released to save memory (HNSW available).
+   */
+  private reloadVectorsFromDb(projectId: string, modelName: string): VectorEntry[] {
+    const rows = this.db
+      .prepare(`
+        SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
+        FROM chunk_vector cv
+        JOIN chunk c ON c.chunk_id = cv.chunk_id
+        JOIN file f ON f.file_id = c.file_id
+        WHERE f.project_id = ?
+          AND cv.model_name = ?
+      `)
+      .all(projectId, modelName) as Array<{
+      chunk_id: string;
+      embedding: Buffer;
+      language: Language;
+      model_name: string;
+      relative_path: string;
+    }>;
+
+    return rows.map((row) => ({
+      chunkId: row.chunk_id,
+      embedding: new Float32Array(row.embedding.buffer),
+      filePath: row.relative_path,
+      language: row.language,
+      modelName: row.model_name,
+    }));
   }
 
   /**
@@ -2447,8 +2492,12 @@ export class SQLiteStore {
         cacheEntry.hnswIndex = hnswIndex;
         cacheEntry.hnswBuilding = false;
 
+        // v4.5.4: Release vectors array when HNSW is available — saves ~600MB for 10 projects.
+        // Vectors will be lazily reloaded from SQLite if brute-force search is needed (with filters).
+        cacheEntry.vectors = [];
+
         const durationMs = Date.now() - startMs;
-        this.logger.info(`HNSW index built for project ${projectId}: ${vectors.length} vectors in ${durationMs}ms`);
+        this.logger.info(`HNSW index built for project ${projectId}: ${vectors.length} vectors in ${durationMs}ms, vectors array released`);
 
         // Save to disk for next startup
         this.saveHnswToDisk(projectId, cacheEntry.modelName, hnswIndex);

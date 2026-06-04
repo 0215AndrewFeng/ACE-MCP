@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.4] - 2026-06-04
+
+### vectorCache 内存控制 + FTS 批量删除 + 文件片段缓存 + callChain 并行 + 符号解析消歧
+
+- **vectorCache 内存控制**：HNSW 构建或从磁盘加载后释放 vectors 数组（节省约 600MB/10 项目），暴力搜索时从 SQLite 懒加载（`reloadVectorsFromDb`）。
+- **FTS 删除批量化**：`deleteFiles` 中逐条 `DELETE FROM chunk_fts WHERE chunk_id = ?` 改为先收集所有 chunk_id 再 `WHERE chunk_id IN (...)` 批量删除，减少 SQL 语句数量。
+- **readFileSnippet LRU 缓存**：新增 `fileSnippetCache`（200 条上限，mtime 失效），避免重复全量读取文件再切片。同一文件多次 snippet 请求直接从缓存行切片。
+- **callChain 同层并行**：`extractCallChains` 中 callers/callees 的 `extractCallEntriesWithDepth` 调用从串行 `await` 改为 `Promise.all` 并行。
+- **符号解析消歧**：`resolveRows` 排序新增同文件/同模块优先排序键。同名方法（如多个类的 `process`）在评分相同时优先选择与调用方同一文件的符号，减少调用链误解析。
+
 ## [4.5.3] - 2026-06-04
 
 ### HNSW heap 优化 + CTE 查询 + QA 上下文扩展 + 过滤修复 + catch 日志 + 组合索引

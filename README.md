@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.3`
+当前版本：`v4.5.4`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,16 +300,15 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.3（当前版本）
+### v4.5.4（当前版本）
 
-- **HNSW heap 优化**：searchLayer 中 Array.sort 替代为 MinHeap/MaxHeap，搜索复杂度从 O(ef·n·log n) 降至 O(ef·log n)
-- **N+1 → CTE**：getFilePreviewResults/searchByPath 关联子查询替换为 CTE + LEFT JOIN
-- **QA 上下文扩展**：call chain 节点上下文 ±5→±15 行
-- **identifier boost 过滤修复**：boost 搜索尊重用户指定的 languages/pathPrefix
-- **空 catch 加日志**：qaPipeline/app/searchContext/indexCoordinator 空 catch 改为 debug/warn 日志
-- **symbol_usage 组合索引**：双列索引加速调用链查询
+- **vectorCache 内存控制**：HNSW 可用时释放 vectors 数组，省 600MB/10 项目
+- **FTS 删除批量化**：逐条 DELETE → WHERE IN 批量删除
+- **readFileSnippet LRU 缓存**：200 条上限 + mtime 失效，避免重复全量读取
+- **callChain 同层并行**：callers/callees Promise.all 并行提取
+- **符号解析消歧**：同文件/同模块优先排序，减少同名方法误解析
 
-### v4.5.2
+### v4.5.3
 
 - **代码标识符优先搜索策略**：当查询同时包含代码标识符（camelCase/snake_case/PascalCase）和自然语言（中文/英文）时，新增标识符优先搜索轮次。纯标识符 FTS 搜索结果获得 0.5× 分数加成，使目标 Controller/Service 在混合查询中排名显著提升
 - **上下文截断居中**：`compressContext` 截断逻辑从"从文件头开始截断"改为"以匹配行范围为中心截断"，确保大文件中目标方法始终在 LLM 上下文中可见
