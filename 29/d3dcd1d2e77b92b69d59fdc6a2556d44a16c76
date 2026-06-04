@@ -1,0 +1,41 @@
+src/core/llm/qaCache.ts
+  s_0f8113dba42c56::t_9e742eace932f1 36-39
+CHANGELOG.md
+  s_0f8113dba42c56::t_9fafdd1affd014 5-13
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_e10278572ed967 145-162
+  s_0f8113dba42c56::t_71aaa674a41489 351
+  s_0f8113dba42c56::t_b378378925c834 363,368
+src/web/app.ts
+  s_0f8113dba42c56::t_de3c904b408904 145
+  s_0f8113dba42c56::t_e68ea167e394aa 1228
+  s_0f8113dba42c56::t_8f26b3e414b329 450-455
+src/version.ts
+  s_0f8113dba42c56::t_1e0dbb10384427 2
+README.md
+  s_0f8113dba42c56::t_002f7f38911657 5,294,303-309
+  s_0f8113dba42c56::t_65ac57c720776d 405-411,417-419
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_85851ddfa3b24b 308
+package.json
+  s_0f8113dba42c56::t_ea528023c194ad 3
+src/server/tools/cacheStats.ts
+  s_0f8113dba42c56::t_620436cfcef063 1
+  s_0f8113dba42c56::t_d3be7e4a4fc6e6 16,20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "29d3dcd1d2e77b92b69d59fdc6a2556d44a16c76",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "xopglm51"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
