@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.6] - 2026-06-05
+
+### HNSW 构建分批 yield + CJK 单字 token 搜索 + symbol full_name 函数索引
+
+- **HNSW 构建分批 yield**：`HnswIndex` 新增 `addBatchAsync(items, yieldEvery=500)`，构建时每 500 个节点 `await setImmediate` 让出事件循环；`buildHnswIndexAsync` 的 `setImmediate` 回调改为 async 并 await 之。此前 `addBatch` 是同步紧循环，整个 HNSW 构建在一个 tick 内跑完，大型项目冷启动阻塞数十秒、卡住所有并发请求。
+- **CJK 单字 token 搜索**：修复 `analyzeQuery` 的 `isSymbolLike` 判定——纯 CJK 单 token（如"票""出票"）此前因 `SYMBOL_TOKEN_PATTERN` 的 `\p{L}` 匹配被判为 symbol-like，导致 auto 模式关闭 semantic-fts 阶段，而 semantic FTS 正是靠 bigram 前缀匹配中文的唯一途径。新增 `!NON_ASCII_PATTERN.test(token)` 约束后，纯中文查询能正常走 semantic 召回。纯查询侧改动，无需重建索引。
+- **symbol full_name 函数索引**：新增 `idx_symbol_full_name_lower ON symbol(LOWER(full_name))`，加速符号解析（findResolvedReferences）和 searchBySymbols 中的 `LOWER(s.full_name) = ?` 等值匹配。
+
 ## [4.5.5] - 2026-06-04
 
 ### 多源分数归一化 + Java Lambda/方法引用解析 + HNSW 二进制序列化

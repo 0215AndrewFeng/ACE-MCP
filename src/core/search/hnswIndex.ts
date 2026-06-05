@@ -247,6 +247,20 @@ export class HnswIndex {
   }
 
   /**
+   * Add multiple vectors in batch, yielding to the event loop every `yieldEvery`
+   * nodes so a large build does not block all concurrent requests for tens of seconds.
+   */
+  async addBatchAsync(items: Array<{ id: string; vector: number[] }>, yieldEvery = 500): Promise<void> {
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i]!;
+      this.add(item.id, item.vector);
+      if ((i + 1) % yieldEvery === 0) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+  }
+
+  /**
    * Search for k nearest neighbors
    */
   search(query: number[], k: number): HnswSearchResult[] {

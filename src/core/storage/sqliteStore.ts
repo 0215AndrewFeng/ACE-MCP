@@ -621,6 +621,7 @@ export class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_owner_resolved ON symbol_usage(owner_symbol_id, resolved_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_usage_resolved_owner ON symbol_usage(resolved_symbol_id, owner_symbol_id);
       CREATE INDEX IF NOT EXISTS idx_symbol_name_lower ON symbol(LOWER(name));
+      CREATE INDEX IF NOT EXISTS idx_symbol_full_name_lower ON symbol(LOWER(full_name));
 
       CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
         chunk_id UNINDEXED,
@@ -2472,7 +2473,7 @@ export class SQLiteStore {
     const dimension = vectors[0].embedding.length;
 
     // Use setImmediate to avoid blocking the main thread
-    setImmediate(() => {
+    setImmediate(async () => {
       try {
         const startMs = Date.now();
         const hnswIndex = new HnswIndex({
@@ -2483,8 +2484,9 @@ export class SQLiteStore {
           m: 16,
         });
 
-        // Batch add vectors
-        hnswIndex.addBatch(vectors.map(v => ({
+        // Batch add vectors, yielding to the event loop periodically so the
+        // pure-CPU graph build does not block concurrent requests for tens of seconds.
+        await hnswIndex.addBatchAsync(vectors.map(v => ({
           id: v.chunkId,
           vector: [...v.embedding],
         })));

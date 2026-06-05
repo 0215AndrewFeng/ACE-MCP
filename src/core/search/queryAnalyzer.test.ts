@@ -65,6 +65,21 @@ test("analyzeQuery separates identifiers from CJK natural language (v4.5.1 P0)",
   assert.ok(analysis.naturalLanguage.some(t => /接口|具体|业务|逻辑/.test(t)));
 });
 
+test("analyzeQuery does not treat pure-CJK single tokens as symbol-like (v4.5.6 #25)", () => {
+  // A single CJK char (or pure-CJK word) must NOT be classified as symbol-like,
+  // otherwise auto mode disables the semantic-fts phase that handles CJK via bigrams.
+  const single = analyzeQuery("票");
+  assert.equal(single.isSymbolLike, false);
+  assert.deepEqual(single.tokens, ["票"]);
+
+  const word = analyzeQuery("出票");
+  assert.equal(word.isSymbolLike, false);
+
+  // ASCII identifiers of length >= 2 should still be symbol-like
+  const ascii = analyzeQuery("RefundService");
+  assert.equal(ascii.isSymbolLike, true);
+});
+
 test("parseStructuredQuery handles scoped fields boolean operators and phrases", () => {
   const parsed = parseStructuredQuery('symbol:RefundService AND (path:src/refund OR content:"refund flow") NOT path:test');
 

@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.5`
+当前版本：`v4.5.6`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.5（当前版本）
+### v4.5.6（当前版本）
+
+- **HNSW 构建分批 yield**：`addBatchAsync` 每 500 节点让出事件循环，避免大型项目冷启动阻塞数十秒
+- **CJK 单字 token 搜索**：修复纯 CJK 单 token 被误判为 symbol-like 导致 semantic 召回被关闭的问题，中文查询恢复 bigram 前缀匹配
+- **symbol full_name 函数索引**：新增 `idx_symbol_full_name_lower`，加速符号解析等值匹配
+
+### v4.5.5
 
 - **多源分数归一化**：`mergeResults` 合并前对每个搜索源（lexical/symbol/semantic/path）的分数做 min-max 归一化至 [0,1]，消除不同源分数量级差异导致的排序偏差
 - **Java Lambda/方法引用解析**：Java 适配器新增 Lambda 表达式（`x -> foo(x)`）和方法引用（`Foo::bar`、`this::process`）的调用关系提取，调用链分析可追踪函数式调用路径

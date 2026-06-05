@@ -104,7 +104,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
     hasIdentifierLikeSegments: hasIdentifiers,
     identifiers,
     isPathLike,
-    isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? ""),
+    isSymbolLike: uniqueTokens.length === 1 && SYMBOL_TOKEN_PATTERN.test(uniqueTokens[0] ?? "") && !NON_ASCII_PATTERN.test(uniqueTokens[0] ?? ""),
     naturalLanguage,
     rawQuery: normalizedQuery,
     semanticTerms: buildSemanticTerms(normalizedQuery),
