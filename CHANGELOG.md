@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.7] - 2026-06-08
+
+### 增量索引 vector 缓存精准失效
+
+- **问题**：此前增量索引（含 watcher 自动触发）只要有任意文件变更，就会**整体清空**该项目的内存 vector 缓存——三处无脑 `clearVectorCache(projectId)`（`recordIndexEvent`、`deleteFiles`、`writeChunkVectors`）+ `index_version` 自增导致缓存键失配。结果：改 5 个文件也会让下一次向量搜索从 SQLite 全量 `SELECT` 10 万条向量并从零重建整个 HNSW 索引。
+- **精准失效**：新增 `reconcileVectorCacheAfterIndex`，增量索引末尾只移除受影响文件的旧向量、重查这些文件的当前向量、并**同步缓存的 `index_version`**，使 `getProjectVectors` 在版本自增后仍命中缓存，彻底避免全量重载。`deleteFiles` 改用 `removeVectorCacheByPaths`（仅删受影响文件向量），`writeChunkVectors` 改用 `upsertVectorCacheByChunkIds`（仅更新已写入 chunk），`recordIndexEvent` 不再触碰缓存。
+- **HNSW 处理**：因 HNSW 无法安全增量改图（`add` 不重连、`deserialize` 钉死 `maxElements`、`remove` 近似），受影响时标记索引 stale，下次向量搜索按需异步重建；重建期间基于已修补的 `vectors[]` 走暴力搜索返回正确结果，无"服务脏 HNSW"窗口。
+- **兜底**：受影响文件数超过 400（全量重索引/大批变更）时回退为整体清空，同时规避 SQL `IN` 的 999 变量上限。`writeChunkVectors` 在缺省 `projectId` 时保留旧的整体清空行为。
+- 纯运行期缓存一致性改动，无需重建磁盘索引。
+
 ## [4.5.6] - 2026-06-05
 
 ### HNSW 构建分批 yield + CJK 单字 token 搜索 + symbol full_name 函数索引

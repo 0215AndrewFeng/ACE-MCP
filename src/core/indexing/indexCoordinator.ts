@@ -642,7 +642,13 @@ export class IndexCoordinator {
 
     const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
     // v4.3.3: Save git commit for future incremental indexing
-    this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion, gitCommit ?? undefined);
+    const newIndexVersion = this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion, gitCommit ?? undefined);
+    // v4.5.7: reconcile only the affected files' vectors and sync the cache version
+    // instead of clearing the whole project's vector cache on every incremental pass.
+    if (bumpIndexVersion) {
+      const affectedPaths = [...filesToIndex.map((file) => file.relativePath), ...deletedFiles];
+      this.store.reconcileVectorCacheAfterIndex(projectId, affectedPaths, newIndexVersion);
+    }
     this.store.recordIndexEvent(projectId, {
       changedFiles,
       chunkCount,

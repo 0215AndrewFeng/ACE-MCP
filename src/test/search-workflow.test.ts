@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -747,6 +748,72 @@ test("evaluateSearchQuality summarizes expected file assertions", async () => {
     assert.equal(evaluation.summary.top5Recall, 1);
     assert.equal(evaluation.summary.meanReciprocalRank, 1);
     assert.equal(evaluation.cases.every((testCase) => testCase.passed), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("v4.5.7: incremental reindex reconciles the vector cache instead of full reload (#7)", async () => {
+  const environment = await createTestProjectEnvironment({
+    "a.ts": "export function alpha() {\n  return 1;\n}\n",
+    "b.ts": "export function beta() {\n  return 2;\n}\n",
+  });
+
+  try {
+    const { store, indexCoordinator, embeddingProvider, projectRootPath } = environment;
+    await indexCoordinator.indexProject(projectRootPath, "full");
+
+    const project = store.getProjectByRoot(projectRootPath);
+    assert.ok(project, "project should exist after indexing");
+    const modelName = embeddingProvider.getModelName();
+
+    // Warm: write vectors for every chunk (lazy mode does not write them at index time).
+    const missing = store.listChunksMissingVectors(project.project_id, modelName);
+    assert.ok(missing.length >= 2, "both files should produce chunks needing vectors");
+    const embeddings = await embeddingProvider.embedBatch(missing.map((chunk) => chunk.content));
+    store.writeChunkVectors(
+      missing.map((chunk, index) => ({ chunkId: chunk.chunkId, embedding: embeddings[index], modelName })),
+      project.project_id,
+    );
+
+    // Populate the in-memory vector cache for this index_version.
+    const initial = store.getProjectVectors(project.project_id, modelName, project.index_version);
+    assert.ok(initial.vectors.some((v) => v.filePath === "a.ts"), "a.ts vectors should be cached");
+    assert.ok(initial.vectors.some((v) => v.filePath === "b.ts"), "b.ts vectors should be cached");
+
+    // Edit a.ts (new content → new chunk id → old chunk_vector cascade-deleted) and reindex.
+    await writeFile(path.join(projectRootPath, "a.ts"), "export function alphaRenamed() {\n  return 42;\n}\n", "utf8");
+    await indexCoordinator.indexProject(projectRootPath, "incremental");
+
+    const reindexed = store.getProjectByRoot(projectRootPath);
+    assert.ok(reindexed, "project should still exist after reindex");
+    assert.ok(reindexed.index_version > project.index_version, "index_version should be bumped");
+
+    // The core of #7: the cache must still HIT after the version bump (no full reload),
+    // because reconcileVectorCacheAfterIndex synced the cached index_version.
+    const afterReindex = store.getProjectVectors(project.project_id, modelName, reindexed.index_version);
+    assert.equal(afterReindex.cacheHit, true, "cache should hit after incremental reindex (no full reload)");
+
+    // a.ts's stale vectors must be gone (its new chunks are unwarmed in lazy mode);
+    // b.ts is untouched and must remain cached.
+    assert.equal(afterReindex.vectors.some((v) => v.filePath === "a.ts"), false, "stale a.ts vectors should be evicted");
+    assert.ok(afterReindex.vectors.some((v) => v.filePath === "b.ts"), "untouched b.ts vectors should remain");
+
+    // Deleting a file removes only its vectors and keeps the cache warm.
+    await writeFile(path.join(projectRootPath, "b.ts"), "export function beta() {\n  return 2;\n}\n", "utf8");
+    // Re-warm b.ts so it is present in DB + cache before deletion.
+    const missing2 = store.listChunksMissingVectors(project.project_id, modelName);
+    if (missing2.length > 0) {
+      const embeddings2 = await embeddingProvider.embedBatch(missing2.map((chunk) => chunk.content));
+      store.writeChunkVectors(
+        missing2.map((chunk, index) => ({ chunkId: chunk.chunkId, embedding: embeddings2[index], modelName })),
+        project.project_id,
+      );
+    }
+    store.deleteFiles(project.project_id, ["b.ts"]);
+    const afterDelete = store.getProjectVectors(project.project_id, modelName, reindexed.index_version);
+    assert.equal(afterDelete.cacheHit, true, "cache should still hit after a file delete");
+    assert.equal(afterDelete.vectors.some((v) => v.filePath === "b.ts"), false, "deleted b.ts vectors should be gone");
   } finally {
     await environment.cleanup();
   }

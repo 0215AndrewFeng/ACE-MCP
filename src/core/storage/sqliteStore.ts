@@ -289,6 +289,9 @@ function resolveImportSourceModule(filePath: string, sourceModule: string, langu
 
 const VECTOR_CACHE_MAX_PROJECTS = 10;
 const HNSW_CACHE_DIR = ".ace-mcp/data/hnsw";
+// v4.5.7: above this many affected files, reconcile falls back to a full cache
+// clear (full reindex / large change) — also keeps SQL IN under SQLite's 999 limit.
+const MAX_RECONCILE_PATHS = 400;
 
 interface VectorCacheEntry {
   indexVersion: number;
@@ -389,7 +392,8 @@ export class SQLiteStore {
     });
 
     tx();
-    this.clearVectorCache(projectId);
+    // v4.5.7: surgically drop only the deleted files' vectors instead of wiping the cache.
+    this.removeVectorCacheByPaths(projectId, relativePaths);
   }
 
   public getProjectByRoot(projectRootPath: string): ProjectRow | undefined {
@@ -794,7 +798,8 @@ export class SQLiteStore {
     });
 
     tx();
-    this.clearVectorCache(projectId);
+    // v4.5.7: recording an index event is vector-irrelevant — cache invalidation is
+    // handled surgically by reconcileVectorCacheAfterIndex / deleteFiles / writeChunkVectors.
   }
 
   public getLatestIndexEvent(projectId: string, failureLimit = 20): IndexEventSummary | null {
@@ -1924,7 +1929,7 @@ export class SQLiteStore {
       );
   }
 
-  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus, bumpIndexVersion: boolean, lastIndexedCommit?: string): void {
+  public updateProjectAfterIndex(projectId: string, timestamp: string, status: ProjectStatus, bumpIndexVersion: boolean, lastIndexedCommit?: string): number {
     if (bumpIndexVersion) {
       this.db
         .prepare(
@@ -1933,16 +1938,21 @@ export class SQLiteStore {
            WHERE project_id = ?`,
         )
         .run(timestamp, timestamp, status, lastIndexedCommit ?? null, projectId);
-      return;
+    } else {
+      this.db
+        .prepare(
+          `UPDATE project
+           SET last_scan_at = ?, last_index_at = ?, status = ?, last_indexed_commit = COALESCE(?, last_indexed_commit)
+           WHERE project_id = ?`,
+        )
+        .run(timestamp, timestamp, status, lastIndexedCommit ?? null, projectId);
     }
 
-    this.db
-      .prepare(
-        `UPDATE project
-         SET last_scan_at = ?, last_index_at = ?, status = ?, last_indexed_commit = COALESCE(?, last_indexed_commit)
-         WHERE project_id = ?`,
-      )
-      .run(timestamp, timestamp, status, lastIndexedCommit ?? null, projectId);
+    // v4.5.7: return the (possibly bumped) index_version so callers can sync the vector cache.
+    const row = this.db
+      .prepare("SELECT index_version FROM project WHERE project_id = ?")
+      .get(projectId) as { index_version: number } | undefined;
+    return row?.index_version ?? 0;
   }
 
   /**
@@ -2307,7 +2317,14 @@ export class SQLiteStore {
     });
 
     tx(entries);
-    this.clearVectorCache(projectId);
+    // v4.5.7: surgically upsert only the written chunks into the cache instead of
+    // wiping it. Without a projectId we can't target a project, so keep the old
+    // full-clear fallback (no current caller omits projectId).
+    if (projectId) {
+      this.upsertVectorCacheByChunkIds(projectId, entries.map((e) => e.chunkId));
+    } else {
+      this.clearVectorCache();
+    }
   }
 
   public getChunkVector(chunkId: string): VectorEntry | null {
@@ -2458,6 +2475,167 @@ export class SQLiteStore {
       language: row.language,
       modelName: row.model_name,
     }));
+  }
+
+  /**
+   * v4.5.7: Materialize the in-memory vectors array if it was released after an
+   * HNSW build (v4.5.4 memory optimization). Needed before any surgical cache
+   * patch so brute-force search stays correct and the HNSW rebuild can fire.
+   */
+  private ensureVectorsMaterialized(projectId: string, entry: VectorCacheEntry): void {
+    if (entry.vectors.length === 0 && entry.hnswIndex) {
+      entry.vectors = this.reloadVectorsFromDb(projectId, entry.modelName);
+    }
+  }
+
+  /**
+   * v4.5.7: Mark the HNSW index stale so it is rebuilt on the next vector search.
+   * Brute-force over the patched vectors array serves correct results meanwhile.
+   */
+  private markHnswStale(entry: VectorCacheEntry): void {
+    entry.hnswIndex = null;
+    entry.hnswBuilding = false;
+  }
+
+  /**
+   * v4.5.7: Remove cached vectors for the given files (no-op if project not
+   * cached). Used by deleteFiles so deleting/clearing files no longer wipes the
+   * whole project's vector cache.
+   */
+  private removeVectorCacheByPaths(projectId: string, paths: string[]): void {
+    if (paths.length === 0) {
+      return;
+    }
+    const entry = this.vectorCache.get(projectId);
+    if (!entry) {
+      return;
+    }
+    this.ensureVectorsMaterialized(projectId, entry);
+    const drop = new Set(paths);
+    const before = entry.vectors.length;
+    entry.vectors = entry.vectors.filter((v) => !drop.has(v.filePath));
+    if (entry.vectors.length !== before) {
+      this.markHnswStale(entry);
+    }
+  }
+
+  /**
+   * v4.5.7: Upsert cached vectors for the given chunk ids by re-querying the DB
+   * (no-op if project not cached). Used by writeChunkVectors so warming / eager
+   * indexing updates the cache surgically instead of clearing it.
+   */
+  private upsertVectorCacheByChunkIds(projectId: string, chunkIds: string[]): void {
+    if (chunkIds.length === 0) {
+      return;
+    }
+    const entry = this.vectorCache.get(projectId);
+    if (!entry) {
+      return;
+    }
+    this.ensureVectorsMaterialized(projectId, entry);
+
+    const placeholders = chunkIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(`
+        SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
+        FROM chunk_vector cv
+        JOIN chunk c ON c.chunk_id = cv.chunk_id
+        JOIN file f ON f.file_id = c.file_id
+        WHERE cv.chunk_id IN (${placeholders})
+          AND cv.model_name = ?
+      `)
+      .all(...chunkIds, entry.modelName) as Array<{
+      chunk_id: string;
+      embedding: Buffer;
+      language: Language;
+      model_name: string;
+      relative_path: string;
+    }>;
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const refreshed = new Set(rows.map((row) => row.chunk_id));
+    entry.vectors = entry.vectors.filter((v) => !refreshed.has(v.chunkId));
+    for (const row of rows) {
+      entry.vectors.push({
+        chunkId: row.chunk_id,
+        embedding: new Float32Array(row.embedding.buffer),
+        filePath: row.relative_path,
+        language: row.language,
+        modelName: row.model_name,
+      });
+    }
+    this.markHnswStale(entry);
+  }
+
+  /**
+   * v4.5.7: Reconcile the vector cache after an incremental index instead of
+   * clearing it wholesale. Removes affected files' stale vectors, re-reads their
+   * current vectors, and syncs the cache index version so getProjectVectors keeps
+   * hitting the cache (avoids a full re-SELECT of all project vectors).
+   */
+  public reconcileVectorCacheAfterIndex(projectId: string, affectedPaths: string[], newIndexVersion: number): void {
+    const entry = this.vectorCache.get(projectId);
+    if (!entry) {
+      return;
+    }
+
+    // Large change set (or full reindex): fall back to a full clear; the next
+    // search reloads with the new version. Also keeps SQL IN under the 999 limit.
+    if (affectedPaths.length > MAX_RECONCILE_PATHS) {
+      this.clearVectorCache(projectId);
+      return;
+    }
+
+    this.ensureVectorsMaterialized(projectId, entry);
+
+    let changed = false;
+    if (affectedPaths.length > 0) {
+      const drop = new Set(affectedPaths);
+      const before = entry.vectors.length;
+      entry.vectors = entry.vectors.filter((v) => !drop.has(v.filePath));
+      const removedCount = before - entry.vectors.length;
+
+      const placeholders = affectedPaths.map(() => "?").join(", ");
+      const rows = this.db
+        .prepare(`
+          SELECT cv.chunk_id, cv.embedding, cv.model_name, f.relative_path, f.language
+          FROM chunk_vector cv
+          JOIN chunk c ON c.chunk_id = cv.chunk_id
+          JOIN file f ON f.file_id = c.file_id
+          WHERE f.project_id = ?
+            AND f.relative_path IN (${placeholders})
+            AND cv.model_name = ?
+        `)
+        .all(projectId, ...affectedPaths, entry.modelName) as Array<{
+        chunk_id: string;
+        embedding: Buffer;
+        language: Language;
+        model_name: string;
+        relative_path: string;
+      }>;
+
+      for (const row of rows) {
+        entry.vectors.push({
+          chunkId: row.chunk_id,
+          embedding: new Float32Array(row.embedding.buffer),
+          filePath: row.relative_path,
+          language: row.language,
+          modelName: row.model_name,
+        });
+      }
+
+      changed = removedCount > 0 || rows.length > 0;
+    }
+
+    // Always sync the version so the cache key matches after the index_version bump.
+    entry.indexVersion = newIndexVersion;
+
+    if (changed) {
+      this.markHnswStale(entry);
+    }
   }
 
   /**
