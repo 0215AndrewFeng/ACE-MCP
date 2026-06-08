@@ -1,0 +1,40 @@
+src/version.ts
+  s_0f8113dba42c56::t_a59e1f7c4cf605 2
+README.md
+  s_0f8113dba42c56::t_d9b1d208459958 5
+  s_0f8113dba42c56::t_26445d4a2edd7d 303-307
+package.json
+  s_0f8113dba42c56::t_d8c8d2423c905b 3
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_69e9b515b308b1 645-651
+src/test/search-workflow.test.ts
+  s_0f8113dba42c56::t_c0037fb4ff8e92 2
+  s_0f8113dba42c56::t_e7a05e4a674496 755-820
+CHANGELOG.md
+  s_0f8113dba42c56::t_f889dd65997349 5-14
+ROADMAP.md
+  s_0f8113dba42c56::t_941f85e434876e 13
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_3b785356b2cd62 395-396
+  s_0f8113dba42c56::t_1a0d1faf81c218 1932,1941-1948,1951-1955
+  s_0f8113dba42c56::t_50621277f80e3a 2481-2640
+  s_0f8113dba42c56::t_b5db0e71178420 292-294
+  s_0f8113dba42c56::t_6a1d72464ea94b 2320-2327
+  s_0f8113dba42c56::t_b8c82dc0ad404a 801-802
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "8ae47897efac228953b4ec3b8a50796adf60ab90",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
