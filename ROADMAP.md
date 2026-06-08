@@ -24,7 +24,7 @@
 15. ✅ **QA call chain 上下文扩展**：上下文从 ±5 行提升到 ±15 行（v4.5.3）
 16. **JS 跨文件类型传播**：`foo.method()` 无法解析到 `Bar.method`，import 端缺失 export 端的 variableTypes
 17. ✅ **空 catch 加日志**：qaPipeline/app/searchContext/indexCoordinator 空 catch 改为 debug/warn 日志（v4.5.3）
-18. **大文件拆分**：sqliteStore.ts 2634 行/searchService.ts 1747 行/app.ts 1532 行，应拆为聚焦模块
+18. ✅ **大文件拆分**：`sqliteStore.ts`（2879→2004，抽出 `VectorCacheStore`/types/helpers）、`app.ts`（1532→50，路由拆到 `web/routes/*`）、`searchService.ts`（1765→1073，纯函数拆到 `searchScoring.ts`/`searchHelpers.ts`），公共 API 与测试不变（v4.5.8）
 
 ## P2 — 中等优化
 
@@ -39,7 +39,7 @@
 27. **Markdown 符号提取**：提取标题为 section 符号、代码块标识符为 usage
 28. **.vue/.svelte 单文件组件**：提取 `<script>` 块内容用 TS 解析器分析
 29. **Web API 验证统一**：与 MCP 工具 Zod schema 不一致，应共用验证逻辑
-30. **JSON.parse 防护**：数据库字段 JSON.parse 无 try-catch，损坏会崩溃
+30. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
 31. **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger
 32. **关键路径测试覆盖**：sqliteStore/indexCoordinator/qaPipeline 缺少单元测试
 

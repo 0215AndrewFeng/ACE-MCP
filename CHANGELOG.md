@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.8] - 2026-06-08
+
+### JSON.parse 防护（#30）+ 大文件拆分（#18）
+
+- **JSON.parse 防护**：新增 `safeJsonParse<T>(raw, fallback, logger?, context?)` 工具，套用到 `sqliteStore` 读取数据库列后直接 `JSON.parse` 的 6 处（`project.languages` ×3、`index_event.metadata_json`、`symbol_usage.candidate_names`、`chunk.symbol_names`）。此前列内容损坏会同步抛错崩溃整个进程，其中 `candidate_names`/`symbol_names` 两处在事务循环内（一条坏行回滚整个事务）；现在损坏数据降级为空值并记 warn 日志。
+- **大文件中等拆分**：在公共 API 与全部现有测试保持不变的前提下，把三个巨型文件拆成聚焦模块：
+  - `sqliteStore.ts` 2879 → 2004 行：向量缓存 + HNSW 簇抽成独立 `VectorCacheStore` 类（`src/core/storage/vectorCacheStore.ts`，`SQLiteStore` 委托），row 类型 → `sqliteStoreTypes.ts`，纯函数 → `sqliteStoreHelpers.ts`。
+  - `app.ts` 1532 → 50 行：30 条 Express 路由按域拆成 `src/web/routes/{meta,index,admin,search,summary,qa}Routes.ts`（各导出 `registerXRoutes(app, deps)`），类型 → `src/web/types.ts`，纯 helper → `src/web/routeHelpers.ts`。
+  - `searchService.ts` 1765 → 1073 行：模块级纯函数拆到 `searchScoring.ts`（打分/去重/合并/重排）与 `searchHelpers.ts`（工具/归一化/片段展开），类体不变。
+- 纯结构性重构，无行为变更；33 个现有测试不改动且全部通过。
+
 ## [4.5.7] - 2026-06-08
 
 ### 增量索引 vector 缓存精准失效

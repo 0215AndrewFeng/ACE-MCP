@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.7`
+当前版本：`v4.5.8`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,12 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.7（当前版本）
+### v4.5.8（当前版本）
+
+- **JSON.parse 防护**：数据库列解析新增 `safeJsonParse` 工具（6 处），列损坏时降级为空值并记日志，不再崩溃进程
+- **大文件中等拆分**：公共 API 与现有测试不变的前提下，`sqliteStore.ts`（2879→2004，抽出 `VectorCacheStore`/types/helpers）、`app.ts`（1532→50，路由拆到 `web/routes/*`）、`searchService.ts`（1765→1073，纯函数拆到 `searchScoring.ts`/`searchHelpers.ts`）拆为聚焦模块
+
+### v4.5.7
 
 - **增量索引 vector 缓存精准失效**：增量索引后不再整体清空向量缓存，而是只移除受影响文件的向量、重查其当前向量并同步 `index_version`（`reconcileVectorCacheAfterIndex`）。改几个文件不再触发 10 万向量全量重载；HNSW 标记 stale 后按需异步重建，重建期间走暴力搜索保证结果正确。`deleteFiles`/`writeChunkVectors` 改为按路径/按 chunk 精准更新缓存
 
