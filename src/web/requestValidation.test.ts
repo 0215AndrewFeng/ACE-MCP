@@ -12,6 +12,7 @@ const settings = {
   defaultTopK: 8,
   qaMaxSourcesMax: 100,
   qaMaxSourcesDefault: 10,
+  qaMaxContextTokensMax: 200000,
 } as unknown as Settings;
 
 test("valid search request parses with coerced values", () => {
@@ -57,6 +58,20 @@ test("contextMode omitted defaults to merged-file", () => {
   const result = parseAskRequest({ projectRootPath: "/p", question: "what?" }, settings);
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.value.contextMode, "merged-file");
+});
+
+test("maxContextTokens omitted is undefined, oversized clamps to max (#v4.5.12)", () => {
+  const omitted = parseAskRequest({ projectRootPath: "/p", question: "q" }, settings);
+  assert.equal(omitted.ok, true);
+  if (omitted.ok) assert.equal(omitted.value.maxContextTokens, undefined);
+
+  const oversized = parseAskRequest({ projectRootPath: "/p", question: "q", maxContextTokens: 999999 }, settings);
+  assert.equal(oversized.ok, true);
+  if (oversized.ok) assert.equal(oversized.value.maxContextTokens, 200000);
+
+  const inRange = parseAskRequest({ projectRootPath: "/p", question: "q", maxContextTokens: 80000 }, settings);
+  assert.equal(inRange.ok, true);
+  if (inRange.ok) assert.equal(inRange.value.maxContextTokens, 80000);
 });
 
 test("out-of-range depth clamps to 5", () => {

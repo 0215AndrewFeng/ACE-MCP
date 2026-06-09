@@ -10,6 +10,7 @@ const settings = {
   defaultTopK: 8,
   qaMaxSourcesMax: 100,
   qaMaxSourcesDefault: 10,
+  qaMaxContextTokensMax: 200000,
 } as unknown as Settings;
 
 const searchSchema = z.object(searchContextShape(settings));
@@ -61,4 +62,15 @@ test("askCodebase defaults contextMode to merged-file and maxSources to default"
 
 test("askCodebase rejects empty question", () => {
   assert.equal(askSchema.safeParse({ projectRootPath: "/p", question: "" }).success, false);
+});
+
+test("askCodebase maxContextTokens is optional and bounded (#v4.5.12)", () => {
+  // omitted → undefined (server default applies downstream)
+  assert.equal(askSchema.parse({ projectRootPath: "/p", question: "q" }).maxContextTokens, undefined);
+  // in-range value passes through
+  assert.equal(askSchema.parse({ projectRootPath: "/p", question: "q", maxContextTokens: 80000 }).maxContextTokens, 80000);
+  // above configured max is rejected
+  assert.equal(askSchema.safeParse({ projectRootPath: "/p", question: "q", maxContextTokens: 999999 }).success, false);
+  // below floor is rejected
+  assert.equal(askSchema.safeParse({ projectRootPath: "/p", question: "q", maxContextTokens: 10 }).success, false);
 });

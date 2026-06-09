@@ -113,6 +113,13 @@ export function askCodebaseShape(settings: Settings) {
       .max(settings.qaMaxSourcesMax)
       .default(settings.qaMaxSourcesDefault)
       .describe("Max code snippets to retrieve as context"),
+    maxContextTokens: z
+      .number()
+      .int()
+      .min(1000)
+      .max(settings.qaMaxContextTokensMax)
+      .optional()
+      .describe("Override the context token budget for assembled reference code (defaults to server config; larger = more complete code for big interfaces, bounded by the LLM context window)"),
     includeSummary: z.boolean().default(true).describe("Include project summary as additional context"),
     languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
     contextMode: z

@@ -26,7 +26,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
         return;
       }
-      const { projectRootPath, question, maxSources, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
       const { maxTokens, history } = req.body ?? {};
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
@@ -48,6 +48,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
           question,
           projectRootPath,
           maxSources,
+          maxContextTokens,
           maxTokens: Number(maxTokens) || undefined,
           includeSummary,
           languages,
@@ -146,9 +147,14 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.end();
         return;
       }
-      const { projectRootPath, question, maxSources, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
       const maxTokens = Number(isPost ? req.body?.maxTokens : req.query.maxTokens) || 0;
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
+      // v4.5.12: per-request context token budget, clamped to the configured max.
+      const sseContextBudget = Math.min(
+        Math.max(1000, maxContextTokens ?? dependencies.settings.qaMaxContextTokens),
+        dependencies.settings.qaMaxContextTokensMax,
+      );
 
       dependencies.logger.info("SSE stream started", { projectRootPath, question: question.slice(0, 50) });
 
@@ -447,7 +453,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         contextSources = await assembleFullFileContext(
           indexResult.projectRootPath,
           contextSources,
-          dependencies.settings.qaMaxContextTokens,
+          sseContextBudget,
           contextMode,
         );
         sendEvent({ type: "phase", phase: "context-assembly", status: "done", mode: contextMode });
@@ -457,7 +463,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
       sendEvent({ type: "phase", phase: "llm", status: "start" });
       const llmStart = Date.now();
 
-      const compressedSources = compressContext(contextSources, dependencies.settings.qaMaxContextTokens);
+      const compressedSources = compressContext(contextSources, sseContextBudget);
 
       // v4.3.4: Include call chain context in prompt
       const messages = conversationHistory.length > 0

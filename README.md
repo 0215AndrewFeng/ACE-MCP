@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.11`
+当前版本：`v4.5.12`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -233,9 +233,10 @@ llmTemperature = 0.0
 
 Ask Codebase 限制配置（解决查询不准确问题）：
 
-- `ACE_MCP_QA_MAX_SOURCES_DEFAULT` - 默认检索源数量（默认 10）
-- `ACE_MCP_QA_MAX_SOURCES_MAX` - 最大检索源数量上限（默认 50）
-- `ACE_MCP_QA_MAX_CONTEXT_TOKENS` - LLM 上下文 token 预算（默认 6000）
+- `ACE_MCP_QA_MAX_SOURCES_DEFAULT` - 默认检索源数量（默认 15）
+- `ACE_MCP_QA_MAX_SOURCES_MAX` - 最大检索源数量上限（默认 100）
+- `ACE_MCP_QA_MAX_CONTEXT_TOKENS` - LLM 上下文 token 预算（默认 48000；放大可让大接口带更完整代码，受模型上下文窗口约束）
+- `ACE_MCP_QA_MAX_CONTEXT_TOKENS_MAX` - 上下文预算上限，用于钳制按请求传入的 `maxContextTokens`（默认 200000）
 - `ACE_MCP_SEARCH_PER_FILE_LIMIT` - 每个文件最多保留的搜索结果数（默认 2）
 - `ACE_MCP_SEARCH_FANOUT_MULTIPLIER` - 搜索候选集扩展倍数（默认 3）
 
@@ -300,7 +301,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.11（当前版本）
+### v4.5.12（当前版本）
+
+- **放开参考代码量**：对大接口提问时参考代码不够用（受 `qaMaxContextTokens` 默认 24000 限制，超出即被 `compressContext` 截断）。默认上下文预算提高到 48000、`qaMaxSourcesDefault` 提到 15；`ask_codebase` 与 Web `/api/qa/ask`（含 SSE）新增可选 `maxContextTokens` 按请求覆盖，受新增上限 `qaMaxContextTokensMax`（默认 200000）钳制。最终量仍受 LLM 上下文窗口约束
+
+### v4.5.11
 
 - **QA 上游使用方（caller）扩展**：智能问答对「X 场景有什么特殊处理」这类问题，此前只召回定义符号的 model/enum/VO 定义类，真正使用该符号做业务判断的逻辑类（caller）从未进入上下文。新增 `findUpstreamUsages`，从召回结果片段中提取已定义符号（getter/方法名），查它们的 `findCallers`，把使用方业务类源码（含调用点 ±15 行）拉进问答 context；对 service/logic/processor/handler/impl 等业务层 caller 加权、限量去噪。对称补齐 v4.4.8 的下游（callee）扩展，纯本地调用图查询，不增加 LLM 调用、不改通用打分
 

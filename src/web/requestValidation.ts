@@ -92,6 +92,7 @@ export interface AskRequest {
   projectRootPath: string;
   question: string;
   maxSources: number;
+  maxContextTokens: number | undefined;
   includeSummary: boolean;
   languages: SupportedLanguage[] | undefined;
   contextMode: (typeof QA_CONTEXT_MODES)[number];
@@ -195,6 +196,9 @@ export function parseAskRequest(body: any, settings: Settings): ParseResult<AskR
       projectRootPath,
       question,
       maxSources: clampInteger(body.maxSources, 1, settings.qaMaxSourcesMax, settings.qaMaxSourcesDefault),
+      maxContextTokens: body.maxContextTokens != null
+        ? clampInteger(body.maxContextTokens, 1000, settings.qaMaxContextTokensMax, settings.qaMaxContextTokens)
+        : undefined,
       includeSummary: body.includeSummary !== false,
       languages: normalizeSupportedLanguages(body.languages),
       contextMode: enumOrDefault(body.contextMode, QA_CONTEXT_MODES, "merged-file"),

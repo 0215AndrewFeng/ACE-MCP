@@ -37,6 +37,7 @@ export interface QaPipelineOptions {
   enableCache?: boolean;
   history?: QaConversationTurn[];
   timeoutMs?: number;
+  maxContextTokens?: number;
 }
 
 export interface QaPipelineResult {
@@ -76,6 +77,11 @@ export async function runQaPipeline(
   const enableCallChain = options.enableCallChain ?? true;
   const enableCache = options.enableCache ?? true;
   const history = options.history ?? [];
+  // v4.5.12: context token budget — per-request override, clamped to the configured max.
+  const contextBudget = Math.min(
+    Math.max(1000, options.maxContextTokens ?? deps.settings.qaMaxContextTokens),
+    deps.settings.qaMaxContextTokensMax,
+  );
 
   const checkTimeout = (phase: string) => {
     if (Date.now() - startMs > timeout) {
@@ -325,13 +331,13 @@ export async function runQaPipeline(
     sources = await assembleFullFileContext(
       indexResult.projectRootPath,
       sources,
-      deps.settings.qaMaxContextTokens,
+      contextBudget,
       contextMode,
     );
   }
 
   // 6. Context compression
-  const compressedSources = compressContext(sources, deps.settings.qaMaxContextTokens);
+  const compressedSources = compressContext(sources, contextBudget);
 
   // 7. Cache check (only for non-conversation queries)
   const sourceHashes = compressedSources.map(s => QaCache.hashSource(s.filePath, s.startLine, s.endLine, s.snippet));

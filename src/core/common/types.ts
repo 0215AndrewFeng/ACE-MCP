@@ -51,6 +51,7 @@ export interface Settings {
   qaMaxSourcesDefault: number;
   qaMaxSourcesMax: number;
   qaMaxContextTokens: number;
+  qaMaxContextTokensMax: number;
   // v4.3.6: Search limits (configurable)
   searchPerFileLimit: number;
   searchFanoutMultiplier: number;

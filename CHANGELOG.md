@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.12] - 2026-06-09
+
+### 放开参考代码量 — 提高默认上下文预算 + 按请求覆盖
+
+- **背景**：对实现较大的接口提问时，参考代码不够用。根因是上下文 token 预算 `qaMaxContextTokens` 默认仅 24000，超出后 `compressContext` 会把每个来源片段按 `预算/来源数` 截断，大方法实现被切掉。
+- **提高默认**：`qaMaxContextTokens` 24000 → **48000**，`qaMaxSourcesDefault` 10 → **15**，让默认问答就带更多完整代码。
+- **按请求覆盖**：`ask_codebase` 与 Web `/api/qa/ask`（含 SSE）新增可选 `maxContextTokens` 参数，按需调大单次问答的上下文预算；新增上限配置 `qaMaxContextTokensMax`（默认 200000，env `ACE_MCP_QA_MAX_CONTEXT_TOKENS_MAX`）做钳制，避免超出 LLM 上下文窗口。三处预算消费点（`runQaPipeline` 的 assemble/compress、SSE 流式路径）统一用钳制后的预算。
+- **注意**：最终可用量仍受所配置 LLM 的上下文窗口约束；若模型窗口较小，请相应下调 `ACE_MCP_QA_MAX_CONTEXT_TOKENS`。
+
 ## [4.5.11] - 2026-06-09
 
 ### QA 上游使用方（caller）扩展 — 让业务逻辑类进入问答上下文

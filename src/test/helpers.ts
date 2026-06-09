@@ -76,6 +76,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     qaMaxSourcesDefault: 10,
     qaMaxSourcesMax: 100,
     qaMaxContextTokens: 24000,
+    qaMaxContextTokensMax: 200000,
     // v4.3.6: Search limits
     searchPerFileLimit: 2,
     searchFanoutMultiplier: 3,

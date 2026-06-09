@@ -35,6 +35,7 @@ type RawSettings = Partial<
     | "qaMaxSourcesDefault"
     | "qaMaxSourcesMax"
     | "qaMaxContextTokens"
+    | "qaMaxContextTokensMax"
     | "searchPerFileLimit"
     | "searchFanoutMultiplier"
   >
@@ -77,9 +78,10 @@ const DEFAULT_PUBLIC_SETTINGS = {
   enableLlmReranker: false,
   llmRerankerMaxCandidates: 10,
   // v4.3.6: Ask Codebase limits
-  qaMaxSourcesDefault: 10,
+  qaMaxSourcesDefault: 15,
   qaMaxSourcesMax: 100,
-  qaMaxContextTokens: 24000,
+  qaMaxContextTokens: 48000,
+  qaMaxContextTokensMax: 200000,
   // v4.3.6: Search limits
   searchPerFileLimit: 2,
   searchFanoutMultiplier: 3,
@@ -265,9 +267,10 @@ export async function loadSettings(): Promise<Settings> {
     enableLlmReranker: coerceBoolean(process.env.ACE_MCP_ENABLE_LLM_RERANKER) ?? fileSettings.enableLlmReranker ?? false,
     llmRerankerMaxCandidates: Number(process.env.ACE_MCP_LLM_RERANKER_MAX_CANDIDATES ?? fileSettings.llmRerankerMaxCandidates ?? 10),
     // v4.3.6: Ask Codebase limits
-    qaMaxSourcesDefault: Number(process.env.ACE_MCP_QA_MAX_SOURCES_DEFAULT ?? fileSettings.qaMaxSourcesDefault ?? 10),
+    qaMaxSourcesDefault: Number(process.env.ACE_MCP_QA_MAX_SOURCES_DEFAULT ?? fileSettings.qaMaxSourcesDefault ?? 15),
     qaMaxSourcesMax: Number(process.env.ACE_MCP_QA_MAX_SOURCES_MAX ?? fileSettings.qaMaxSourcesMax ?? 100),
-    qaMaxContextTokens: Number(process.env.ACE_MCP_QA_MAX_CONTEXT_TOKENS ?? fileSettings.qaMaxContextTokens ?? 24000),
+    qaMaxContextTokens: Number(process.env.ACE_MCP_QA_MAX_CONTEXT_TOKENS ?? fileSettings.qaMaxContextTokens ?? 48000),
+    qaMaxContextTokensMax: Number(process.env.ACE_MCP_QA_MAX_CONTEXT_TOKENS_MAX ?? fileSettings.qaMaxContextTokensMax ?? 200000),
     // v4.3.6: Search limits
     searchPerFileLimit: Number(process.env.ACE_MCP_SEARCH_PER_FILE_LIMIT ?? fileSettings.searchPerFileLimit ?? 2),
     searchFanoutMultiplier: Number(process.env.ACE_MCP_SEARCH_FANOUT_MULTIPLIER ?? fileSettings.searchFanoutMultiplier ?? 3),
