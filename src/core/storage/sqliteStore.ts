@@ -953,7 +953,7 @@ export class SQLiteStore {
            ORDER BY LENGTH(f.relative_path) ASC
            LIMIT ?`,
       )
-      .all(projectId, ...likePatterns, ...filterClause.parameters, limit) as Array<{
+      .all(projectId, ...likePatterns, ...filterClause.parameters, Math.max(limit * 5, 50)) as Array<{
       content: string;
       end_line: number;
       language: Language;
@@ -961,16 +961,37 @@ export class SQLiteStore {
       start_line: number;
     }>;
 
-    return rows.map((row, index) => ({
-      endLine: row.end_line,
-      filePath: row.relative_path,
-      language: row.language,
-      reason: "path",
-      score: 0.65 - index * 0.05,
-      snippet: row.content,
-      snippetIncluded: true,
-      startLine: row.start_line,
-    }));
+    // v4.5.10 (#24): rerank candidates so basename matches rank first (then by path length),
+    // before slicing to the requested limit. Final cross-source ranking still applies scoreMergedResult.
+    const lowerTokens = tokens.map((token) => token.toLowerCase());
+    const basenameRank = (relativePath: string): number => {
+      const normalized = relativePath.toLowerCase().replace(/\\/g, "/");
+      const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+      const baseNoExt = base.replace(/\.[^.]+$/, "");
+      let best = 5;
+      for (const token of lowerTokens) {
+        if (baseNoExt === token) best = Math.min(best, 0);
+        else if (base === token) best = Math.min(best, 1);
+        else if (base.startsWith(token)) best = Math.min(best, 2);
+        else if (base.includes(token)) best = Math.min(best, 3);
+      }
+      return best;
+    };
+
+    return rows
+      .map((row) => ({ row, rank: basenameRank(row.relative_path) }))
+      .sort((a, b) => a.rank - b.rank || a.row.relative_path.length - b.row.relative_path.length)
+      .slice(0, limit)
+      .map(({ row }, index) => ({
+        endLine: row.end_line,
+        filePath: row.relative_path,
+        language: row.language,
+        reason: "path",
+        score: 0.65 - index * 0.05,
+        snippet: row.content,
+        snippetIncluded: true,
+        startLine: row.start_line,
+      }));
   }
 
   public findDefinitions(projectId: string, query: string, limit: number, filters?: SearchFilters): DefinitionMatch[] {

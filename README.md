@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.9`
+当前版本：`v4.5.10`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,12 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.9（当前版本）
+### v4.5.10（当前版本）
+
+- **searchByPath 文件名匹配度排序**：路径搜索多取候选后按 basename 匹配度（去扩展名精确>精确>前缀>包含>仅目录）重排再截断，文件名精确匹配不再因路径长被截掉；评分逻辑不变
+- **日志统一**：`RemoteEmbeddingProvider` 的 `console.warn` 改为注入的 `logger?.warn`，避免 MCP stdio 模式下污染 stdout
+
+### v4.5.9
 
 - **Web API 验证统一**：新增 `core/validation/schemas.ts` 作为入参枚举/边界/默认值的单一来源，MCP 工具与 Web 路由共用；Web 侧保持宽松（coerce+clamp），仅必填项缺失时返回 400。修正 `qa/ask` 的 `contextMode` 默认值与 MCP/SSE 对齐
 - **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 `safeJsonParse`、搜索打分/工具纯函数、`QaCache`、共享/宽松校验、`VectorCacheStore` reconcile、`deleteFiles` 级联、源码解码助手

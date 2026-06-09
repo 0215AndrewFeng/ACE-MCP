@@ -1,4 +1,5 @@
 import type { Settings } from "../common/types.js";
+import type { Logger } from "../common/logger.js";
 import { RemoteEmbeddingProvider } from "./remoteEmbedding.js";
 
 export interface EmbeddingProvider {
@@ -16,13 +17,14 @@ interface QueryCacheEntry {
   timestamp: number;
 }
 
-export function createEmbeddingProvider(settings: Settings): EmbeddingProvider {
+export function createEmbeddingProvider(settings: Settings, logger?: Logger): EmbeddingProvider {
   if (settings.embeddingProvider === "remote" && settings.embeddingApiUrl) {
     return new RemoteEmbeddingProvider(
       settings.embeddingApiUrl,
       settings.embeddingApiKey,
       settings.embeddingModel,
       new InMemoryEmbeddingProvider(),
+      logger,
     );
   }
   return new InMemoryEmbeddingProvider();

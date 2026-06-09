@@ -66,3 +66,35 @@ test("deleteFiles removes a file's chunks without throwing", async () => {
     await environment.cleanup();
   }
 });
+
+test("searchByPath ranks basename matches above directory-only matches (#24)", async () => {
+  const environment = await createTestProjectEnvironment({
+    // basename matches have LONGER paths than the directory-only matches,
+    // so these assertions fail under the old length-only ordering.
+    "deep/nested/dir/user.ts": "export const user = 1;\n",
+    "aaa/bbb/userService.ts": "export const userService = 1;\n",
+    "user/x.ts": "export const x = 1;\n",
+    "user/y.ts": "export const y = 1;\n",
+  });
+
+  try {
+    const { store, indexCoordinator, projectRootPath } = environment;
+    await indexCoordinator.indexProject(projectRootPath, "full");
+    const project = store.getProjectByRoot(projectRootPath);
+    assert.ok(project);
+
+    const paths = store.searchByPath(project.project_id, ["user"], 5).map((r) => r.filePath);
+    // all four contain "user" in their path
+    assert.ok(paths.includes("deep/nested/dir/user.ts"));
+    assert.ok(paths.includes("user/x.ts"));
+    // basename-exact ("user.ts") ranks first despite its long path
+    assert.equal(paths[0], "deep/nested/dir/user.ts", "basename-exact match should rank first");
+    // basename-substring match outranks directory-only match despite longer path
+    assert.ok(
+      paths.indexOf("aaa/bbb/userService.ts") < paths.indexOf("user/x.ts"),
+      "basename match should outrank directory-only match",
+    );
+  } finally {
+    await environment.cleanup();
+  }
+});

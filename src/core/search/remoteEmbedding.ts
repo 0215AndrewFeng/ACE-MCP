@@ -1,4 +1,5 @@
 import { type EmbeddingProvider } from "./embedding.js";
+import type { Logger } from "../common/logger.js";
 
 interface EmbeddingResponse {
   data: Array<{ embedding: number[]; index: number }>;
@@ -25,6 +26,7 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
     private apiKey: string,
     model: string = "text-embedding-3-small",
     private fallback?: EmbeddingProvider,
+    private logger?: Logger,
   ) {
     this.modelName_ = model;
   }
@@ -127,7 +129,7 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
     } catch (error: unknown) {
       // v4.2.5: Distinguish between abort and other errors
       if (error instanceof Error && error.name === "AbortError") {
-        console.warn("[RemoteEmbeddingProvider] request aborted");
+        this.logger?.warn("[RemoteEmbeddingProvider] request aborted");
         if (this.fallback) {
           return this.fallback.embedBatch(texts);
         }
@@ -135,7 +137,7 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(
+      this.logger?.warn(
         `[RemoteEmbeddingProvider] request failed: ${message}, falling back to ${this.fallback?.getModelName() ?? "none"}`,
       );
       if (this.fallback) {

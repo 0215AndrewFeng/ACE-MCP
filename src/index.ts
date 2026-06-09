@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   const store = new SQLiteStore(settings.databasePath, logger);
   store.initialize();
 
-  const embeddingProvider = createEmbeddingProvider(settings);
+  const embeddingProvider = createEmbeddingProvider(settings, logger);
   const indexCoordinator = new IndexCoordinator(settings, store, logger, embeddingProvider);
   const searchService = new SearchService(store, logger, settings, embeddingProvider);
   const llmClient = new LlmClient(settings.llmApiUrl, settings.llmApiKey, settings.llmModel, settings.llmMaxTokens, settings.llmTemperature);

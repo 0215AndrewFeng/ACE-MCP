@@ -2,6 +2,13 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.10] - 2026-06-09
+
+### searchByPath 文件名匹配度排序（#24）+ 日志统一（#31）
+
+- **searchByPath 文件名匹配度排序**：`searchByPath` 此前仅按路径长度排序 + LIMIT，导致路径较长但文件名精确匹配的文件可能被提前截断。现改为多取候选（`Math.max(limit*5, 50)`）后在 JS 中按 basename 匹配度重排（去扩展名精确 > basename 精确 > 前缀 > 包含 > 仅目录命中，同档按路径长度），再截断到 `limit`。评分逻辑（`scoreMergedResult`）不变，仅改善路径搜索的候选排序与存活。
+- **日志统一**：`RemoteEmbeddingProvider` 的两处 `console.warn` 改为注入的 `logger?.warn`（`createEmbeddingProvider` 新增可选 `logger` 形参，由 `index.ts` 传入）。此前直接 `console.warn` 与全项目日志不一致，且在 MCP stdio 传输下向 stdout 打印有破坏协议风险。
+
 ## [4.5.9] - 2026-06-09
 
 ### Web API 验证统一（#29）+ 关键路径测试覆盖（#32）
