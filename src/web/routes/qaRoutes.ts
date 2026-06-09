@@ -1,7 +1,6 @@
 import type { Express, Request, Response } from "express";
 
 import { AppError } from "../../core/common/errors.js";
-import type { ContextMode } from "../../core/common/types.js";
 import { buildQaUserPrompt, buildQaMessagesWithHistory, compressContext, generateRelatedQuestions, assembleFullFileContext, QA_SYSTEM_PROMPT, type QaConversationTurn } from "../../core/llm/qaPrompt.js";
 import { qaCache, QaCache } from "../../core/llm/qaCache.js";
 import { runQaPipeline } from "../../core/llm/qaPipeline.js";
@@ -9,7 +8,7 @@ import { expandQueryWithLlm } from "../../core/llm/queryExpander.js";
 import { readFileSnippet } from "../../core/project/fileSnippet.js";
 import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations, type CallChainContext } from "../../core/search/callChainExtractor.js";
 import { rerankWithLlm } from "../../core/search/llmReranker.js";
-import { clampInteger, normalizeSupportedLanguages } from "../routeHelpers.js";
+import { parseAskRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
 export function registerQaRoutes(app: Express, dependencies: WebAppDependencies): void {
@@ -22,7 +21,13 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
   // ── QA endpoint (v4.3.7: unified pipeline) ────────────────────────────────────────
   app.post("/api/qa/ask", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, question, maxSources, maxTokens, includeSummary, languages, timeoutSeconds, history, contextMode, callChainDepth } = req.body;
+      const parsed = parseAskRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, question, maxSources, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
+      const { maxTokens, history } = req.body ?? {};
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
@@ -40,16 +45,16 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
           summaryGenerator: dependencies.summaryGenerator,
         },
         {
-          question: String(question ?? ""),
-          projectRootPath: String(projectRootPath ?? ""),
-          maxSources: clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault),
+          question,
+          projectRootPath,
+          maxSources,
           maxTokens: Number(maxTokens) || undefined,
-          includeSummary: includeSummary !== false,
-          languages: normalizeSupportedLanguages(languages),
-          contextMode: (contextMode as ContextMode) ?? "chunk",
-          callChainDepth: clampInteger(callChainDepth, 1, 3, 1),  // v4.4.2
+          includeSummary,
+          languages,
+          contextMode,
+          callChainDepth,  // v4.4.2
           history: Array.isArray(history) ? history : [],
-          timeoutMs: clampInteger(timeoutSeconds, 10, 600, 120) * 1000,
+          timeoutMs: timeoutSeconds * 1000,
         },
       );
 
@@ -134,23 +139,18 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
     try {
       // Support both GET (query params) and POST (body)
       const isPost = req.method === "POST";
-      const projectRootPath = isPost ? req.body?.projectRootPath : req.query.projectRootPath as string;
-      const question = isPost ? req.body?.question : req.query.question as string;
-      const maxSources = Number(isPost ? req.body?.maxSources : req.query.maxSources) || 10;
+      const source = isPost ? (req.body ?? {}) : req.query;
+      const parsed = parseAskRequest(source, dependencies.settings);
+      if (!parsed.ok) {
+        sendEvent({ type: "error", error: parsed.error });
+        res.end();
+        return;
+      }
+      const { projectRootPath, question, maxSources, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
       const maxTokens = Number(isPost ? req.body?.maxTokens : req.query.maxTokens) || 0;
-      const includeSummary = isPost ? req.body?.includeSummary !== false : req.query.includeSummary !== "false";
-      const languages = isPost ? req.body?.languages : req.query.languages as string | undefined;
-      const timeoutSeconds = Number(isPost ? req.body?.timeoutSeconds : req.query.timeoutSeconds) || 120;
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
-      // v4.3.7: context mode support
-      const contextMode = ((isPost ? req.body?.contextMode : req.query.contextMode) as ContextMode) ?? "merged-file";
-      // v4.4.2: call chain depth support
-      const callChainDepth = clampInteger(
-        Number(isPost ? req.body?.callChainDepth : req.query.callChainDepth) || 1,
-        1, 3, 1
-      );
 
-      dependencies.logger.info("SSE stream started", { projectRootPath, question: question?.slice(0, 50) });
+      dependencies.logger.info("SSE stream started", { projectRootPath, question: question.slice(0, 50) });
 
       if (!dependencies.llmClient.isConfigured()) {
         sendEvent({ type: "error", error: "LLM API not configured" });
@@ -158,14 +158,14 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         return;
       }
 
-      const timeout = clampInteger(timeoutSeconds, 10, 600, 120) * 1000;
+      const timeout = timeoutSeconds * 1000;
       const startMs = Date.now();
 
       // Phase 1: Index
       dependencies.logger.info("SSE phase: index start");
       sendEvent({ type: "phase", phase: "index", status: "start" });
       const indexStart = Date.now();
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const indexMs = Date.now() - indexStart;
       sendEvent({ type: "phase", phase: "index", status: "done", ms: indexMs });
       dependencies.logger.info("SSE phase: index done", { indexMs });
@@ -178,7 +178,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
 
       // Phase 2: Dual-round search with query expansion
       // v4.4.0: Round 1 with original query (benefits from semantic labels), Round 2 with expanded keywords
-      const questionStr = String(question ?? "");
+      const questionStr = question;
       let expandedKeywords: string[] = [];
       if (dependencies.llmClient.isConfigured() && /[^\x00-\x7F]/.test(questionStr)) {
         try {
@@ -196,8 +196,8 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
       dependencies.logger.info("SSE phase: search start");
       sendEvent({ type: "phase", phase: "search", status: "start" });
       // v4.3.0: Use the user-selected maxSources directly; smart estimation only applies when no explicit choice
-      const topK = clampInteger(maxSources, 1, dependencies.settings.qaMaxSourcesMax, dependencies.settings.qaMaxSourcesDefault);
-      const searchFilters = { languages: normalizeSupportedLanguages(languages?.split(",")) };
+      const topK = maxSources;
+      const searchFilters = { languages: parsedLanguages };
       const searchStart = Date.now();
 
       // Round 1: Original query

@@ -1,14 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
-import { DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES } from "../../core/common/types.js";
 import { rerankWithLlm } from "../../core/search/llmReranker.js";
+import { searchContextShape } from "../../core/validation/schemas.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
-
-const SEARCH_FILTER_LANGUAGES = ["java", "javascript", "dotnet", "python", "markdown"] as const;
-const SEARCH_RESULT_MODES = ["full", "metadata"] as const;
-const SEARCH_MODES = ["auto", "lexical", "symbol", "semantic", "hybrid"] as const;
 
 export function registerSearchContextTool(server: McpServer, dependencies: ToolDependencies): void {
   server.registerTool(
@@ -16,24 +11,7 @@ export function registerSearchContextTool(server: McpServer, dependencies: ToolD
     {
       description:
         "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query, with optional context lines and path/language filters.",
-      inputSchema: {
-        excludePathPrefix: z.string().min(1).optional(),
-        includeContextLines: z
-          .number()
-          .int()
-          .min(DEFAULT_INCLUDE_CONTEXT_LINES)
-          .max(MAX_INCLUDE_CONTEXT_LINES)
-          .default(DEFAULT_INCLUDE_CONTEXT_LINES),
-        languages: z.array(z.enum(SEARCH_FILTER_LANGUAGES)).min(1).optional(),
-        mode: z.enum(SEARCH_MODES).default("auto"),
-        pathContains: z.string().min(1).optional(),
-        pathPrefix: z.string().min(1).optional(),
-        projectRootPath: z.string().min(1),
-        query: z.string().min(1),
-        resultMode: z.enum(SEARCH_RESULT_MODES).default("full"),
-        topK: z.number().int().min(1).max(50).default(dependencies.settings.defaultTopK),
-        enableReranker: z.boolean().default(false).describe("Enable LLM reranker for search results (requires LLM API configured and enableLlmReranker=true in settings)"),
-      },
+      inputSchema: searchContextShape(dependencies.settings),
       title: "Search Context",
     },
     async ({ excludePathPrefix, includeContextLines, languages, mode, pathContains, pathPrefix, projectRootPath, query, resultMode, topK, enableReranker }) => {

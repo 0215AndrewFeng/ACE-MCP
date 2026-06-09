@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "4.5.8",
+  "version": "4.5.9",
   "private": true,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
@@ -17,7 +17,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:web": "node dist/index.js --web-port 8787",
-    "test": "node --import tsx --test src/config/cli.test.ts src/core/search/queryAnalyzer.test.ts src/test/search-workflow.test.ts src/web/app.test.ts"
+    "test": "node --import tsx --test src/config/cli.test.ts src/core/search/queryAnalyzer.test.ts src/test/search-workflow.test.ts src/web/app.test.ts src/core/storage/sqliteStoreHelpers.test.ts src/core/search/searchScoring.test.ts src/core/search/searchHelpers.test.ts src/core/llm/qaCache.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/core/storage/vectorCacheStore.test.ts src/core/storage/sqliteStore.test.ts src/core/indexing/sourceDecoder.test.ts"
   },
   "engines": {
     "node": ">=18.18.0"

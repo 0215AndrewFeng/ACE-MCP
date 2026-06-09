@@ -2,6 +2,13 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.9] - 2026-06-09
+
+### Web API 验证统一（#29）+ 关键路径测试覆盖（#32）
+
+- **Web API 验证统一**：新增 `src/core/validation/schemas.ts` 作为入参枚举/边界/默认值的**单一来源**（导出 `SEARCH_FILTER_LANGUAGES`/`SEARCH_MODES`/`SEARCH_RESULT_MODES`/`QA_CONTEXT_MODES`/`INDEX_MODES` 与 `TOPK_*` 等，及严格 zod schema 工厂）。MCP 工具（`search_context`/`find_definition`/`find_references`/`find_callers`/`find_callees`/`get_file_snippet`/`index_project`/`ask_codebase`）改为引用共享 schema，删除各文件重复的枚举常量，行为不变。新增 `src/web/requestValidation.ts` 宽松解析层：Web 路由复用同一套枚举/边界，沿用 coerce+clamp，仅当必填项（`query`/`projectRootPath`/`question`/`filePath`）缺失时返回 `400 VALIDATION_ERROR`，前端零改动。顺带修正 `qa/ask` POST 的 `contextMode` 默认值（`chunk`→`merged-file`，与 SSE/MCP 对齐）。
+- **关键路径测试覆盖**：测试从 33 个增至 **97 个**。新增 9 个测试文件覆盖：`safeJsonParse`（#30 防护）与 `sqliteStoreHelpers`、`searchScoring`/`searchHelpers` 纯函数、`QaCache`、共享严格 schema（越界/未知枚举 reject）与 Web 宽松解析器（clamp/默认/400）、`VectorCacheStore` 增量 reconcile（临时 SQLite 夹具）、`sqliteStore.deleteFiles` 级联与覆盖率计数、`indexCoordinator` 的源码解码助手（UTF-8/GBK/二进制）。`decodeSourceBuffer`/`isValidUtf8`/`scoreDecodedContent` 导出以便单测（零行为变更）。
+
 ## [4.5.8] - 2026-06-08
 
 ### JSON.parse 防护（#30）+ 大文件拆分（#18）

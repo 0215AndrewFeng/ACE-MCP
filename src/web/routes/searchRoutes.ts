@@ -1,34 +1,31 @@
 import type { Express, Request, Response } from "express";
 
 import { AppError } from "../../core/common/errors.js";
-import {
-  DEFAULT_CALL_GRAPH_DEPTH,
-  DEFAULT_INCLUDE_CONTEXT_LINES,
-  MAX_CALL_GRAPH_DEPTH,
-  MAX_INCLUDE_CONTEXT_LINES,
-} from "../../core/common/types.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
-import { clampInteger, normalizePathPrefix, normalizeSupportedLanguages } from "../routeHelpers.js";
+import { parseCallGraphRequest, parseSearchContextRequest, parseSymbolLookupRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
 export function registerSearchRoutes(app: Express, dependencies: WebAppDependencies): void {
   app.post("/api/search-context", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, mode, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
-      const normalizedMode = ["auto", "lexical", "symbol", "semantic", "hybrid"].includes(String(mode ?? "auto")) ? mode : "auto";
-      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const parsed = parseSearchContextRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, query, mode: normalizedMode, topK, includeContextLines, resultMode: normalizedResultMode, filters } = parsed.value;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const result = await dependencies.searchService.search(
         indexResult.projectRootPath,
-        String(query ?? ""),
+        query,
         normalizedMode,
-        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        topK,
+        includeContextLines,
         {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
+          excludePathPrefix: filters.excludePathPrefix,
+          languages: filters.languages,
+          pathContains: filters.pathContains,
+          pathPrefix: filters.pathPrefix,
         },
         normalizedResultMode,
       );
@@ -51,16 +48,16 @@ export function registerSearchRoutes(app: Express, dependencies: WebAppDependenc
       res.json(
         buildEnvelope(
           {
-            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-            languages: normalizeSupportedLanguages(languages),
+            excludePathPrefix: filters.excludePathPrefix,
+            includeContextLines,
+            languages: filters.languages,
             mode: normalizedMode,
-            pathContains: normalizePathPrefix(pathContains),
-            pathPrefix: normalizePathPrefix(pathPrefix),
+            pathContains: filters.pathContains,
+            pathPrefix: filters.pathPrefix,
             projectRootPath: indexResult.projectRootPath,
-            query: String(query ?? ""),
+            query,
             resultMode: normalizedResultMode,
-            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+            topK,
           },
           {
             diagnostics: result.diagnostics,
@@ -100,34 +97,38 @@ export function registerSearchRoutes(app: Express, dependencies: WebAppDependenc
 
   app.post("/api/find-definition", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
-      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const parsed = parseSymbolLookupRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, query, topK, includeContextLines, resultMode: normalizedResultMode, filters } = parsed.value;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findDefinitions(
         indexResult.projectRootPath,
-        String(query ?? ""),
-        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        query,
+        topK,
+        includeContextLines,
         {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
+          excludePathPrefix: filters.excludePathPrefix,
+          languages: filters.languages,
+          pathContains: filters.pathContains,
+          pathPrefix: filters.pathPrefix,
         },
         normalizedResultMode,
       );
       res.json(
         buildEnvelope(
           {
-            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-            languages: normalizeSupportedLanguages(languages),
-            pathContains: normalizePathPrefix(pathContains),
-            pathPrefix: normalizePathPrefix(pathPrefix),
+            excludePathPrefix: filters.excludePathPrefix,
+            includeContextLines,
+            languages: filters.languages,
+            pathContains: filters.pathContains,
+            pathPrefix: filters.pathPrefix,
             projectRootPath: indexResult.projectRootPath,
-            query: String(query ?? ""),
+            query,
             resultMode: normalizedResultMode,
-            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+            topK,
           },
           {
             projectRootPath: response.projectRootPath,
@@ -166,34 +167,38 @@ export function registerSearchRoutes(app: Express, dependencies: WebAppDependenc
 
   app.post("/api/find-references", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
-      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const parsed = parseSymbolLookupRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, query, topK, includeContextLines, resultMode: normalizedResultMode, filters } = parsed.value;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findReferences(
         indexResult.projectRootPath,
-        String(query ?? ""),
-        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        query,
+        topK,
+        includeContextLines,
         {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
+          excludePathPrefix: filters.excludePathPrefix,
+          languages: filters.languages,
+          pathContains: filters.pathContains,
+          pathPrefix: filters.pathPrefix,
         },
         normalizedResultMode,
       );
       res.json(
         buildEnvelope(
           {
-            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-            languages: normalizeSupportedLanguages(languages),
-            pathContains: normalizePathPrefix(pathContains),
-            pathPrefix: normalizePathPrefix(pathPrefix),
+            excludePathPrefix: filters.excludePathPrefix,
+            includeContextLines,
+            languages: filters.languages,
+            pathContains: filters.pathContains,
+            pathPrefix: filters.pathPrefix,
             projectRootPath: indexResult.projectRootPath,
-            query: String(query ?? ""),
+            query,
             resultMode: normalizedResultMode,
-            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+            topK,
           },
           {
             definition: response.definition,
@@ -235,36 +240,40 @@ export function registerSearchRoutes(app: Express, dependencies: WebAppDependenc
 
   app.post("/api/find-callers", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
-      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const parsed = parseCallGraphRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, query, topK, depth, includeContextLines, resultMode: normalizedResultMode, filters } = parsed.value;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findCallers(
         indexResult.projectRootPath,
-        String(query ?? ""),
-        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        query,
+        topK,
+        includeContextLines,
         {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
+          excludePathPrefix: filters.excludePathPrefix,
+          languages: filters.languages,
+          pathContains: filters.pathContains,
+          pathPrefix: filters.pathPrefix,
         },
         normalizedResultMode,
-        clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
+        depth,
       );
       res.json(
         buildEnvelope(
           {
-            depth: clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
-            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-            languages: normalizeSupportedLanguages(languages),
-            pathContains: normalizePathPrefix(pathContains),
-            pathPrefix: normalizePathPrefix(pathPrefix),
+            depth,
+            excludePathPrefix: filters.excludePathPrefix,
+            includeContextLines,
+            languages: filters.languages,
+            pathContains: filters.pathContains,
+            pathPrefix: filters.pathPrefix,
             projectRootPath: indexResult.projectRootPath,
-            query: String(query ?? ""),
+            query,
             resultMode: normalizedResultMode,
-            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+            topK,
           },
           {
             definition: response.definition,
@@ -309,36 +318,40 @@ export function registerSearchRoutes(app: Express, dependencies: WebAppDependenc
 
   app.post("/api/find-callees", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, query, topK, depth, includeContextLines, excludePathPrefix, languages, pathContains, pathPrefix, resultMode } = req.body;
-      const normalizedResultMode = ["full", "metadata"].includes(String(resultMode ?? "full")) ? resultMode : "full";
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
+      const parsed = parseCallGraphRequest(req.body, dependencies.settings);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, query, topK, depth, includeContextLines, resultMode: normalizedResultMode, filters } = parsed.value;
+      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
       const response = await dependencies.searchService.findCallees(
         indexResult.projectRootPath,
-        String(query ?? ""),
-        clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
-        clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
+        query,
+        topK,
+        includeContextLines,
         {
-          excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-          languages: normalizeSupportedLanguages(languages),
-          pathContains: normalizePathPrefix(pathContains),
-          pathPrefix: normalizePathPrefix(pathPrefix),
+          excludePathPrefix: filters.excludePathPrefix,
+          languages: filters.languages,
+          pathContains: filters.pathContains,
+          pathPrefix: filters.pathPrefix,
         },
         normalizedResultMode,
-        clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
+        depth,
       );
       res.json(
         buildEnvelope(
           {
-            depth: clampInteger(depth, DEFAULT_CALL_GRAPH_DEPTH, MAX_CALL_GRAPH_DEPTH, DEFAULT_CALL_GRAPH_DEPTH),
-            excludePathPrefix: normalizePathPrefix(excludePathPrefix),
-            includeContextLines: clampInteger(includeContextLines, DEFAULT_INCLUDE_CONTEXT_LINES, MAX_INCLUDE_CONTEXT_LINES, DEFAULT_INCLUDE_CONTEXT_LINES),
-            languages: normalizeSupportedLanguages(languages),
-            pathContains: normalizePathPrefix(pathContains),
-            pathPrefix: normalizePathPrefix(pathPrefix),
+            depth,
+            excludePathPrefix: filters.excludePathPrefix,
+            includeContextLines,
+            languages: filters.languages,
+            pathContains: filters.pathContains,
+            pathPrefix: filters.pathPrefix,
             projectRootPath: indexResult.projectRootPath,
-            query: String(query ?? ""),
+            query,
             resultMode: normalizedResultMode,
-            topK: clampInteger(topK, 1, 50, dependencies.settings.defaultTopK),
+            topK,
           },
           {
             definition: response.definition,

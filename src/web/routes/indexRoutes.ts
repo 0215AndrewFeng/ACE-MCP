@@ -4,16 +4,22 @@ import { AppError } from "../../core/common/errors.js";
 import { type IndexProgressEvent } from "../../core/indexing/indexCoordinator.js";
 import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
+import { parseIndexProjectRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
 export function registerIndexRoutes(app: Express, dependencies: WebAppDependencies): void {
   app.post("/api/index-project", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, mode } = req.body;
-      const result = await dependencies.indexCoordinator.indexProject(String(projectRootPath ?? ""), mode === "full" ? "full" : "incremental");
+      const parsed = parseIndexProjectRequest(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, mode } = parsed.value;
+      const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
       res.json(
         buildEnvelope(
-          { mode: mode === "full" ? "full" : "incremental", projectRootPath: result.projectRootPath },
+          { mode, projectRootPath: result.projectRootPath },
           {
             project: result.project,
             projectId: result.projectId,

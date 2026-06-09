@@ -1,6 +1,7 @@
 import type { AppRuntimeInfo, SupportedLanguage } from "../core/common/types.js";
+import { SEARCH_FILTER_LANGUAGES } from "../core/validation/schemas.js";
 
-const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(["java", "javascript", "dotnet", "python", "markdown"]);
+const SUPPORTED_SEARCH_LANGUAGES = new Set<SupportedLanguage>(SEARCH_FILTER_LANGUAGES);
 
 export function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
   const numericValue = Number(value);

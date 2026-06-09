@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
+import { indexProjectShape } from "../../core/validation/schemas.js";
 import type { ToolDependencies } from "../toolRegistry.js";
 import { asStructuredToolResponse, buildEnvelope } from "./responseEnvelope.js";
 
@@ -9,10 +9,7 @@ export function registerIndexProjectTool(server: McpServer, dependencies: ToolDe
     "index_project",
     {
       description: "Scan and index a local project for keyword, symbol, and path search.",
-      inputSchema: {
-        mode: z.enum(["full", "incremental"]).default("incremental"),
-        projectRootPath: z.string().min(1),
-      },
+      inputSchema: indexProjectShape,
       title: "Index Project",
     },
     async ({ mode, projectRootPath }) => {

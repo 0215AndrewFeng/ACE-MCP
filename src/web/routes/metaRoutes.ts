@@ -7,6 +7,7 @@ import { readFileSnippet } from "../../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
 import { buildRuntimeStatus, toolCatalog } from "../routeHelpers.js";
+import { parseFileSnippetRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -133,15 +134,20 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
 
   app.post("/api/file-snippet", async (req: Request, res: Response) => {
     try {
-      const { projectRootPath, filePath, startLine, endLine } = req.body;
-      const result = await readFileSnippet(String(projectRootPath ?? ""), String(filePath ?? ""), Number(startLine ?? 1), Number(endLine ?? 1));
+      const parsed = parseFileSnippetRequest(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
+        return;
+      }
+      const { projectRootPath, filePath, startLine, endLine } = parsed.value;
+      const result = await readFileSnippet(projectRootPath, filePath, startLine, endLine);
       res.json(
         buildEnvelope(
           {
-            endLine: Number(endLine ?? 1),
-            filePath: String(filePath ?? ""),
+            endLine,
+            filePath,
             projectRootPath: result.projectRootPath,
-            startLine: Number(startLine ?? 1),
+            startLine,
           },
           {
             filePath: result.filePath,

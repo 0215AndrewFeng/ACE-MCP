@@ -83,18 +83,18 @@ type IndexedFileResult =
  */
 const DB_WRITE_BATCH_SIZE = 50;
 
-function scoreDecodedContent(content: string): number {
+export function scoreDecodedContent(content: string): number {
   const replacementCount = (content.match(/\uFFFD/g) ?? []).length;
   const printableCount = [...content].filter((character) => character === "\n" || character === "\r" || character === "\t" || character >= " ").length;
   return printableCount - replacementCount * 10;
 }
 
-function isValidUtf8(buffer: Buffer): boolean {
+export function isValidUtf8(buffer: Buffer): boolean {
   const decoded = buffer.toString("utf8");
   return Buffer.from(decoded, "utf8").equals(buffer);
 }
 
-function decodeSourceBuffer(buffer: Buffer): DecodedSource {
+export function decodeSourceBuffer(buffer: Buffer): DecodedSource {
   if (isValidUtf8(buffer)) {
     return { content: buffer.toString("utf8"), encoding: "utf8" };
   }

@@ -38,10 +38,10 @@
 26. ✅ **identifier boost 过滤修复**：二次搜索传 `{}` 绕过语言/路径过滤，已改为传 normalizedFilters（v4.5.3）
 27. **Markdown 符号提取**：提取标题为 section 符号、代码块标识符为 usage
 28. **.vue/.svelte 单文件组件**：提取 `<script>` 块内容用 TS 解析器分析
-29. **Web API 验证统一**：与 MCP 工具 Zod schema 不一致，应共用验证逻辑
+29. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
 30. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
 31. **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger
-32. **关键路径测试覆盖**：sqliteStore/indexCoordinator/qaPipeline 缺少单元测试
+32. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

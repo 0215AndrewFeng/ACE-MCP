@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.8`
+当前版本：`v4.5.9`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,12 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.8（当前版本）
+### v4.5.9（当前版本）
+
+- **Web API 验证统一**：新增 `core/validation/schemas.ts` 作为入参枚举/边界/默认值的单一来源，MCP 工具与 Web 路由共用；Web 侧保持宽松（coerce+clamp），仅必填项缺失时返回 400。修正 `qa/ask` 的 `contextMode` 默认值与 MCP/SSE 对齐
+- **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 `safeJsonParse`、搜索打分/工具纯函数、`QaCache`、共享/宽松校验、`VectorCacheStore` reconcile、`deleteFiles` 级联、源码解码助手
+
+### v4.5.8
 
 - **JSON.parse 防护**：数据库列解析新增 `safeJsonParse` 工具（6 处），列损坏时降级为空值并记日志，不再崩溃进程
 - **大文件中等拆分**：公共 API 与现有测试不变的前提下，`sqliteStore.ts`（2879→2004，抽出 `VectorCacheStore`/types/helpers）、`app.ts`（1532→50，路由拆到 `web/routes/*`）、`searchService.ts`（1765→1073，纯函数拆到 `searchScoring.ts`/`searchHelpers.ts`）拆为聚焦模块
