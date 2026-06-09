@@ -1,0 +1,62 @@
+src/web/requestValidation.test.ts
+  s_0f8113dba42c56::t_4873eea5a5399d 15
+  s_0f8113dba42c56::t_a3d160dc5e9276 63-76
+src/web/requestValidation.ts
+  s_0f8113dba42c56::t_4db33aaee998d4 95
+  s_0f8113dba42c56::t_1ac6c0e9fd0372 199-201
+src/core/llm/qaPipeline.ts
+  s_0f8113dba42c56::t_18ec09fb7b676f 40
+  s_0f8113dba42c56::t_0d02ff7cb6975c 80-84
+  s_0f8113dba42c56::t_ab09a4f7037f5e 334,340
+package.json
+  s_0f8113dba42c56::t_ba37064492c6c6 3
+src/test/helpers.ts
+  s_0f8113dba42c56::t_958c633377babf 79
+README.md
+  s_0f8113dba42c56::t_4e1200fb0e8d42 236-239
+  s_0f8113dba42c56::t_bf04b54e001cf4 304-308
+  s_0f8113dba42c56::t_be049c88f318cb 5
+src/web/routes/qaRoutes.ts
+  s_0f8113dba42c56::t_77685e07546548 456
+  s_0f8113dba42c56::t_4c03a7096539f6 466
+  s_0f8113dba42c56::t_3e4870ea81978e 51
+  s_0f8113dba42c56::t_d68da8eb6faf72 150
+  s_0f8113dba42c56::t_7a38885cb83f57 29
+  s_0f8113dba42c56::t_77690eeeb7f758 153-157
+src/core/validation/schemas.ts
+  s_0f8113dba42c56::t_deb79bf8a7271d 116-122
+src/core/validation/schemas.test.ts
+  s_0f8113dba42c56::t_49afdf88e2a3b0 13
+  s_0f8113dba42c56::t_2eaa716c0f526a 66-76
+CHANGELOG.md
+  s_0f8113dba42c56::t_acacc009f4b22b 5-13
+ROADMAP.md
+  s_0f8113dba42c56::t_7308594c33e2cb 59-61
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_85806adc87e35a 33
+  s_0f8113dba42c56::t_6ea43949b809fb 18
+src/config/settings.ts
+  s_0f8113dba42c56::t_8b76f5dfc617e4 38
+  s_0f8113dba42c56::t_e11b9bc9c36092 81,83-84
+  s_0f8113dba42c56::t_1a905b1ef04079 270,272-273
+src/core/common/types.ts
+  s_0f8113dba42c56::t_09fcbd35be80fd 54
+src/version.ts
+  s_0f8113dba42c56::t_f7ee37f385267f 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "7b350b7df8da95396d76ee887b01967fdb685342",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
