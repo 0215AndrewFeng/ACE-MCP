@@ -1,0 +1,44 @@
+src/core/search/remoteEmbedding.ts
+  s_0f8113dba42c56::t_7200f62661ff1e 2
+  s_0f8113dba42c56::t_eb214a77a8dee9 132
+  s_0f8113dba42c56::t_288ff212940543 140
+  s_0f8113dba42c56::t_406bf6b395ea1a 29
+src/version.ts
+  s_0f8113dba42c56::t_ccd192ab703bf1 2
+src/index.ts
+  s_0f8113dba42c56::t_290e5da27964ed 67
+README.md
+  s_0f8113dba42c56::t_78dc1a97084671 5
+  s_0f8113dba42c56::t_0dbdfff633f8a1 303-308
+src/core/storage/sqliteStore.test.ts
+  s_0f8113dba42c56::t_39f882fc99e99b 69-100
+ROADMAP.md
+  s_0f8113dba42c56::t_c9aa6d04748e14 36
+  s_0f8113dba42c56::t_95dc7931a1e209 43
+package.json
+  s_0f8113dba42c56::t_93429eb62a75a2 3
+CHANGELOG.md
+  s_0f8113dba42c56::t_99b47983c86a6b 5-10
+src/core/search/embedding.ts
+  s_0f8113dba42c56::t_4daad7451fcf67 2
+  s_0f8113dba42c56::t_a9f0f885040622 20,27
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_8518f9031f6ce6 956
+  s_0f8113dba42c56::t_07828c91861afd 964-994
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "f6d4ba81c1d81c3bd4c99049a32dc0b67ed78645",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "xopglm51"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
