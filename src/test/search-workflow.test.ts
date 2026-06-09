@@ -8,6 +8,8 @@ import { javascriptAdapter } from "../adapters/javascript/index.js";
 import { javaAdapter } from "../adapters/java/index.js";
 import { pythonAdapter } from "../adapters/python/index.js";
 import { AppError } from "../core/common/errors.js";
+import type { SearchResult } from "../core/common/types.js";
+import { findUpstreamUsages } from "../core/search/callChainExtractor.js";
 import { readFileSnippet } from "../core/project/fileSnippet.js";
 import { createTestProjectEnvironment } from "./helpers.js";
 
@@ -630,6 +632,90 @@ def handle_refund(order_id: str) -> str:
     );
     assert.equal(calleeResponse.direction, "callees");
     assert.equal(calleeResponse.results.some((result) => result.resolvedSymbol === "RefundService.process_refund"), true);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("findUpstreamUsages pulls caller business logic from snippet-defined symbols (#v4.5.11)", async () => {
+  const environment = await createTestProjectEnvironment({
+    "pom.xml": "<project></project>",
+    "src/main/java/model/TicketVO.java": `
+package model;
+
+public class TicketVO {
+  private boolean flagX = false;
+  public boolean isFlagX() {
+    return flagX;
+  }
+}
+`,
+    "src/main/java/order/OrderProcessor.java": `
+package order;
+
+import model.TicketVO;
+
+public class OrderProcessor {
+  public String execute(TicketVO vo) {
+    if (vo.isFlagX()) {
+      return "special";
+    }
+    return "normal";
+  }
+}
+`,
+  });
+
+  try {
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    // Sanity: the call graph resolves the usage site (caller).
+    const callerResponse = await environment.searchService.findCallers(
+      environment.projectRootPath,
+      "isFlagX",
+      5,
+      0,
+      undefined,
+      "metadata",
+      1,
+    );
+    assert.equal(
+      callerResponse.results.some((result) => result.filePath === "src/main/java/order/OrderProcessor.java"),
+      true,
+    );
+
+    // Mirror real QA: a chunk-level result with NO explicit symbol — the getter
+    // definition is only present in the snippet. findUpstreamUsages must extract it.
+    const modelResult: SearchResult = {
+      filePath: "src/main/java/model/TicketVO.java",
+      startLine: 1,
+      endLine: 9,
+      language: "java",
+      reason: "semantic",
+      score: 1,
+      snippet: "public class TicketVO {\n  private boolean flagX = false;\n  public boolean isFlagX() {\n    return flagX;\n  }\n}",
+      snippetIncluded: true,
+    };
+
+    const upstream = await findUpstreamUsages(
+      environment.searchService,
+      environment.projectRootPath,
+      [modelResult],
+      3,
+    );
+
+    // The business-logic caller is pulled in even without an explicit result.symbol...
+    const callerHit = upstream.find((r) => r.filePath === "src/main/java/order/OrderProcessor.java");
+    assert.ok(callerHit, "expected OrderProcessor caller to be pulled into upstream usages");
+    assert.equal(callerHit?.reason, "callgraph-caller");
+    assert.match(callerHit?.symbol ?? "", /execute/);
+
+    // ...and the definition itself (self-reference) is NOT included.
+    assert.equal(
+      upstream.some((r) => r.filePath === "src/main/java/model/TicketVO.java"),
+      false,
+      "self-reference (definition) must be filtered out",
+    );
   } finally {
     await environment.cleanup();
   }

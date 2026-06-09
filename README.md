@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.10`
+当前版本：`v4.5.11`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -300,7 +300,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.10（当前版本）
+### v4.5.11（当前版本）
+
+- **QA 上游使用方（caller）扩展**：智能问答对「X 场景有什么特殊处理」这类问题，此前只召回定义符号的 model/enum/VO 定义类，真正使用该符号做业务判断的逻辑类（caller）从未进入上下文。新增 `findUpstreamUsages`，从召回结果片段中提取已定义符号（getter/方法名），查它们的 `findCallers`，把使用方业务类源码（含调用点 ±15 行）拉进问答 context；对 service/logic/processor/handler/impl 等业务层 caller 加权、限量去噪。对称补齐 v4.4.8 的下游（callee）扩展，纯本地调用图查询，不增加 LLM 调用、不改通用打分
+
+### v4.5.10
 
 - **searchByPath 文件名匹配度排序**：路径搜索多取候选后按 basename 匹配度（去扩展名精确>精确>前缀>包含>仅目录）重排再截断，文件名精确匹配不再因路径长被截掉；评分逻辑不变
 - **日志统一**：`RemoteEmbeddingProvider` 的 `console.warn` 改为注入的 `logger?.warn`，避免 MCP stdio 模式下污染 stdout

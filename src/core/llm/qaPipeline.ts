@@ -7,7 +7,7 @@ import type { ToolDependencies } from "../../server/toolRegistry.js";
 import type { ContextMode, SupportedLanguage } from "../common/types.js";
 import { AppError } from "../common/errors.js";
 import type { CallChainContext, CallChainLocation } from "../search/callChainExtractor.js";
-import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations, findDownstreamImplementations } from "../search/callChainExtractor.js";
+import { extractCallChains, formatCallChainsForLLM, collectCallChainLocations, findDownstreamImplementations, findUpstreamUsages } from "../search/callChainExtractor.js";
 import { rerankWithLlm } from "../search/llmReranker.js";
 import { expandQueryWithLlm } from "./queryExpander.js";
 import { qaCache, QaCache } from "./qaCache.js";
@@ -183,6 +183,34 @@ export async function runQaPipeline(
       }
     } catch (err) {
       deps.logger.debug("downstream search failed", { error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // 2.6. v4.5.11: Upstream usage expansion — pull in caller business logic that
+  // USES the top-result symbols (answers "what special handling does scenario X have").
+  // The model/VO that defines a flag outranks its single business call site, so the
+  // usage code never reaches the context without this. Call-graph only, no LLM.
+  if (searchResult.results.length > 0) {
+    try {
+      const upstreamResults = await findUpstreamUsages(
+        deps.searchService,
+        indexResult.projectRootPath,
+        searchResult.results,
+        3,
+      );
+      if (upstreamResults.length > 0) {
+        const existingKeys = new Set(
+          searchResult.results.map(r => `${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        const newResults = upstreamResults.filter(
+          r => !existingKeys.has(`${r.filePath}:${r.startLine}:${r.endLine}`),
+        );
+        if (newResults.length > 0) {
+          searchResult = { ...searchResult, results: [...searchResult.results, ...newResults] };
+        }
+      }
+    } catch (err) {
+      deps.logger.debug("upstream usage search failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 

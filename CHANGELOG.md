@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.11] - 2026-06-09
+
+### QA 上游使用方（caller）扩展 — 让业务逻辑类进入问答上下文
+
+- **背景**：智能问答对「X 场景有什么特殊处理」这类问题答非所问。实测「假确认场景的退规有什么特殊的吗」时，召回的全是 model/enum/VO 定义类，而真正回答问题的业务逻辑 `ConfirmTraceEndorseProcessor`（它**调用** `TicketEndorseVO.isFakeConfirm()` 做特殊分支）从未被召回。
+- **根因**：QA 管线的结果扩展只往「下游被调实现」方向走（v4.4.8 `findDownstreamImplementations` 用 `findCallees`）。而这类问题的答案恰是「**谁在使用该符号做业务判断**」=top 结果符号的 **caller**。通用打分只看 token/路径/符号匹配，定义符号的 model 类（字段+getter+setter 多次命中）必然压过只调用一次的业务类，使用方进不了候选集。
+- **修复**：对称补齐 v4.4.8——新增 `findUpstreamUsages`（`callChainExtractor.ts`）。自然语言问答的召回结果多为 chunk 级、无显式 `symbol`，故从结果窗口（top 10）的**代码片段中提取已定义符号**（getter/方法名），对每个符号查 `findCallers`，把使用方源码（含调用点 ±15 行）拉进问答 context；对**业务层 caller**（service/logic/processor/handler/impl 等路径或符号）加权 1.5×、限量去噪后并入。QA 管线在 downstream 扩展之后接入。**纯本地调用图查询，不增加 LLM 调用、不改通用打分**。实测「假确认场景的退规」从只召回 model/enum 变为成功召回 `ConfirmTraceEndorseProcessor` 等业务处理类。
+
 ## [4.5.10] - 2026-06-09
 
 ### searchByPath 文件名匹配度排序（#24）+ 日志统一（#31）

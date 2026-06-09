@@ -408,6 +408,100 @@ export async function findDownstreamImplementations(
 }
 
 /**
+ * v4.5.11: Find upstream usages (callers) of symbols DEFINED in the top search results.
+ * Symmetric counterpart to findDownstreamImplementations (which follows callees).
+ *
+ * QA questions like "what special handling does scenario X have" are answered by the
+ * code that USES symbol X to branch — i.e. X's callers. Plain ranking surfaces the
+ * model/VO that DEFINES X (field + getter + setter all match) and buries the single
+ * business-logic call site.
+ *
+ * Natural-language QA results are chunk-level and usually carry NO explicit `symbol`,
+ * so candidate symbols are extracted from result snippets (method/getter definitions)
+ * in addition to any `result.symbol`. Callers whose owner lives in a business-logic
+ * layer (service/logic/processor/handler/controller/impl/...) are boosted so the real
+ * implementation is preferred over model-to-model references. Call-graph only — no LLM.
+ */
+const BUSINESS_ROLE_PATTERN = /(service|logic|processor|handler|controller|impl|manager|biz|usecase|strategy|pipeline)/i;
+
+export async function findUpstreamUsages(
+  searchService: SearchService,
+  projectRootPath: string,
+  results: SearchResult[],
+  maxUsagesPerSymbol: number = 3,
+  maxResults: number = 8,
+): Promise<SearchResult[]> {
+  if (results.length === 0) return [];
+  const window = results.slice(0, 10);
+
+  // Derive candidate DEFINED symbols: explicit symbol + snippet-defined methods/getters.
+  const symbolNames = new Set<string>();
+  for (const result of window) {
+    if (result.symbol) {
+      const simple = result.symbol.split(/[.#$]/).pop();
+      if (simple && simple.length >= 3 && !isCommonWord(simple)) symbolNames.add(simple);
+    }
+    for (const sym of extractSymbolsFromSnippet(result.snippet, result.language)) {
+      symbolNames.add(sym);
+    }
+  }
+  const names = [...symbolNames].slice(0, 15);
+  if (names.length === 0) return [];
+
+  // Look up callers for each candidate symbol in parallel (fast, local call graph).
+  const callerPromises = names.map(async (name) => {
+    try {
+      const resp = await searchService.findCallers(
+        projectRootPath,
+        name,
+        maxUsagesPerSymbol,
+        15, // includeContextLines: pull caller source around the call site
+        undefined,
+        "full",
+        1,
+      );
+      return resp?.results ?? [];
+    } catch {
+      // findCallers may fail for symbols without call graph data — skip
+      return [];
+    }
+  });
+
+  const batches = await Promise.all(callerPromises);
+  const seen = new Set(results.map((r) => `${r.filePath}:${r.startLine}:${r.endLine}`));
+  const upstream: SearchResult[] = [];
+
+  for (const batch of batches) {
+    for (const caller of batch) {
+      // Skip self-references (the caller owner is the definition itself)
+      if (!caller.ownerSymbol || caller.ownerSymbol === caller.resolvedSymbol) continue;
+      if (!caller.filePath) continue;
+      const key = `${caller.filePath}:${caller.startLine}:${caller.endLine}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Boost business-logic-layer callers so real implementations beat model refs.
+      const isBusiness = BUSINESS_ROLE_PATTERN.test(caller.filePath) || BUSINESS_ROLE_PATTERN.test(caller.ownerSymbol);
+      const score = caller.score * 0.8 * (isBusiness ? 1.5 : 1);
+      upstream.push({
+        filePath: caller.filePath,
+        startLine: caller.startLine,
+        endLine: caller.endLine,
+        language: caller.language,
+        symbol: caller.ownerSymbol, // usage method (e.g. ...ConfirmTraceEndorseProcessor.execute)
+        score,
+        snippet: caller.snippet,
+        snippetIncluded: Boolean(caller.snippet),
+        reason: "callgraph-caller",
+      });
+    }
+  }
+
+  // Prefer the strongest (business-boosted) usages, cap to bound context noise.
+  upstream.sort((a, b) => b.score - a.score);
+  return upstream.slice(0, maxResults);
+}
+
+/**
  * Extract call chains for symbols found in search results.
  * This enriches the QA context with caller/callee relationships.
  *
