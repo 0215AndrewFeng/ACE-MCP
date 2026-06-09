@@ -1,0 +1,99 @@
+src/server/tools/searchContext.ts
+  s_0f8113dba42c56::t_5434b94d774623 4,14
+ROADMAP.md
+  s_0f8113dba42c56::t_6cb90b0a2fa5cb 44
+  s_0f8113dba42c56::t_bfa784123cc5fe 41
+src/core/storage/sqliteStore.test.ts
+  s_0f8113dba42c56::t_185b0ac5e14242 1-68
+src/server/tools/findDefinition.ts
+  s_0f8113dba42c56::t_3086186d120896 3,12
+src/web/requestValidation.test.ts
+  s_0f8113dba42c56::t_52c448a6691c78 1-66
+src/server/tools/findCallers.ts
+  s_0f8113dba42c56::t_b8c91ad006e896 3,12
+src/web/requestValidation.ts
+  s_0f8113dba42c56::t_8fc485b75eee2f 1-205
+src/web/routes/searchRoutes.ts
+  s_0f8113dba42c56::t_e25c7cd4213783 170-176,179-181,183-186,193-197,199,201
+  s_0f8113dba42c56::t_620d844e2dbbd2 100-106,109-111,113-116,123-127,129,131
+  s_0f8113dba42c56::t_b0388d6839f427 5,11-17,20,22-23,25-28
+  s_0f8113dba42c56::t_56a6a11436754e 243-249,252-254,256-259,262,267-272,274,276
+  s_0f8113dba42c56::t_31d23c034bfa18 51-53,55-56,58,60
+  s_0f8113dba42c56::t_74bd6bc40e5bbc 321-327,330-332,334-337,340,345-350,352,354
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_579d4f282dfde0 86
+  s_0f8113dba42c56::t_ff3bfafb893f97 97
+  s_0f8113dba42c56::t_d6e011f777e9fc 92
+src/core/search/searchHelpers.test.ts
+  s_0f8113dba42c56::t_9c04325a8da052 33-36
+  s_0f8113dba42c56::t_38bf5ba38808cb 1-32,37-79
+src/core/validation/schemas.test.ts
+  s_0f8113dba42c56::t_10b5111e0c339e 1-64
+src/server/tools/findReferences.ts
+  s_0f8113dba42c56::t_d6182440a159fa 3,12
+src/server/tools/findCallees.ts
+  s_0f8113dba42c56::t_d12f6eda54ac54 3,12
+src/web/routes/qaRoutes.ts
+  s_0f8113dba42c56::t_2ca733ce82f7c0 11
+  s_0f8113dba42c56::t_fb4254261b797a 24-30,48-50,52-55,57
+  s_0f8113dba42c56::t_4b319a71241d9a 142-149,153,161,168,181
+  s_0f8113dba42c56::t_9011559a3be4e2 199-200
+src/core/indexing/sourceDecoder.test.ts
+  s_0f8113dba42c56::t_78fc3305b487ca 1-34
+CHANGELOG.md
+  s_0f8113dba42c56::t_09345ca53008b6 6-11
+  s_0f8113dba42c56::t_d5850f2ee0d71b 5
+src/core/llm/qaCache.test.ts
+  s_0f8113dba42c56::t_30d4f76aebb77e 1-55
+src/server/tools/indexProject.ts
+  s_0f8113dba42c56::t_f5b4e43678032f 3,12
+package.json
+  s_0f8113dba42c56::t_25906697575528 3
+  s_0f8113dba42c56::t_03d9529747b829 20
+README.md
+  s_0f8113dba42c56::t_cc6cfec253709e 5
+  s_0f8113dba42c56::t_649bc8a1bc5070 303-308
+src/web/routes/metaRoutes.ts
+  s_0f8113dba42c56::t_5fffb0acf7d12b 137-143,147-148,150
+  s_0f8113dba42c56::t_4019dac291ced1 10
+src/core/search/searchScoring.test.ts
+  s_0f8113dba42c56::t_b14b5e06742287 1-123
+src/web/routes/indexRoutes.ts
+  s_0f8113dba42c56::t_6a96ddf1d23c83 7
+  s_0f8113dba42c56::t_42e54f1d38e998 13-19,22
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_f99780abe62a27 5,15
+src/web/routeHelpers.ts
+  s_0f8113dba42c56::t_7c26048d21af34 2,4
+src/server/tools/getFileSnippet.ts
+  s_0f8113dba42c56::t_6f95cb2e304b53 3,13
+src/core/validation/schemas.ts
+  s_0f8113dba42c56::t_227ea7b1979460 1-123
+src/core/storage/vectorCacheStore.test.ts
+  s_0f8113dba42c56::t_0515547d440979 1,4-14,18-50,61,63-75
+  s_0f8113dba42c56::t_86a9ed4c2f0749 51-60,62
+  s_0f8113dba42c56::t_d5b227a2150266 15-17
+  s_0f8113dba42c56::t_3ea04713c79711 2-3
+src/core/storage/sqliteStoreHelpers.test.ts
+  s_0f8113dba42c56::t_b40b290423c897 45-46,50,56
+  s_0f8113dba42c56::t_9628e049b7b41d 1-3,5-12,15-44,47-49,51-55,57-108
+  s_0f8113dba42c56::t_5e804743e01bab 4,13-14
+src/version.ts
+  s_0f8113dba42c56::t_c3e1e926f194b0 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "f670cb2d546fb18cb97d4e92aa00700f7b58acbb",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
