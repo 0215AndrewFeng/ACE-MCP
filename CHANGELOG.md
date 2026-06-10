@@ -2,6 +2,13 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.13] - 2026-06-09
+
+### 中文查询分词 + 语义索引存在性检查性能修复
+
+- **中文查询分词**：自然语言中文问题（如「假确认场景的退规有什么特殊的吗」）在 `analyzeQuery` 被切成**一个 14 字整串 token**——因 CJK 属 `\p{L}`、中文无空格、`TOKEN_SPLIT_PATTERN` 在其间无断点。`queryAnalyzer` 新增 `segmentCjkTokens`，复用既有 `buildCjkBigrams`（semanticText.ts）把 CJK 连续串切成 bigram：**整串仍保留**（对「极速改签预订」等复合业务词保精确匹配）并追加 bigram（`MAX_CJK_TERMS=16` 上界）。`tokens`/`ftsQuery` 改用切分结果，`semanticTerms`/`naturalLanguage`/单字 CJK 行为不变。
+- **语义索引存在性检查性能修复（关键）**：`ensureSemanticIndex`（每次语义搜索都会调用）此前用 `LEFT JOIN chunk_semantic_fts ON chunk_id ... WHERE IS NULL` 判断「哪些 chunk 缺语义文本」。因 FTS5 的 `chunk_id` 是 `UNINDEXED`，该 JOIN 退化为**逐 chunk 全表扫 FTS**（O(n²)），在 2k chunk 的项目上实测 **~122s**，且每次查询都白跑一遍（结果恒为 0 缺失）。改为 `chunk_id NOT IN (SELECT chunk_id FROM chunk_semantic_fts)`（对 FTS 仅一次 O(n) 扫描）：实测 **122s → 1.2s**。**这才是中文问答慢的真正根因**——实测同一查询端到端 **~64s → ~1.8s**。
+
 ## [4.5.12] - 2026-06-09
 
 ### 放开参考代码量 — 提高默认上下文预算 + 按请求覆盖

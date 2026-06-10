@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.12`
+当前版本：`v4.5.13`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -301,7 +301,12 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.12（当前版本）
+### v4.5.13（当前版本）
+
+- **中文查询分词**：中文自然语言问题此前被切成一个整串 token（CJK 属字母、中文无空格），`queryAnalyzer` 新增 CJK bigram 切分（复用 `buildCjkBigrams`）：整串保留以保精确匹配，并追加 bigram（上界 16）
+- **语义索引存在性检查性能修复（关键）**：`ensureSemanticIndex` 每次语义搜索都跑，此前用 `LEFT JOIN` FTS5 未索引列判断缺失 chunk，退化为 O(n²) 逐行扫 FTS，2k chunk 项目实测每次查询白跑 ~122s。改为 `NOT IN` 单次 O(n) 扫描（122s→1.2s）。中文问答端到端实测 **~64s → ~1.8s**
+
+### v4.5.12
 
 - **放开参考代码量**：对大接口提问时参考代码不够用（受 `qaMaxContextTokens` 默认 24000 限制，超出即被 `compressContext` 截断）。默认上下文预算提高到 48000、`qaMaxSourcesDefault` 提到 15；`ask_codebase` 与 Web `/api/qa/ask`（含 SSE）新增可选 `maxContextTokens` 按请求覆盖，受新增上限 `qaMaxContextTokensMax`（默认 200000）钳制。最终量仍受 LLM 上下文窗口约束
 

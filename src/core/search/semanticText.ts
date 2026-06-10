@@ -1,5 +1,5 @@
 const NON_ASCII_PATTERN = /[^\x00-\x7F]/;
-const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+export const CJK_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const CAMEL_BOUNDARY_PATTERN = /([a-z0-9])([A-Z])/g;
 const ACRONYM_BOUNDARY_PATTERN = /([A-Z]+)([A-Z][a-z])/g;
 
@@ -188,7 +188,7 @@ function buildAdjacentAsciiPairs(parts: string[]): string[] {
   return pairs;
 }
 
-function buildCjkBigrams(token: string): string[] {
+export function buildCjkBigrams(token: string): string[] {
   if (!CJK_PATTERN.test(token) || [...token].length < 2) {
     return [];
   }

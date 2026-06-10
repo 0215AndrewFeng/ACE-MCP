@@ -7,10 +7,26 @@ import { collectPositiveStructuredTerms, parseStructuredQuery } from "./structur
 test("analyzeQuery keeps Unicode tokens for natural-language queries", () => {
   const analysis = analyzeQuery("订单 退款处理");
 
-  assert.deepEqual(analysis.tokens, ["订单", "退款处理"]);
-  assert.equal(analysis.ftsQuery, "订单* OR 退款处理*");
+  // v4.5.13: CJK runs are segmented into bigrams (whole run kept for precise match)
+  assert.deepEqual(analysis.tokens, ["订单", "退款处理", "退款", "款处", "处理"]);
+  assert.equal(analysis.ftsQuery, "订单* OR 退款处理* OR 退款* OR 款处* OR 处理*");
   assert.equal(analysis.isPathLike, false);
   assert.equal(analysis.isSymbolLike, false);
+});
+
+test("analyzeQuery segments long CJK sentences into bigrams instead of one giant token (#v4.5.13)", () => {
+  const analysis = analyzeQuery("假确认场景的退规有什么特殊的吗");
+
+  // The whole run is still present, but it is NOT the only token anymore.
+  assert.ok(analysis.tokens.length > 1, "long CJK sentence must be segmented");
+  assert.ok(analysis.tokens.includes("假确"), "expected bigram 假确");
+  assert.ok(analysis.tokens.includes("确认"), "expected bigram 确认");
+  // ftsQuery must contain short bigram prefix terms, not a single 14-char prefix.
+  assert.ok(analysis.ftsQuery?.includes("假确*"));
+  assert.ok((analysis.ftsQuery?.split(" OR ").length ?? 0) > 1);
+  // bigram count stays bounded.
+  const bigramCount = analysis.tokens.filter((t) => [...t].length === 2 && !/[\x00-\x7F]/.test(t)).length;
+  assert.ok(bigramCount <= 16, "bigram terms must be bounded by MAX_CJK_TERMS");
 });
 
 test("analyzeQuery builds FTS-safe terms from path-like queries", () => {

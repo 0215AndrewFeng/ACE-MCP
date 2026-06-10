@@ -57,5 +57,6 @@
 
 40. ✅ **QA 上游使用方（caller）扩展**：对 QA top 结果符号查 `findCallers`，把使用方业务逻辑类拉进问答上下文，对称补齐 v4.4.8 的下游（callee）扩展。解决「X 场景有什么特殊处理」类问题只召回 model/enum 定义、漏掉真正业务逻辑类的问题（v4.5.11）
 41. ✅ **放开参考代码量**：默认上下文预算 24000→48000、`qaMaxSourcesDefault` 10→15；新增按请求 `maxContextTokens` 覆盖 + 上限 `qaMaxContextTokensMax`（默认 200000）钳制，大接口可带更完整代码（v4.5.12）
-42. **QA 性能（总耗时近 2 分钟）**：实测单次问答 ~109s。瓶颈：① queryExpansion 标称 8s 超时但实测 55s 未真正中断（慢端点对 abort 不敏感）；② reranker 默认开启额外 10s；③ 最终回答受慢 LLM 端点拖累 41s。需让超时真正生效（兜底/竞速）、评估默认关闭 reranker、并行化可选增强
-43. **中文查询未分词**：自然语言问题（如「假确认场景的退规有什么特殊的吗」）被当成单个 14 字 token，FTS 退化为整串前缀匹配，既慢（实测 lexical 扫 61s）又召回差。需引入 CJK n-gram/词典分词改善切词
+42. **QA 性能**：`ensureSemanticIndex` 存在性检查的 O(n²) JOIN 已修（122s→1.2s，v4.5.13），中文搜索端到端 ~64s→~1.8s。剩余 QA-LLM 侧瓶颈：① queryExpansion 标称 8s 超时但慢端点未真正中断；② reranker 默认开额外 ~10s；③ 最终回答受慢 LLM 端点拖累。需让超时真正生效、评估默认关闭 reranker、并行化可选增强
+43. ✅ **中文查询分词**：`queryAnalyzer` 新增 `segmentCjkTokens`，复用 `buildCjkBigrams` 把 CJK 连续串切成 bigram（整串保留 + 追加 bigram，上界 16），消除「整句被当成单个 14 字 token」的退化切词；纯查询侧、不需重索引（v4.5.13）
+44. ✅ **语义索引存在性检查性能**：`ensureSemanticIndex` 的 `LEFT JOIN` FTS5 未索引列改为 `NOT IN` 单次扫描，O(n²)→O(n)，每次语义查询白跑的 ~122s 降到 ~1.2s（v4.5.13）

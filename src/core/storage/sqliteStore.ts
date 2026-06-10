@@ -1277,6 +1277,9 @@ export class SQLiteStore {
   }
 
   public ensureSemanticIndex(projectId: string): void {
+    // v4.5.13: use NOT IN (single O(n) scan of FTS chunk_ids) instead of a LEFT JOIN
+    // on the UNINDEXED FTS column, which degenerates to an O(n²) per-row FTS scan and
+    // took ~120s on a 2k-chunk project on EVERY semantic query (returning 0 missing).
     const rows = this.db
       .prepare(
         `SELECT
@@ -1287,9 +1290,8 @@ export class SQLiteStore {
            f.relative_path
          FROM chunk c
          JOIN file f ON f.file_id = c.file_id
-         LEFT JOIN chunk_semantic_fts sf ON sf.chunk_id = c.chunk_id
          WHERE f.project_id = ?
-           AND sf.chunk_id IS NULL`,
+           AND c.chunk_id NOT IN (SELECT chunk_id FROM chunk_semantic_fts)`,
       )
       .all(projectId) as Array<{
       chunk_id: string;

@@ -1,5 +1,5 @@
 import type { QueryAnalysis } from "../common/types.js";
-import { buildSemanticTerms } from "./semanticText.js";
+import { buildSemanticTerms, buildCjkBigrams, CJK_PATTERN } from "./semanticText.js";
 
 const TOKEN_SPLIT_PATTERN = /[^\p{L}\p{N}_.$/\\#-]+/u;
 const FTS_TERM_SPLIT_PATTERN = /[.$/\\#-]+/u;
@@ -77,6 +77,32 @@ function extractIdentifiersFromRaw(query: string): string[] {
   return [...new Set(segments.map(s => s.toLowerCase()))];
 }
 
+// v4.5.13: Chinese (CJK) queries have no whitespace, so a whole sentence becomes a
+// single giant token (e.g. "假确认场景的退规有什么特殊的吗"), producing a degenerate
+// 14-char FTS prefix term. Segment CJK runs into bigrams — mirroring buildSemanticTerms
+// (semanticText.ts) which already bigram-indexes CJK for semantic-fts. The whole run is
+// KEPT (precise phrase matching for compound business terms) and bigrams are appended.
+const MAX_CJK_TERMS = 16;
+
+function segmentCjkTokens(tokens: string[]): string[] {
+  const out: string[] = [];
+  let cjkBudget = MAX_CJK_TERMS;
+  for (const token of tokens) {
+    if (!CJK_PATTERN.test(token)) {
+      out.push(token);
+      continue;
+    }
+    out.push(token); // keep the whole run for precise matching
+    if ([...token].length < 2) continue; // single char has no bigram
+    for (const bigram of buildCjkBigrams(token)) {
+      if (cjkBudget <= 0) break;
+      out.push(bigram);
+      cjkBudget -= 1;
+    }
+  }
+  return [...new Set(out)];
+}
+
 export function analyzeQuery(query: string): QueryAnalysis {
   const normalizedQuery = query.normalize("NFKC");
   const tokens = normalizedQuery
@@ -87,11 +113,14 @@ export function analyzeQuery(query: string): QueryAnalysis {
     .filter(isMeaningfulToken);
 
   const uniqueTokens = [...new Set(tokens)];
+  // v4.5.13: segment CJK runs into bigrams (whole run kept) so FTS/scoring don't
+  // operate on a single degenerate giant token.
+  const segmentedTokens = segmentCjkTokens(uniqueTokens);
   const hasIdentifiers = hasIdentifierLikeSegments(normalizedQuery);
   const isPathLike = /[/.\\]/.test(normalizedQuery);
   // When the query has code identifiers but is NOT path-like, exclude CJK tokens
   // from FTS to prevent NL noise from diluting bm25 ranking (e.g. "matchForShow 接口的逻辑")
-  const ftsQuery = buildFtsQuery(uniqueTokens, hasIdentifiers && !isPathLike);
+  const ftsQuery = buildFtsQuery(segmentedTokens, hasIdentifiers && !isPathLike);
 
   // v4.5.1: Extract code identifiers from the ORIGINAL query (before lowercasing)
   // so camelCase/PascalCase boundaries are preserved for detection
@@ -108,7 +137,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
     naturalLanguage,
     rawQuery: normalizedQuery,
     semanticTerms: buildSemanticTerms(normalizedQuery),
-    tokens: uniqueTokens,
+    tokens: segmentedTokens,
   };
 }
 
