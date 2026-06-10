@@ -1,0 +1,35 @@
+src/server/tools/askCodebase.ts
+  s_0f8113dba42c56::t_d5b893fe47ab62 37
+  s_0f8113dba42c56::t_2a03b952d4ff46 18
+CHANGELOG.md
+  s_0f8113dba42c56::t_104bd0a688f473 5-11
+ROADMAP.md
+  s_0f8113dba42c56::t_99b57885069e8a 60
+README.md
+  s_0f8113dba42c56::t_1ab124137a01c9 5
+  s_0f8113dba42c56::t_eff24babcceb2b 304-308
+src/core/validation/schemas.ts
+  s_0f8113dba42c56::t_076fb7d596aa4d 129-132
+src/version.ts
+  s_0f8113dba42c56::t_39b4d0967bd288 2
+src/core/validation/schemas.test.ts
+  s_0f8113dba42c56::t_6ffb8b6688c3c4 77-86
+package.json
+  s_0f8113dba42c56::t_a5852240c7c4ed 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "677cc4fff168893a75d79f923936b74bb4728be6",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
