@@ -126,5 +126,9 @@ export function askCodebaseShape(settings: Settings) {
       .enum(QA_CONTEXT_MODES)
       .default("merged-file")
       .describe("Context mode: chunk (snippets), merged-file (fill gaps between chunks), full-file (entire files)"),
+    enableReranker: z
+      .boolean()
+      .optional()
+      .describe("Override the LLM reranker for this request (defaults to server setting enableLlmReranker; adds an extra LLM call)"),
   };
 }

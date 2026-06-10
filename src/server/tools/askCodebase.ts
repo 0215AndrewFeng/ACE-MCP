@@ -15,7 +15,7 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
       inputSchema: askCodebaseShape(dependencies.settings),
       title: "Ask Codebase",
     },
-    async ({ projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode }) => {
+    async ({ projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, enableReranker }) => {
       if (!dependencies.llmClient.isConfigured()) {
         const payload = buildEnvelope(
           { projectRootPath, question },
@@ -34,7 +34,7 @@ export function registerAskCodebaseTool(server: McpServer, dependencies: ToolDep
         includeSummary,
         languages: languages as SupportedLanguage[] | undefined,
         contextMode,
-        enableReranker: true,
+        enableReranker,
         enableCallChain: true,
         enableCache: true,
       });

@@ -2,6 +2,13 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.14] - 2026-06-10
+
+### ask_codebase reranker 对齐 — 去掉硬编码强制开启
+
+- **背景（#42 重测结论）**：v4.5.13 修掉 `ensureSemanticIndex` O(n²) 后重测 QA 分解：`queryExpansionMs 291 / searchMs 376 / rerankerMs 0(Web) / llmMs 116752`。此前「queryExpansion 8s 超时失效、实测 55s」属**误判**——旧测量中 expansion 与 search 共用 Promise.all 计时，真正慢的是已修复的搜索；abort 超时机制本来正常。剩余 ~97% 耗时是最终回答 LLM 端点的生成速度本身（慢端点 × 长输出 × 大上下文），属配置/选型问题：可换更快模型或调低 `llmMaxTokens`/`maxSources`。
+- **修复**：MCP `ask_codebase` 此前硬编码 `enableReranker: true`，强制覆盖全局默认 `enableLlmReranker=false`，MCP 问答路径每次多付 ~10s reranker LLM 调用（Web POST/SSE 与 `search_context` 均尊重配置）。现去掉硬编码，回落配置默认；同时 schema 新增可选 `enableReranker` 参数，可按请求显式强开/强关（`参数 ?? 配置` 语义，与 QA 管线既有行为一致）。
+
 ## [4.5.13] - 2026-06-09
 
 ### 中文查询分词 + 语义索引存在性检查性能修复

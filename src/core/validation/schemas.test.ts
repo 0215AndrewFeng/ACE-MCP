@@ -74,3 +74,13 @@ test("askCodebase maxContextTokens is optional and bounded (#v4.5.12)", () => {
   // below floor is rejected
   assert.equal(askSchema.safeParse({ projectRootPath: "/p", question: "q", maxContextTokens: 10 }).success, false);
 });
+
+test("askCodebase enableReranker is optional and strictly boolean (#v4.5.14)", () => {
+  // omitted → undefined (falls back to settings.enableLlmReranker downstream)
+  assert.equal(askSchema.parse({ projectRootPath: "/p", question: "q" }).enableReranker, undefined);
+  // explicit true/false pass through (per-request override)
+  assert.equal(askSchema.parse({ projectRootPath: "/p", question: "q", enableReranker: true }).enableReranker, true);
+  assert.equal(askSchema.parse({ projectRootPath: "/p", question: "q", enableReranker: false }).enableReranker, false);
+  // non-boolean rejected by strict schema
+  assert.equal(askSchema.safeParse({ projectRootPath: "/p", question: "q", enableReranker: "yes" }).success, false);
+});
