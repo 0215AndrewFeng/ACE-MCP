@@ -1,0 +1,40 @@
+src/version.ts
+  s_0f8113dba42c56::t_622172a985533d 2
+ROADMAP.md
+  s_0f8113dba42c56::t_ee74a60d39e796 52
+  s_0f8113dba42c56::t_000284048c3806 35
+src/core/search/searchScoring.ts
+  s_0f8113dba42c56::t_760dc38af663dc 289-290
+  s_0f8113dba42c56::t_a68e36eca513b8 160-163,165-167
+src/core/search/searchScoring.test.ts
+  s_0f8113dba42c56::t_c2743aac415daf 52-63
+  s_0f8113dba42c56::t_c2426486b0bb9e 10
+README.md
+  s_0f8113dba42c56::t_097fb8c2983256 5
+  s_0f8113dba42c56::t_73d4d7ea9d6c24 304-309
+src/core/search/semanticText.ts
+  s_0f8113dba42c56::t_bca95f073c00c5 261-267
+CHANGELOG.md
+  s_0f8113dba42c56::t_723b96d0c0f2f6 5-12
+src/core/search/semanticText.test.ts
+  s_0f8113dba42c56::t_ee1cb95b827894 1-34
+package.json
+  s_0f8113dba42c56::t_c03e7584a0951e 3
+  s_0f8113dba42c56::t_68fd75e39386b1 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "3773ba295a64ea9a88b6f2797ec9146bbdc94083",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
