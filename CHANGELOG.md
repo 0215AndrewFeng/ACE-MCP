@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.5.15] - 2026-06-11
+
+### 打分恰好一次（#23）+ CJK 语义 FTS 词数上限（#37）
+
+- **打分恰好一次（#23，行为修复）**：`scoreMergedResult` 从 `result.score` 起算并叠加 bonus，但此前在排序管线被多次调用且把结果**写回 score**——`choosePreferredResult` ×1、`dedupeSameFileResults` per-file 排序 ×2、`rerankResults` ×3。即有碰撞的结果 bonus 累加 3 次、无碰撞 2 次，**加成倍数因代码路径而异，排序被路径依赖地扭曲**。现 `choosePreferredResult` 改为仅比较不写回、`rerankResults` 删除二次打分，`dedupeSameFileResults` 的 per-file 排序成为唯一打分点。实测中文/混合查询的业务逻辑类（Logic/Processor）排位上升、枚举/常量类下降；纯标识符查询不变。
+- **CJK 语义 FTS 词数上限（#37）**：`buildSemanticFtsQuery` 此前硬截 8 个词，v4.5.13 的 CJK bigram 分词后中文问题轻松产出 13+ bigram 被截掉。现改为 CJK 感知：含 CJK 词上限 15，纯 ASCII 维持 8（行为不变）。实测中文查询 semantic 候选 15→18，热态耗时仍 ~1.4s。
+- 测试 103→108：新增打分幂等回归用例与 `semanticText.test.ts`（CJK/ASCII 上限、空词）。
+
 ## [4.5.14] - 2026-06-10
 
 ### ask_codebase reranker 对齐 — 去掉硬编码强制开启

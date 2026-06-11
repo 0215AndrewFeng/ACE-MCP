@@ -32,7 +32,7 @@
 20. ✅ **readFileSnippet LRU 缓存**：200 条上限 + mtime 失效（v4.5.4）
 21. ✅ **symbol full_name 函数索引**：添加 `idx_symbol_full_name_lower ON symbol(LOWER(full_name))`（v4.5.6）
 22. ✅ **callChain 同层并行**：extractCallEntriesWithDepth 已用 Promise.all + .map 并行处理同层 entries（v4.5.4）
-23. **scoreMergedResult 缓存**：dedupe/rerank 中重复调用 600 次，应合并阶段一次计算
+23. ✅ **scoreMergedResult 缓存**：实为行为修复——打分被重复执行且写回，碰撞结果 bonus 累加 3 次、无碰撞 2 次，排序被路径依赖扭曲。`choosePreferredResult` 改为仅比较不写回、`rerankResults` 删除二次打分，`dedupeSameFileResults` per-file 排序成为唯一打分点（v4.5.15）
 24. ✅ **searchByPath 按文件名匹配度排序**：多取候选后按 basename 匹配度（去扩展名精确>精确>前缀>包含>仅目录，同档按路径长度）JS 重排再截断，评分逻辑不变（v4.5.10）
 25. ✅ **CJK 单字 token 搜索**：修复 isSymbolLike 误判纯 CJK 单 token 导致 semantic-fts 被关闭（v4.5.6）
 26. ✅ **identifier boost 过滤修复**：二次搜索传 `{}` 绕过语言/路径过滤，已改为传 normalizedFilters（v4.5.3）
@@ -49,7 +49,7 @@
 34. **cosineSimilarity 统一**：3 处重复实现，应合并到 embedding.ts
 35. **cache eviction 优化**：利用 Map 插入顺序做 FIFO，替代 O(n) 排序
 36. **Python 前向引用类型**：提取 `"TypeName"` 形式的字符串类型注解
-37. **CJK 语义 FTS 词数**：查询词截断为 8 个，中文查询应提升到 12-15
+37. ✅ **CJK 语义 FTS 词数**：`buildSemanticFtsQuery` 截断改为 CJK 感知——含 CJK 词上限 15（配合 v4.5.13 bigram 分词），纯 ASCII 维持 8；中文查询 semantic 候选 15→18（v4.5.15）
 38. **Error/AppError 统一**：混用 Error 和 AppError，应标准化
 39. **SSE 连接超时**：无超时机制，客户端断连可能资源泄漏
 

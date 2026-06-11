@@ -157,22 +157,14 @@ export function scoreMergedResult(
   };
 }
 
+// v4.5.15 (#23): compare-only — does NOT write the scored value back. scoreMergedResult
+// starts from result.score and ADDS bonuses, so writing it back made later scoring passes
+// compound bonuses 2-3x depending on the code path, skewing rankings. The single place
+// that materializes score+explanation is the per-file ranking pass in dedupeSameFileResults.
 export function choosePreferredResult(existing: SearchResult, incoming: SearchResult, analysis: QueryAnalysis): SearchResult {
-  const existingScored = scoreMergedResult(existing, analysis);
-  const incomingScored = scoreMergedResult(incoming, analysis);
-  if (incomingScored.score > existingScored.score) {
-    return {
-      ...incoming,
-      explanation: incomingScored.explanation,
-      score: incomingScored.score,
-    };
-  }
-
-  return {
-    ...existing,
-    explanation: existingScored.explanation,
-    score: existingScored.score,
-  };
+  const existingScore = scoreMergedResult(existing, analysis).score;
+  const incomingScore = scoreMergedResult(incoming, analysis).score;
+  return incomingScore > existingScore ? incoming : existing;
 }
 
 export function dedupeSameFileResults(results: SearchResult[], analysis: QueryAnalysis, perFileLimit = 2): SearchResult[] {
@@ -294,15 +286,9 @@ export function getDynamicPerFileLimit(analysis: QueryAnalysis, configuredLimit:
 }
 
 export function rerankResults(results: SearchResult[], analysis: QueryAnalysis, limit: number, perFileLimit = 2): SearchResult[] {
+  // v4.5.15 (#23): dedupeSameFileResults already materializes score+explanation exactly
+  // once per result — re-scoring here compounded the bonuses a second time.
   return dedupeSameFileResults(results, analysis, perFileLimit)
-    .map((result) => {
-      const scored = scoreMergedResult(result, analysis);
-      return {
-        ...result,
-        explanation: scored.explanation,
-        score: scored.score,
-      };
-    })
     .sort(
       (left, right) =>
         right.score - left.score ||

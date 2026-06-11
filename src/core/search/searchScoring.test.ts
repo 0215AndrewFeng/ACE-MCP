@@ -7,6 +7,7 @@ import {
   mergeOverlappingResults,
   mergeResults,
   normalizeSourceScores,
+  rerankResults,
   scoreMergedResult,
 } from "./searchScoring.js";
 
@@ -46,6 +47,18 @@ test("scoreMergedResult rewards token coverage and exact symbol match", () => {
   assert.ok(scored.score > 1);
   assert.equal(scored.explanation.symbolMatch, "exact");
   assert.deepEqual(scored.explanation.matchedTokens, ["foo"]);
+});
+
+test("rerankResults scores each result exactly once (#23, v4.5.15)", () => {
+  const analysis = makeAnalysis("foo", ["foo"]);
+  const base = makeResult({ score: 1, symbol: "foo" });
+  const scoredOnce = scoreMergedResult(base, analysis).score;
+
+  const [reranked] = rerankResults([makeResult({ score: 1, symbol: "foo" })], analysis, 5, 2);
+  // Bonuses must be applied exactly once — the old implementation re-scored the
+  // already-scored result in rerankResults, compounding bonuses a second time.
+  assert.equal(reranked.score, scoredOnce);
+  assert.ok(reranked.explanation, "final result carries its explanation");
 });
 
 test("dedupeSameFileResults keeps at most perFileLimit per file", () => {

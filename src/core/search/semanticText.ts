@@ -258,6 +258,11 @@ export function buildSemanticText(relativePath: string, content: string, symbolN
 }
 
 export function buildSemanticFtsQuery(terms: string[]): string | null {
-  const filtered = [...new Set(terms.flatMap(splitSegment).filter(isMeaningfulToken))].slice(0, 8);
-  return filtered.length > 0 ? filtered.map((term) => `${term}*`).join(" OR ") : null;
+  const filtered = [...new Set(terms.flatMap(splitSegment).filter(isMeaningfulToken))];
+  // v4.5.15 (#37): CJK-aware cap. CJK bigram segmentation (v4.5.13) easily yields 13+
+  // bigrams for a Chinese question; the flat cap of 8 cut them off. Pure-ASCII queries
+  // keep the original cap of 8.
+  const cap = filtered.some((term) => CJK_PATTERN.test(term)) ? 15 : 8;
+  const limited = filtered.slice(0, cap);
+  return limited.length > 0 ? limited.map((term) => `${term}*`).join(" OR ") : null;
 }
