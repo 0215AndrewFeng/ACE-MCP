@@ -6,3 +6,4 @@ coverage/
 .idea/
 .vscode/
 .claude
+*.test.ts
