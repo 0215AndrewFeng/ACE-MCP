@@ -46,12 +46,12 @@
 ## P3 — 长线
 
 33. **Go/Rust/Kotlin/Swift 适配器**：正则解析即可覆盖基本符号提取
-34. **cosineSimilarity 统一**：3 处重复实现，应合并到 embedding.ts
-35. **cache eviction 优化**：利用 Map 插入顺序做 FIFO，替代 O(n) 排序
+34. ✅ **cosineSimilarity 统一**：实际剩 2 处重复（v4.5.8 拆分时已消一处），vectorCacheStore 私有实现删除、统一引用 embedding.ts 导出版（v4.6.0）
+35. ✅ **cache eviction 优化**：remoteEmbedding/searchService 两处超量裁剪由全量收集 + O(n log n) 排序改为利用 Map 插入序——前者头部 TTL 扫描 + FIFO 裁剪，后者跨项目 k 路头比较；qaCache/queryExpander 本就是 FIFO（v4.6.0）
 36. **Python 前向引用类型**：提取 `"TypeName"` 形式的字符串类型注解
 37. ✅ **CJK 语义 FTS 词数**：`buildSemanticFtsQuery` 截断改为 CJK 感知——含 CJK 词上限 15（配合 v4.5.13 bigram 分词），纯 ASCII 维持 8；中文查询 semantic 候选 15→18（v4.5.15）
-38. **Error/AppError 统一**：混用 Error 和 AppError，应标准化
-39. **SSE 连接超时**：无超时机制，客户端断连可能资源泄漏
+38. ✅ **Error/AppError 统一**：llmClient（未配置/API 错/空响应/超时）与 summaryGenerator（未配置/未索引）六处裸 Error 改 AppError，Web 出口按 statusCode/code 返回而非一律 500；CLI/autostart/HNSW 内部错误维持原状（v4.6.0）
+39. ✅ **SSE 连接超时**：实际缺口为「断连未中止上游」——超时与断连检测此前已存在，但断连后 streamComplete 的 fetch 未 abort、上游 LLM 继续生成。现 `res.on("close")` 触发 AbortController 接入 `options.signal`，并在 LLM 阶段前断连早退（v4.6.0）
 
 ## QA 问答（召回质量 / 性能）
 

@@ -1,3 +1,5 @@
+import { AppError } from "../common/errors.js";
+
 export interface LlmMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -84,7 +86,7 @@ export class LlmClient {
 
   async complete(options: LlmCompletionOptions): Promise<LlmCompletionResult> {
     if (!this.isConfigured()) {
-      throw new Error("LLM API not configured. Set ACE_MCP_LLM_API_URL and ACE_MCP_LLM_API_KEY.");
+      throw new AppError("LLM_NOT_CONFIGURED", "LLM API not configured. Set ACE_MCP_LLM_API_URL and ACE_MCP_LLM_API_KEY.", { statusCode: 400 });
     }
 
     const controller = new AbortController();
@@ -113,14 +115,14 @@ export class LlmClient {
 
       if (!response.ok) {
         const body = await response.text().catch(() => "");
-        throw new Error(`LLM API returned ${response.status}: ${body.slice(0, 300)}`);
+        throw new AppError("LLM_API_ERROR", `LLM API returned ${response.status}: ${body.slice(0, 300)}`, { statusCode: 502, retryable: true });
       }
 
       const json = (await response.json()) as ChatCompletionResponse;
 
       const choice = json.choices?.[0];
       if (!choice?.message?.content) {
-        throw new Error("LLM API returned empty response");
+        throw new AppError("LLM_EMPTY_RESPONSE", "LLM API returned empty response", { statusCode: 502, retryable: true });
       }
 
       return {
@@ -140,7 +142,7 @@ export class LlmClient {
             fallbackReason: "timeout",
           };
         }
-        throw new Error("LLM request timed out");
+        throw new AppError("TIMEOUT", "LLM request timed out", { statusCode: 504, retryable: true });
       }
       if (options.fallbackOnTimeout) {
         return {

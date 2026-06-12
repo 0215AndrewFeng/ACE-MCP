@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { Logger } from "../common/logger.js";
+import { AppError } from "../common/errors.js";
 import type { LlmClient } from "../llm/llmClient.js";
 import type { SQLiteStore } from "../storage/sqliteStore.js";
 import type { ProjectSummary, SummaryGenerationResult, ModuleSummary, ModuleRelationship } from "./types.js";
@@ -34,7 +35,7 @@ export class SummaryGenerator {
     const startMs = Date.now();
 
     if (!this.llmClient.isConfigured()) {
-      throw new Error("LLM API not configured. Set ACE_MCP_LLM_API_URL and ACE_MCP_LLM_API_KEY.");
+      throw new AppError("LLM_NOT_CONFIGURED", "LLM API not configured. Set ACE_MCP_LLM_API_URL and ACE_MCP_LLM_API_KEY.", { statusCode: 400 });
     }
 
     // v4.2.5: Load existing summary for incremental update
@@ -51,7 +52,7 @@ export class SummaryGenerator {
     // 1. Get all indexed files
     const files = this.store.listProjectFiles(projectId);
     if (files.length === 0) {
-      throw new Error("Project has no indexed files. Run index_project first.");
+      throw new AppError("PROJECT_NOT_INDEXED", "Project has no indexed files. Run index_project first.");
     }
 
     // 2. Group files by top-level directory → modules

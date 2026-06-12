@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.0] - 2026-06-11
+
+### P3 稳健性打包：SSE 断连中止（#39）+ cosine 合一（#34）+ 缓存淘汰 FIFO（#35）+ Error/AppError 统一（#38）
+
+- **SSE 断连中止上游 LLM（#39）**：此前客户端断连后 handler 仅跳出流式循环，`streamComplete` 内部的 fetch 未被 abort——上游 LLM 继续生成直到完毕（浪费 token + 占连接）。现新建 `AbortController`，在 `res.on("close")` 中 abort 并通过既有 `options.signal` 接入 `streamComplete`；LLM 阶段前增加断连早退。（超时机制与断连检测此前已存在，本次补的是「断连即中止上游」这一缺口）
+- **cosineSimilarity 合一（#34）**：`vectorCacheStore.ts` 的私有实现删除，统一引用 `embedding.ts` 导出版（两处函数体逐行相同，零行为变更；实际重复为 2 处而非 ROADMAP 所记 3 处）
+- **缓存淘汰 FIFO 化（#35）**：`remoteEmbedding.evictQueryCache` 与 `searchService.evictSearchCache` 的超量裁剪此前全量收集 + O(n log n) 排序。两者条目均只在 miss 时插入、命中不重写，Map 插入序即时间序——前者改为头部 TTL 扫描（首个未过期即停）+ FIFO 裁剪；后者改为跨项目 k 路头比较取全局最旧。qaCache/queryExpander 本就是 FIFO，未动
+- **Error/AppError 统一（#38）**：`llmClient`（未配置 400 `LLM_NOT_CONFIGURED`、API 非 2xx 502 `LLM_API_ERROR`、空响应 502 `LLM_EMPTY_RESPONSE`、超时 504 `TIMEOUT`）与 `summaryGenerator`（未配置 400、未索引 404 `PROJECT_NOT_INDEXED`）的裸 `Error` 改为 `AppError`，Web 出口不再一律落 500/INTERNAL_ERROR；`fallbackOnTimeout` 路径与错误文案不变。CLI/autostart/HNSW 二进制格式等进程级/内部错误维持原状
+- **引用跳转容错修复**：LLM 偶发输出带行号的引用（如 `[1:L60-L88]`），前端正则只认纯 `[N]`，导致显示为死文本无法跳转源码卡片。前端正则改为容错 `[N(:Lx(-Ly))]` 形式（保留原文显示、按 N 跳转），同时提示词明确要求只用纯 `[N]`、行号写在括号外
+- 测试 108→117（remoteEmbedding 用例纳入 test 脚本 + 新增 FIFO 淘汰用例）
+
 ## [4.5.15] - 2026-06-11
 
 ### 打分恰好一次（#23）+ CJK 语义 FTS 词数上限（#37）

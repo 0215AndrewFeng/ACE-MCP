@@ -9,7 +9,7 @@ import type { LlmMessage } from "./llmClient.js";
 export const QA_SYSTEM_PROMPT = `You are a precise code assistant. Your task is to answer questions about a codebase based ONLY on the provided source code snippets and project summary.
 
 ## Rules
-1. **Cite sources**: Use [N] notation to cite specific code snippets. Every factual claim MUST have a citation.
+1. **Cite sources**: Use [N] notation to cite specific code snippets. Every factual claim MUST have a citation. Use the bare form [N] only — do NOT append line numbers inside the brackets (write "[1]", never "[1:L60-L88]"); mention line numbers in the surrounding text instead.
 2. **Stay grounded**: Only make claims that are directly supported by the provided code. If the answer is not in the provided context, say "I don't have enough information in the provided code to answer this."
 3. **Be specific**: Reference exact function names, class names, variable names, and line numbers when relevant.
 4. **Structure your answer**:
@@ -171,7 +171,7 @@ ${question}
 
 ## Important
 - Only use information from the source code snippets above
-- Cite sources using [N] notation
+- Cite sources using bare [N] notation (no line numbers inside the brackets)
 - If unsure, say so rather than guessing`;
 }
 

@@ -126,19 +126,29 @@ export class SearchService {
       }
     }
 
-    // Evict oldest if over max
-    if (this.searchCacheSize > this.cacheMaxSize) {
-      const allEntries: Array<[string, string, SearchCacheEntry]> = [];
+    // Evict oldest if over max.
+    // v4.6.0 (#35): entries are only inserted on miss and never re-set, so each
+    // per-project Map's insertion order is chronological — the globally oldest entry
+    // is always one of the per-project heads. Compare heads (k-way) instead of
+    // collecting and sorting every entry (O(evicted × projects) vs O(n log n)).
+    while (this.searchCacheSize > this.cacheMaxSize) {
+      let oldestPid: string | undefined;
+      let oldestKey: string | undefined;
+      let oldestTs = Infinity;
       for (const [pid, entries] of this.searchCache) {
-        for (const [key, entry] of entries) {
-          allEntries.push([pid, key, entry]);
+        const head = entries.entries().next().value as [string, SearchCacheEntry] | undefined;
+        if (head && head[1].timestamp < oldestTs) {
+          oldestTs = head[1].timestamp;
+          oldestPid = pid;
+          oldestKey = head[0];
         }
       }
-      allEntries.sort((a, b) => a[2].timestamp - b[2].timestamp);
-      const toDelete = allEntries.slice(0, this.searchCacheSize - this.cacheMaxSize);
-      for (const [pid, key] of toDelete) {
-        this.searchCache.get(pid)?.delete(key);
-        this.searchCacheSize--;
+      if (oldestPid === undefined || oldestKey === undefined) break;
+      const entries = this.searchCache.get(oldestPid)!;
+      entries.delete(oldestKey);
+      this.searchCacheSize--;
+      if (entries.size === 0) {
+        this.searchCache.delete(oldestPid);
       }
     }
   }

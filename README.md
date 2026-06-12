@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.5.15`
+当前版本：`v4.6.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -301,7 +301,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.5.15（当前版本）
+### v4.6.0（当前版本）
+
+- **SSE 断连中止上游 LLM（#39）**：客户端断连后通过 `AbortController` 真正中止上游 LLM 请求，不再白烧 token；LLM 阶段前增加断连早退
+- **引用跳转容错**：前端正则容错 LLM 偶发输出的 `[1:L60-L88]` 形式引用（此前显示为死文本），并在提示词中明确只用纯 `[N]`
+- **cosineSimilarity 合一（#34）**、**缓存淘汰 FIFO 化（#35，remoteEmbedding/searchService 两处 O(n log n) 排序消除）**、**Error/AppError 统一（#38，llmClient/summaryGenerator 六处，Web 出口不再一律 500）**
+
+### v4.5.15
 
 - **打分恰好一次（#23）**：搜索排序管线此前对同一结果重复打分并写回（碰撞结果 bonus 累加 3 次、无碰撞 2 次），排序被路径依赖扭曲。现 `choosePreferredResult` 仅比较不写回、`rerankResults` 删除二次打分，bonus 恰好加一次。实测业务逻辑类排位上升、枚举/常量类下降
 - **CJK 语义 FTS 词数上限（#37）**：`buildSemanticFtsQuery` 截断改为 CJK 感知——含中文上限 15（配合 v4.5.13 bigram 分词），纯 ASCII 维持 8。中文查询 semantic 候选 15→18

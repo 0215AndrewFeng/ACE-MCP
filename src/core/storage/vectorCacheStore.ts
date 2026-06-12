@@ -5,31 +5,10 @@ import fsPromises from "node:fs/promises";
 import Database from "better-sqlite3";
 
 import { HnswIndex } from "../search/hnswIndex.js";
+import { cosineSimilarity } from "../search/embedding.js";
 import type { Language, SearchFilters, SearchResult, VectorEntry } from "../common/types.js";
 import type { Logger } from "../common/logger.js";
 import { matchesSearchFilters } from "./sqliteStoreHelpers.js";
-
-/**
- * 计算两个向量的余弦相似度
- */
-function cosineSimilarity(a: number[] | Float32Array, b: number[] | Float32Array): number {
-  if (a.length !== b.length) {
-    return 0;
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dotProduct / denom;
-}
 
 /**
  * Min-heap for maintaining top-K highest-scoring items.

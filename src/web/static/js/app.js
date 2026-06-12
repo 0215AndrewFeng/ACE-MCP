@@ -587,7 +587,9 @@ function renderMarkdown(text) {
   html = html.replace(/\n{2,}/g, '</p><p>');
   html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
   // v4.2.4: Make [N] citations clickable
-  html = html.replace(/\[(\d+)\]/g, '<a href="#source-$1" class="qa-citation" data-source="$1">[$1]</a>');
+  // v4.6.0: also tolerate line-range suffixes the LLM sometimes emits, e.g. [1:L60-L88] / [2:60] —
+  // previously only plain [N] matched and suffixed citations rendered as dead text.
+  html = html.replace(/\[(\d+)(:L?\d+(?:\s*-\s*L?\d+)?)?\]/g, '<a href="#source-$1" class="qa-citation" data-source="$1">[$1$2]</a>');
   return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
 }
 

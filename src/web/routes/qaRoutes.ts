@@ -123,6 +123,10 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
 
     // Handle client disconnect - check socket state for reliable detection
     let clientDisconnected = false;
+    // v4.6.0 (#39): abort the upstream LLM fetch when the client disconnects —
+    // breaking out of the for-await loop alone leaves the upstream request running
+    // (tokens keep generating server-side until completion).
+    const llmAbort = new AbortController();
     const checkDisconnected = () => {
       // Check if socket is still writable (client still connected)
       if (res.writableEnded || res.destroyed || !res.socket || res.socket.destroyed) {
@@ -134,6 +138,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
     // Only mark disconnected when socket actually closes
     res.on("close", () => {
       clientDisconnected = true;
+      llmAbort.abort();
       dependencies.logger.info("SSE client disconnected");
     });
 
@@ -459,6 +464,10 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         sendEvent({ type: "phase", phase: "context-assembly", status: "done", mode: contextMode });
       }
 
+      if (checkDisconnected()) {
+        res.end();
+        return;
+      }
       dependencies.logger.info("SSE phase: llm start");
       sendEvent({ type: "phase", phase: "llm", status: "start" });
       const llmStart = Date.now();
@@ -481,6 +490,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         messages,
         maxTokens: maxTokens || undefined,
         timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
+        signal: llmAbort.signal,
       })) {
         // Check if client disconnected
         if (checkDisconnected()) {

@@ -80,19 +80,19 @@ export class RemoteEmbeddingProvider implements EmbeddingProvider {
   private evictQueryCache(): void {
     if (this.queryCache.size <= this.queryCacheMaxSize) return;
 
+    // v4.6.0 (#35): entries are only inserted on miss and never re-set, so Map
+    // insertion order IS chronological order — sweep expired from the front and
+    // stop at the first live entry, then FIFO-trim. No O(n log n) sort needed.
     const now = Date.now();
     for (const [key, entry] of this.queryCache) {
-      if (now - entry.timestamp > this.queryCacheTtlMs) {
-        this.queryCache.delete(key);
-      }
+      if (now - entry.timestamp <= this.queryCacheTtlMs) break;
+      this.queryCache.delete(key);
     }
 
-    if (this.queryCache.size > this.queryCacheMaxSize) {
-      const entries = [...this.queryCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-      const toDelete = entries.slice(0, entries.length - this.queryCacheMaxSize);
-      for (const [key] of toDelete) {
-        this.queryCache.delete(key);
-      }
+    while (this.queryCache.size > this.queryCacheMaxSize) {
+      const oldestKey = this.queryCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.queryCache.delete(oldestKey);
     }
   }
 
