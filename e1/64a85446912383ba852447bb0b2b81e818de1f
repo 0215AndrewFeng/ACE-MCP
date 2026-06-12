@@ -1,0 +1,54 @@
+README.md
+  s_0f8113dba42c56::t_8251ea6ea50075 5
+  s_0f8113dba42c56::t_fd9098008f21ce 304-310
+CHANGELOG.md
+  s_0f8113dba42c56::t_acdbf569640181 13
+  s_0f8113dba42c56::t_735694def2c8f5 5-12,14-15
+src/core/search/remoteEmbedding.ts
+  s_0f8113dba42c56::t_309602b2bfe7a8 83-85,88-89,92-95
+src/version.ts
+  s_0f8113dba42c56::t_188f89db2122e4 2
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_6fc474de5d4010 12
+  s_0f8113dba42c56::t_c4adb5ceb8c91a 174
+src/core/summary/summaryGenerator.ts
+  s_0f8113dba42c56::t_3ed67d37df2f94 38
+  s_0f8113dba42c56::t_38cee587628425 55
+  s_0f8113dba42c56::t_ef39a64b96ca1c 6
+src/core/storage/vectorCacheStore.ts
+  s_0f8113dba42c56::t_8b7f9e0330fb84 8
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_7102697c03d62f 590-592
+ROADMAP.md
+  s_0f8113dba42c56::t_1fcf7b6774dcd7 49-50,53-54
+package.json
+  s_0f8113dba42c56::t_0b4a61c79089d0 20
+  s_0f8113dba42c56::t_4122c0c9b5dd71 3
+src/core/search/searchService.ts
+  s_0f8113dba42c56::t_679b35921e3d13 129-137,139-143,146-151
+src/core/llm/llmClient.ts
+  s_0f8113dba42c56::t_36b6e84bf54cdc 1-2
+  s_0f8113dba42c56::t_fcc19a9d4144eb 118,125
+  s_0f8113dba42c56::t_efafb19093f585 145
+  s_0f8113dba42c56::t_dca902494efe4f 89
+src/web/routes/qaRoutes.ts
+  s_0f8113dba42c56::t_f5f90dcb1aed58 126-129,141
+  s_0f8113dba42c56::t_48ba0212291107 493
+  s_0f8113dba42c56::t_f397ccac35bf58 467-470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e164a85446912383ba852447bb0b2b81e818de1f",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
