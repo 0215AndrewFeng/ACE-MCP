@@ -6,6 +6,7 @@ import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
 import { IndexCoordinator } from "./core/indexing/indexCoordinator.js";
 import { createEmbeddingProvider } from "./core/search/embedding.js";
+import { loadEvalConfig, runEval } from "./core/search/evalRunner.js";
 import { LlmClient } from "./core/llm/llmClient.js";
 import { SummaryGenerator } from "./core/summary/summaryGenerator.js";
 import { SearchService } from "./core/search/searchService.js";
@@ -67,6 +68,23 @@ async function main(): Promise<void> {
   const embeddingProvider = createEmbeddingProvider(settings, logger);
   const indexCoordinator = new IndexCoordinator(settings, store, logger, embeddingProvider);
   const searchService = new SearchService(store, logger, settings, embeddingProvider);
+
+  // --eval: run search-quality evaluation against a golden case file, then exit
+  if (cliOptions.evalPath) {
+    try {
+      const evalConfig = await loadEvalConfig(cliOptions.evalPath);
+      const result = await runEval(evalConfig, indexCoordinator, searchService);
+      process.stdout.write(`${result.report}\n`);
+      indexCoordinator.stopWatching();
+      process.exit(result.passed ? 0 : 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Eval failed: ${message}\n`);
+      indexCoordinator.stopWatching();
+      process.exit(1);
+    }
+  }
+
   const llmClient = new LlmClient(settings.llmApiUrl, settings.llmApiKey, settings.llmModel, settings.llmMaxTokens, settings.llmTemperature);
   const summaryGenerator = new SummaryGenerator(store, llmClient, logger);
 

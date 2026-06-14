@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.0`
+当前版本：`v4.6.1`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -33,6 +33,7 @@
 - **代码引用高亮**：`[N]` 引用可点击跳转到对应源码卡片
 - **思考过程展示**：DeepSeek 模型的 reasoning_content 实时显示
 - **代码摘要生成**：自动生成项目架构概览和模块摘要
+- **业务流程图**：问答涉及业务流程/处理逻辑时，答案末尾自动追加 Mermaid 流程图（`flowchart TD`）并渲染为可视化图表
 
 ### MCP 工具
 
@@ -87,6 +88,16 @@ node dist/index.js --version
 
 ## 本地运行
 
+### 搜索质量回归（发版前建议）
+
+将 golden 用例写入 `eval-cases/golden.json`（格式见 `example/eval-cases.example.json`），执行：
+
+```bash
+npm run build && npm test && npm run eval
+```
+
+`npm run eval` 等价于 `node dist/index.js --eval eval-cases/golden.json`：对每个被测项目增量索引后跑 `evaluate_search_quality`，打印逐用例 PASS/FAIL 与汇总指标（passRate/top1/top5/MRR），任一用例不达 `minPassRate`（默认 1.0）即退出码 1。真实业务用例所在的 `eval-cases/` 已 gitignore，不会入库。
+
 ### 作为 MCP Server 启动
 
 ```bash
@@ -110,6 +121,7 @@ npm start -- --web-port 8787
 | 参数 | 说明 |
 |------|------|
 | `--web-port <port>` | 启动 HTTP 调试面板，如 `--web-port 8787` |
+| `--eval <caseFile>` | 跑搜索质量回归（加载 JSON golden 用例文件），打印报告后退出，退出码 0=通过 / 1=不达标 |
 | `-v, --version` | 查看当前版本 |
 | `-h, --help` | 查看帮助信息 |
 | `--autostart enable` | 启用开机自启（macOS launchd / Linux systemd） |
@@ -301,7 +313,12 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.0（当前版本）
+### v4.6.1（当前版本）
+
+- **业务流程图**：智能问答分析完业务逻辑后，答案末尾自动追加「业务流程图」一节（`flowchart TD`），把关键步骤/判断可视化。仅改一处 `QA_SYSTEM_PROMPT` 覆盖 MCP/Web/SSE 三条路径；前端 `renderMarkdown` 先抽取 ```` ```mermaid ```` 块再走其余变换（避免被引用正则/段落变换破坏），流式结束后 `mermaid.run()` 渲染为 SVG，失败回退保留原文代码块
+- **自动化质量防线（`--eval`）**：新增 `--eval <caseFile>` CLI 与 `npm run eval`，加载 JSON golden 用例、逐 suite 跑 `evaluateSearchQuality`、打印 PASS/FAIL + passRate/top1/top5/MRR，按 `minPassRate`（默认 1.0）以退出码 0/1 判定，可纳入发版前回归。提交脱敏模板 `example/eval-cases.example.json`；真实业务用例放 `eval-cases/`（已 gitignore）
+
+### v4.6.0
 
 - **SSE 断连中止上游 LLM（#39）**：客户端断连后通过 `AbortController` 真正中止上游 LLM 请求，不再白烧 token；LLM 阶段前增加断连早退
 - **引用跳转容错**：前端正则容错 LLM 偶发输出的 `[1:L60-L88]` 形式引用（此前显示为死文本），并在提示词中明确只用纯 `[N]`

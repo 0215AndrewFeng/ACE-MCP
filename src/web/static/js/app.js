@@ -573,7 +573,14 @@ document.getElementById("delete-project")?.addEventListener("click", async () =>
 
 // Ask Codebase (RAG)
 function renderMarkdown(text) {
-  let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+  // v4.6.1: extract ```mermaid blocks FIRST so the citation regex and
+  // paragraph/br transforms below cannot mangle the diagram source.
+  const mermaidBlocks = [];
+  let html = text.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
+    mermaidBlocks.push(code.trim());
+    return `\nMERMAIDBLOCK${mermaidBlocks.length - 1}MERMAIDBLOCK\n`;
+  });
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
     `<pre><code class="lang-${lang}">${escapeHtml(code.trimEnd())}</code></pre>`);
   html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
@@ -590,7 +597,27 @@ function renderMarkdown(text) {
   // v4.6.0: also tolerate line-range suffixes the LLM sometimes emits, e.g. [1:L60-L88] / [2:60] —
   // previously only plain [N] matched and suffixed citations rendered as dead text.
   html = html.replace(/\[(\d+)(:L?\d+(?:\s*-\s*L?\d+)?)?\]/g, '<a href="#source-$1" class="qa-citation" data-source="$1">[$1$2]</a>');
+  // v4.6.1: restore extracted mermaid blocks as renderable containers
+  // (mermaid reads textContent, so escaped entities decode back to source)
+  html = html.replace(/MERMAIDBLOCK(\d+)MERMAIDBLOCK/g, (_, idx) => {
+    const code = mermaidBlocks[Number(idx)];
+    return code === undefined ? '' : `<div class="qa-flow-diagram"><pre class="mermaid">${escapeHtml(code)}</pre></div>`;
+  });
   return `<p>${html}</p>`.replace(/<p><\/p>/g, '');
+}
+
+// v4.6.1: Render ```mermaid blocks embedded in the QA answer as SVG diagrams.
+// On failure the escaped source stays visible as a code block.
+async function renderAnswerFlowDiagrams(containerEl) {
+  try {
+    if (!window.mermaid || !containerEl) return;
+    const nodes = containerEl.querySelectorAll('.qa-flow-diagram pre.mermaid:not([data-processed])');
+    if (nodes.length) {
+      await mermaid.run({ nodes });
+    }
+  } catch (err) {
+    console.warn('flow diagram render failed:', err);
+  }
 }
 
 function renderSourceCard(source, maxScore, searchTerms = []) {
@@ -965,6 +992,9 @@ async function runAskQuestion() {
               setupRelatedQuestions(data.relatedQuestions);
               // v4.3.5: Render call chain diagram
               renderCallChainDiagram(data.callChains);
+              // v4.6.1: Render answer-embedded mermaid flow diagrams (only safe
+              // after streaming ends — each token rewrites innerHTML)
+              renderAnswerFlowDiagrams(answerBodyEl);
               break;
 
             case 'error':

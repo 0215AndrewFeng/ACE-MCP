@@ -60,3 +60,8 @@
 42. ✅ **QA 性能**：分三步收尾——① `ensureSemanticIndex` O(n²) JOIN 已修（122s→1.2s，v4.5.13），中文搜索端到端 ~64s→~1.8s；② 「queryExpansion 8s 超时失效」经 v4.5.13 后重测确认为**误判**（旧测量与慢搜索共用 Promise.all 计时，现 expansion 仅 ~291ms，abort 机制正常）；③ `ask_codebase` 硬编码强制开 reranker 已对齐为回落配置默认 + 可选参数覆盖（v4.5.14）。**剩余耗时主体（llmMs ~117s）为 LLM 端点生成速度本身**（慢端点 × 长输出 × 大上下文），属配置/选型而非代码项：建议换更快模型，或按需调低 `llmMaxTokens`/`maxSources`/`maxContextTokens`
 43. ✅ **中文查询分词**：`queryAnalyzer` 新增 `segmentCjkTokens`，复用 `buildCjkBigrams` 把 CJK 连续串切成 bigram（整串保留 + 追加 bigram，上界 16），消除「整句被当成单个 14 字 token」的退化切词；纯查询侧、不需重索引（v4.5.13）
 44. ✅ **语义索引存在性检查性能**：`ensureSemanticIndex` 的 `LEFT JOIN` FTS5 未索引列改为 `NOT IN` 单次扫描，O(n²)→O(n)，每次语义查询白跑的 ~122s 降到 ~1.2s（v4.5.13）
+
+## 体验 / 工程化
+
+45. ✅ **QA 答案业务流程图**：问答涉及业务流程/处理逻辑时，答案末尾自动追加 Mermaid `flowchart TD`，把关键步骤/判断可视化。一处 `QA_SYSTEM_PROMPT` 覆盖 MCP/Web/SSE；前端 `renderMarkdown` 先抽取 ```` ```mermaid ```` 块再走其余变换、流式结束后 `mermaid.run()` 渲染、失败回退（v4.6.1）
+46. ✅ **自动化质量防线（`--eval`）**：新增 `--eval <caseFile>` CLI + `npm run eval`，加载 JSON golden 用例跑 `evaluateSearchQuality`，按 `minPassRate`（默认 1.0）以退出码 0/1 判定，发版前可回归。真实业务用例放 gitignore 的 `eval-cases/`，仓库仅提交脱敏模板（v4.6.1）

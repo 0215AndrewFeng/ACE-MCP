@@ -21,6 +21,7 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
   let help = false;
   let version = false;
   let autostart: AutostartAction | undefined;
+  let evalPath: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -45,6 +46,25 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
       continue;
     }
 
+    if (arg === "--eval") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("Missing --eval value: expected a path to a JSON case file");
+      }
+      evalPath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--eval=")) {
+      const value = arg.slice("--eval=".length);
+      if (!value) {
+        throw new Error("Missing --eval value: expected a path to a JSON case file");
+      }
+      evalPath = value;
+      continue;
+    }
+
     if (arg === "--autostart") {
       const action = argv[index + 1];
       if (action === "enable" || action === "disable" || action === "status") {
@@ -66,7 +86,7 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
     }
   }
 
-  return { help, version, webPort, autostart };
+  return { evalPath, help, version, webPort, autostart };
 }
 
 export function formatHelpText(): string {
@@ -74,10 +94,12 @@ export function formatHelpText(): string {
     APP_NAME,
     "",
     "Usage:",
-    "  node dist/index.js [--web-port 8787] [--autostart enable|disable|status] [--version]",
+    "  node dist/index.js [--web-port 8787] [--eval <caseFile>] [--autostart enable|disable|status] [--version]",
     "",
     "Options:",
     "  --web-port <port>          Start the HTTP debug panel on the specified port",
+    "  --eval <caseFile>          Run search-quality evaluation against a JSON golden-case",
+    "                             file, print a report, then exit (0 = pass, 1 = fail)",
     "  --autostart <action>       Manage autostart on system boot:",
     "                               enable  - Enable autostart (uses current --web-port)",
     "                               disable - Disable autostart",

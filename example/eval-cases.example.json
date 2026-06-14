@@ -1,0 +1,31 @@
+{
+  "minPassRate": 1,
+  "suites": [
+    {
+      "projectRootPath": "/absolute/path/to/your/project",
+      "cases": [
+        {
+          "name": "symbol lookup example",
+          "query": "evaluateSearchQuality",
+          "mode": "symbol",
+          "topK": 8,
+          "expectedFiles": ["src/core/search/searchService.ts"]
+        },
+        {
+          "name": "lexical example",
+          "query": "cosineSimilarity",
+          "mode": "lexical",
+          "topK": 8,
+          "expectedFiles": ["src/core/search/embedding.ts"]
+        },
+        {
+          "name": "natural language example",
+          "query": "HNSW vector index serialization",
+          "mode": "auto",
+          "topK": 10,
+          "expectedFiles": ["src/core/search/hnswIndex.ts"]
+        }
+      ]
+    }
+  ]
+}

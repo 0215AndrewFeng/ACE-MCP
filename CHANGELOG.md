@@ -2,6 +2,14 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.1] - 2026-06-12
+
+### QA 答案附业务流程图 + 自动化质量防线（`--eval` golden 用例）
+
+- **业务流程图（业务需求）**：智能问答分析完业务逻辑后，在答案末尾自动追加一节「业务流程图」（`flowchart TD`），把关键步骤/判断节点可视化，对业务方更直观。改动点：① `QA_SYSTEM_PROMPT` 新增规则——问题涉及流程/逻辑/场景/步骤时输出**一个** ```` ```mermaid ```` 块、节点用双引号包裹的中文标签、禁用 `<br/>` 与图内 `[N]` 引用、简单查找类问题不画图（一处提示词覆盖 MCP `ask_codebase`、Web POST、SSE 三条路径）；② 前端 `renderMarkdown` 先抽取 ```` ```mermaid ```` 块为占位符再走其余 markdown/引用变换、最后还原为 `<div class="qa-flow-diagram"><pre class="mermaid">`，避免图源被引用正则与段落变换破坏；③ 流式结束（`done`）后调用 `mermaid.run()` 渲染为 SVG，失败时 try/catch 回退保留原文代码块。MCP 路径答案含 mermaid 文本块，由宿主自行渲染
+- **自动化质量防线（`--eval`）**：新增 `--eval <caseFile>` CLI 入口，加载 JSON golden 用例文件、对每个 suite `ensureFreshIndex` 后跑 `evaluateSearchQuality`，打印逐用例 PASS/FAIL（含 rank、缺失文件、原因）+ 汇总指标（passRate/top1/top5/MRR），按 `minPassRate`（默认 1.0）判定整体并以退出码 0/1 返回，可纳入发版前回归。新增 `npm run eval` 脚本、`src/core/search/evalRunner.ts`、`example/eval-cases.example.json`（脱敏示例，对 ace-mcp 自身可直接跑通）。真实业务 golden 用例置于 `eval-cases/`（已 gitignore，不入仓库）
+- 测试 117→123（新增 `--eval` 解析与 evalRunner 配置/汇总用例）
+
 ## [4.6.0] - 2026-06-11
 
 ### P3 稳健性打包：SSE 断连中止（#39）+ cosine 合一（#34）+ 缓存淘汰 FIFO（#35）+ Error/AppError 统一（#38）

@@ -235,6 +235,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-callchain-content .mermaid { background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 80px; }
 .qa-callchain-diagram.collapsed .qa-callchain-content { display: none; }
 
+/* ── v4.6.1: Answer-embedded business flow diagram ── */
+.qa-flow-diagram { margin: 16px 0; overflow-x: auto; }
+.qa-flow-diagram .mermaid { background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
+.qa-flow-diagram .mermaid svg { max-width: 100%; }
+
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .autostart-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
