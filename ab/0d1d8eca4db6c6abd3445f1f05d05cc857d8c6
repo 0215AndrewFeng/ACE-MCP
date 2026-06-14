@@ -1,0 +1,59 @@
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_82cc8601a7aebe 238-242
+package.json
+  s_0f8113dba42c56::t_e82c3d4abf9947 3
+  s_0f8113dba42c56::t_7ece31a67ce891 20
+  s_0f8113dba42c56::t_0e9d341d880ecc 21
+src/core/llm/qaPrompt.ts
+  s_0f8113dba42c56::t_fe1535ffdcefd4 19-22
+  s_0f8113dba42c56::t_dd4c14ea0f4f3a 28
+README.md
+  s_0f8113dba42c56::t_ac15bb5708d11f 36
+  s_0f8113dba42c56::t_8dcddf811097fe 124
+  s_0f8113dba42c56::t_4c31939e27ccdb 91-100
+  s_0f8113dba42c56::t_48911d2e3d42b8 5
+  s_0f8113dba42c56::t_0f8418c27da65d 316-321
+src/core/common/types.ts
+  s_0f8113dba42c56::t_98f806dd899621 61
+example/eval-cases.example.json
+  s_0f8113dba42c56::t_4906b57c0cd22d 1-31
+src/config/cli.ts
+  s_0f8113dba42c56::t_34695aef8d8909 49-67
+  s_0f8113dba42c56::t_684f2bd2eec59e 97,101-102
+  s_0f8113dba42c56::t_d74a5b33ed6a49 24
+  s_0f8113dba42c56::t_d0c56a5469aed3 89
+.gitignore
+  s_0f8113dba42c56::t_dff316c170c8b6 10
+ROADMAP.md
+  s_0f8113dba42c56::t_bd755a70a9f0ee 63-67
+src/core/search/evalRunner.ts
+  s_0f8113dba42c56::t_8dc1b128f2216e 1-130
+CHANGELOG.md
+  s_0f8113dba42c56::t_63f39116a30245 5-12
+src/version.ts
+  s_0f8113dba42c56::t_4458ac3c0cc86a 2
+src/index.ts
+  s_0f8113dba42c56::t_8d9f4f62f63d44 9
+  s_0f8113dba42c56::t_db77863636116b 71-87
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_c58c05d8efd8cd 995-997
+  s_0f8113dba42c56::t_0d20a406075c97 609-622
+  s_0f8113dba42c56::t_ec19805d9da449 576-583
+  s_0f8113dba42c56::t_07616b2bd7b5ea 600-605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ab0d1d8eca4db6c6abd3445f1f05d05cc857d8c6",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
