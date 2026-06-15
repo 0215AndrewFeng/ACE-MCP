@@ -1,0 +1,31 @@
+package.json
+  s_0f8113dba42c56::t_cb83128cd102ac 3
+src/web/static/index.html
+  s_0f8113dba42c56::t_6089611e73ca4a 339-341
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_4919ec8e8681f9 683-685,709
+ROADMAP.md
+  s_0f8113dba42c56::t_b0256d00263b51 68
+README.md
+  s_0f8113dba42c56::t_49804ecde056f4 317-321
+CHANGELOG.md
+  s_0f8113dba42c56::t_fb34edb325761c 5-13
+src/version.ts
+  s_0f8113dba42c56::t_1778aae4cf8895 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a69b0d0e7301e62d6091000f323cdb0f8b5cea45",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
