@@ -1,0 +1,47 @@
+src/version.ts
+  s_0f8113dba42c56::t_106619774b60e8 2
+README.md
+  s_0f8113dba42c56::t_59a7e148a8719e 125
+  s_0f8113dba42c56::t_b44c32cb547b86 334-338
+  s_0f8113dba42c56::t_708e3f486d66e1 191-206
+  s_0f8113dba42c56::t_fa295a05126aeb 5
+ROADMAP.md
+  s_0f8113dba42c56::t_57bfca55b1c16a 69
+src/core/indexing/indexCoordinator.ts
+  s_0f8113dba42c56::t_cb2e59541844db 176-190
+src/core/common/types.ts
+  s_0f8113dba42c56::t_8d484c06d41f60 64
+src/config/cli.ts
+  s_0f8113dba42c56::t_904fd2dc93111f 95
+  s_0f8113dba42c56::t_d472e9a2300cd4 23
+  s_0f8113dba42c56::t_634724bd732d7e 39-43
+  s_0f8113dba42c56::t_311f9ca3637f8f 103,106
+src/index.ts
+  s_0f8113dba42c56::t_08e7a60556e444 46-54,56-118,120-153
+  s_0f8113dba42c56::t_41500e50fae2db 119
+  s_0f8113dba42c56::t_a2617686263e24 8
+  s_0f8113dba42c56::t_4a3df51ce13ecb 55
+  s_0f8113dba42c56::t_754c461ef8b4b9 271-281
+src/core/storage/sqliteStore.ts
+  s_0f8113dba42c56::t_ba4cf9b01b431c 191-225
+CHANGELOG.md
+  s_0f8113dba42c56::t_fc06d2768aee29 5-17
+package.json
+  s_0f8113dba42c56::t_9a188ddacf1101 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "66ed5d31b80c5a59b1238307bb6e1efdbc64b829",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
