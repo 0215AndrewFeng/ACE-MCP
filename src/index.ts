@@ -5,6 +5,7 @@ import { formatHelpText, parseCliArgs } from "./config/cli.js";
 import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
 import { IndexCoordinator } from "./core/indexing/indexCoordinator.js";
+import type { IndexProjectResult } from "./core/common/types.js";
 import { createEmbeddingProvider } from "./core/search/embedding.js";
 import { loadEvalConfig, runEval } from "./core/search/evalRunner.js";
 import { LlmClient } from "./core/llm/llmClient.js";
@@ -40,6 +41,114 @@ async function handleAutostart(action: "enable" | "disable" | "status", webPort?
     process.stdout.write(`✓ Autostart disabled\n`);
     return;
   }
+}
+
+/**
+ * v4.6.4: Warm up previously-indexed projects to eliminate first-query latency.
+ * Runs entirely in the background — does not block MCP/Web availability.
+ */
+async function warmupKnownProjects(
+  store: SQLiteStore,
+  indexCoordinator: IndexCoordinator,
+  embeddingProvider: ReturnType<typeof createEmbeddingProvider>,
+  logger: Logger,
+  vectorCacheMaxProjects: number,
+): Promise<void> {
+  const startTime = Date.now();
+  const projects = store.listProjectsWithIds();
+
+  if (projects.length === 0) {
+    logger.info("warmup: no previously-indexed projects found");
+    return;
+  }
+
+  logger.info("warmup: starting", { projectCount: projects.length });
+
+  // Restore freshness state for ALL known projects (cheap — just Map entries)
+  for (const project of projects) {
+    try {
+      const projectStats = store.getProjectStats(project.projectRootPath);
+      if (!projectStats || projectStats.status === "indexing") {
+        logger.debug("warmup: skipping project freshness restore", {
+          projectRootPath: project.projectRootPath,
+          reason: projectStats?.status ?? "not-found",
+        });
+        continue;
+      }
+
+      const indexResult: IndexProjectResult = {
+        changedFiles: 0,
+        chunkCount: projectStats.chunkCount,
+        createdAt: projectStats.lastIndexAt ?? new Date().toISOString(),
+        deletedFiles: 0,
+        failedFileCount: 0,
+        failedFiles: [],
+        indexedFiles: projectStats.fileCount,
+        project: {
+          rootPath: project.projectRootPath,
+          projectType: "single-language",
+          languages: projectStats.languages,
+          markers: [],
+        },
+        projectId: project.projectId,
+        projectRootPath: project.projectRootPath,
+        scannedFiles: projectStats.fileCount,
+        timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: 0 },
+        vectorIndex: {
+          enabled: false,
+          hydratedChunkCount: 0,
+          mode: "lazy" as const,
+        },
+      };
+
+      indexCoordinator.restoreFreshnessState(project.projectRootPath, indexResult);
+
+      logger.debug("warmup: freshness state restored", {
+        projectRootPath: project.projectRootPath,
+        lastIndexAt: project.lastIndexAt,
+      });
+    } catch (error) {
+      logger.warn("warmup: failed to restore freshness for project", {
+        error: error instanceof Error ? error.message : String(error),
+        projectRootPath: project.projectRootPath,
+      });
+    }
+  }
+
+  // Pre-load vector cache only for the most recent projects (respect vectorCacheMaxProjects)
+  const maxProjects = vectorCacheMaxProjects;
+  const projectsToWarm = projects.slice(0, maxProjects);
+  const modelName = embeddingProvider.getModelName();
+
+  for (const project of projectsToWarm) {
+    try {
+      // Pre-load vector cache and trigger async HNSW build
+      if (store.hasVectorIndex(project.projectId, modelName)) {
+        store.getProjectVectors(project.projectId, modelName, project.indexVersion);
+        logger.debug("warmup: vector cache pre-loaded", {
+          projectRootPath: project.projectRootPath,
+        });
+      }
+
+      // Ensure semantic FTS index is built (no-op if already complete)
+      store.ensureSemanticIndex(project.projectId);
+      logger.debug("warmup: semantic FTS ensured", {
+        projectRootPath: project.projectRootPath,
+      });
+    } catch (error) {
+      logger.warn("warmup: failed for project", {
+        error: error instanceof Error ? error.message : String(error),
+        projectRootPath: project.projectRootPath,
+      });
+    }
+  }
+
+  const elapsedMs = Date.now() - startTime;
+  logger.info("warmup: complete", {
+    elapsedMs,
+    freshnessRestoredCount: projects.length,
+    vectorWarmedCount: projectsToWarm.length,
+  });
 }
 
 async function main(): Promise<void> {
@@ -159,6 +268,17 @@ async function main(): Promise<void> {
     version: APP_VERSION,
     webPort: cliOptions.webPort,
   });
+
+  // v4.6.4: Warm up previously-indexed projects in the background
+  if (cliOptions.warm) {
+    void warmupKnownProjects(
+      store,
+      indexCoordinator,
+      embeddingProvider,
+      logger,
+      settings.vectorCacheMaxProjects,
+    );
+  }
 }
 
 main().catch((error: unknown) => {

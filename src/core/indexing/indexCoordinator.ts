@@ -173,6 +173,22 @@ export class IndexCoordinator {
   }
 
   /**
+   * v4.6.4: Pre-populate in-memory freshness tracking from database records.
+   * On restart, lastIndexedAtMs is empty, causing ensureFreshIndex("stale")
+   * to always trigger a full incremental scan even when the DB is current.
+   * This method sets the maps so the staleness check passes and the scan is skipped.
+   */
+  public restoreFreshnessState(
+    projectRootPath: string,
+    indexResult: IndexProjectResult,
+  ): void {
+    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    this.lastIndexedAtMs.set(normalizedRoot, performance.now());
+    this.watcherDirty.set(normalizedRoot, false);
+    this.lastIndexResult.set(normalizedRoot, indexResult);
+  }
+
+  /**
    * Ensure the project index is fresh enough according to the configured freshness policy.
    * Returns a cached or real IndexProjectResult.
    *

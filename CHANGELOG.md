@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.4] - 2026-06-15
+
+### 冷启动暖机——消除重启后首次查询延迟
+
+- 新增 `--warm` CLI 标志：服务启动后异步暖机已索引项目，首次查询不再触发全量增量扫描（此前冷启动首次查询 18-22s → 暖机后 <2s）
+- 三层暖机策略：
+  1. 从数据库恢复 `lastIndexedAtMs` / `lastIndexResult` 内存状态，使 `ensureFreshIndex("stale")` 跳过已知最新项目
+  2. 预加载向量缓存 + 触发异步 HNSW 索引构建（含磁盘缓存加载），首次向量搜索不再阻塞加载
+  3. 预构建语义 FTS 索引（如缺失），确保首次语义搜索无需等待
+- 暖机完全异步、不阻塞 MCP/Web 可用性；尊重 `vectorCacheMaxProjects` 限制，仅预加载最近索引项目的向量
+- 新增 `IndexCoordinator.restoreFreshnessState()` 方法 + `SQLiteStore.listProjectsWithIds()` 方法
+- 暖机为可选功能，默认关闭；通过 `--warm` 启用
+
 ## [4.6.3] - 2026-06-15
 
 ### 修复 PNG 导出失败

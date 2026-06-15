@@ -188,6 +188,41 @@ export class SQLiteStore {
     }));
   }
 
+  /**
+   * v4.6.4: List all previously-indexed projects with IDs and index_version for warmup.
+   * Returns projects ordered by most recently indexed first.
+   */
+  public listProjectsWithIds(): Array<{
+    projectId: string;
+    projectRootPath: string;
+    lastIndexAt: string | null;
+    indexVersion: number;
+    status: ProjectStatus;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT project_id, project_root_path, last_index_at, status, index_version
+         FROM project
+         WHERE last_index_at IS NOT NULL
+         ORDER BY last_index_at DESC`,
+      )
+      .all() as Array<{
+      project_id: string;
+      project_root_path: string;
+      last_index_at: string | null;
+      status: ProjectStatus;
+      index_version: number;
+    }>;
+
+    return rows.map((row) => ({
+      projectId: row.project_id,
+      projectRootPath: row.project_root_path,
+      lastIndexAt: row.last_index_at,
+      indexVersion: row.index_version,
+      status: row.status,
+    }));
+  }
+
   public getProjectByPath(projectRootPath: string): ProjectListItem | null {
     const row = this.db
       .prepare(

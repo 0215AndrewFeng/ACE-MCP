@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.2`
+当前版本：`v4.6.4`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -122,6 +122,7 @@ npm start -- --web-port 8787
 | 参数 | 说明 |
 |------|------|
 | `--web-port <port>` | 启动 HTTP 调试面板，如 `--web-port 8787` |
+| `--warm` | 启动后异步暖机已索引项目，消除首次查询延迟 |
 | `--eval <caseFile>` | 跑搜索质量回归（加载 JSON golden 用例文件），打印报告后退出，退出码 0=通过 / 1=不达标 |
 | `-v, --version` | 查看当前版本 |
 | `-h, --help` | 查看帮助信息 |
@@ -181,6 +182,22 @@ ace-mcp 启动时按以下顺序初始化：
         "/Users/fengandrew/code/ace-mcp/dist/index.js",
         "--web-port",
         "8787"
+      ]
+    }
+  }
+}
+```
+
+若需要启动时自动暖机已索引项目（消除首次查询延迟）：
+
+```json
+{
+  "mcpServers": {
+    "ace-mcp": {
+      "command": "node",
+      "args": [
+        "/Users/fengandrew/code/ace-mcp/dist/index.js",
+        "--warm"
       ]
     }
   }
@@ -314,7 +331,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.3（当前版本）
+### v4.6.4（当前版本）
+
+- **冷启动暖机（`--warm`）**：新增 `--warm` CLI 标志，服务启动后异步暖机已索引项目，消除重启后首次查询 18-22s 延迟。三层暖机策略：① 从数据库恢复 `ensureFreshIndex` 内存状态使 `"stale"` 策略跳过已知最新项目；② 预加载向量缓存 + 触发异步 HNSW 构建；③ 确保 `semantic FTS` 索引完整。暖机完全异步、不阻塞 MCP/Web 可用性
+
+### v4.6.3
 
 - **修复 PNG 导出失败**：mermaid flowchart 默认 `htmlLabels:true` 用 `<foreignObject>` 渲染文字，导致含 foreignObject 的 SVG 光栅化到 canvas 被污染、`toBlob` 抛错。改 `flowchart:{htmlLabels:false}` 用纯 `<text>` 渲染（外观无退化），并将 PNG 加载改为 data URL。已用真实 Chrome 验证 PNG 正常导出
 

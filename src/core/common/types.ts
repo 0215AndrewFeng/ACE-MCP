@@ -61,6 +61,7 @@ export interface CliOptions {
   evalPath?: string;
   help: boolean;
   version: boolean;
+  warm: boolean;
   webPort?: number;
 }
 
