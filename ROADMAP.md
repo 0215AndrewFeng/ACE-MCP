@@ -65,4 +65,4 @@
 
 45. ✅ **QA 答案业务流程图**：问答涉及业务流程/处理逻辑时，答案末尾自动追加 Mermaid `flowchart TD`，把关键步骤/判断可视化。一处 `QA_SYSTEM_PROMPT` 覆盖 MCP/Web/SSE；前端 `renderMarkdown` 先抽取 ```` ```mermaid ```` 块再走其余变换、流式结束后 `mermaid.run()` 渲染、失败回退（v4.6.1）
 46. ✅ **自动化质量防线（`--eval`）**：新增 `--eval <caseFile>` CLI + `npm run eval`，加载 JSON golden 用例跑 `evaluateSearchQuality`，按 `minPassRate`（默认 1.0）以退出码 0/1 判定，发版前可回归。真实业务用例放 gitignore 的 `eval-cases/`，仓库仅提交脱敏模板（v4.6.1）
-47. ✅ **流程图/调用链图导出**：渲染后的 Mermaid 图加导出工具栏——下载 PNG（SVG→canvas 光栅化、白底、×2 清晰度）、下载 SVG（矢量）、复制 Mermaid 源码（剪贴板，含 `execCommand` 回退）。文件名清洗非法字符、调用链容器复用时替换旧工具栏防源码过期。纯前端（v4.6.2）
+47. ✅ **流程图/调用链图导出**：渲染后的 Mermaid 图加导出工具栏——下载 PNG（SVG→canvas 光栅化、白底、×2 清晰度）、下载 SVG（矢量）、复制 Mermaid 源码（剪贴板，含 `execCommand` 回退）。文件名清洗非法字符、调用链容器复用时替换旧工具栏防源码过期。纯前端（v4.6.2）；PNG 失败修复——`flowchart:{htmlLabels:false}` 消除 foreignObject 导致的 canvas 污染 + data URL 加载（v4.6.3）

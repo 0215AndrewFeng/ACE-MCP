@@ -680,8 +680,9 @@ function exportDiagramSvg(svgEl, baseName) {
 function exportDiagramPng(svgEl, baseName) {
   const { xml, width, height } = serializeSvg(svgEl);
   const scale = 2; // retina-quality raster
-  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  // data URL (encodeURIComponent handles UTF-8/CJK) loads more reliably into
+  // an Image than a blob URL across browsers
+  const svgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
   const img = new Image();
   img.onload = () => {
     try {
@@ -695,20 +696,17 @@ function exportDiagramPng(svgEl, baseName) {
       canvas.toBlob((pngBlob) => {
         if (pngBlob) downloadBlob(pngBlob, `${sanitizeFileName(baseName)}.png`);
         else alert('PNG 导出失败，请改用 SVG 下载');
-        URL.revokeObjectURL(url);
       }, 'image/png');
     } catch (err) {
       console.warn('PNG export failed:', err);
       alert('PNG 导出失败，请改用 SVG 下载');
-      URL.revokeObjectURL(url);
     }
   };
   img.onerror = () => {
     console.warn('PNG export: image load failed');
     alert('PNG 导出失败，请改用 SVG 下载');
-    URL.revokeObjectURL(url);
   };
-  img.src = url;
+  img.src = svgDataUrl;
 }
 
 async function copyTextToClipboard(text, btn) {

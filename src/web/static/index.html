@@ -336,7 +336,9 @@
     <!-- v4.3.5: Mermaid for call chain visualization -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-      mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose' });
+      // htmlLabels:false → flowchart labels render as <text> not <foreignObject>,
+      // so the SVG can be rasterized to PNG without tainting the canvas (v4.6.3)
+      mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'loose', flowchart: { htmlLabels: false } });
     </script>
     <script src="/static/js/app.js"></script>
   </body>

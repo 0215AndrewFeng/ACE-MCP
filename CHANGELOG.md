@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.3] - 2026-06-15
+
+### 修复 PNG 导出失败
+
+- v4.6.2 的 PNG 导出在浏览器里失败：mermaid v10 的 flowchart 默认 `htmlLabels: true`，节点文字用 `<foreignObject>` 包 HTML 渲染；Chrome 把含 `foreignObject` 的 SVG 光栅化到 canvas 时会污染 canvas，`toBlob`/`toDataURL` 抛 SecurityError（SVG 导出不经 canvas 故正常）。
+- 修复：`mermaid.initialize` 增加 `flowchart: { htmlLabels: false }`，标签改用纯 `<text>` 渲染，SVG 可无污染光栅化为 PNG；流程图与调用链图外观无退化（单行中文标签）。
+- 同时 PNG 导出改用 data URL（`encodeURIComponent` 处理 UTF-8/中文）加载 `Image`，比 blob URL 跨浏览器更可靠。
+- 用真实 Chrome（CDP）验证：渲染后 `foreignObject` 数为 0、`toDataURL("image/png")` 成功产出 33KB 有效 PNG、canvas 未污染、中文流程图显示正常。
+
 ## [4.6.2] - 2026-06-12
 
 ### 流程图导出（PNG / SVG / 复制 Mermaid 源码）

@@ -314,7 +314,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.2（当前版本）
+### v4.6.3（当前版本）
+
+- **修复 PNG 导出失败**：mermaid flowchart 默认 `htmlLabels:true` 用 `<foreignObject>` 渲染文字，导致含 foreignObject 的 SVG 光栅化到 canvas 被污染、`toBlob` 抛错。改 `flowchart:{htmlLabels:false}` 用纯 `<text>` 渲染（外观无退化），并将 PNG 加载改为 data URL。已用真实 Chrome 验证 PNG 正常导出
+
+### v4.6.2
 
 - **流程图导出**：业务流程图与调用链图渲染后均提供导出工具栏——下载 PNG（SVG→canvas 光栅化、白底、×2 清晰度）、下载 SVG（矢量无损）、复制 Mermaid 源码（可粘到其他编辑器）。纯前端，不动后端
 
