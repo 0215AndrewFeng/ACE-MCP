@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.5] - 2026-06-15
+
+### 修复暖机窗口内索引元数据失真
+
+- v4.6.4 的 `--warm` 暖机用一个**合成 `IndexProjectResult`** 恢复各项目的 freshness 状态，其中硬编码了 `vectorIndex: { enabled: false }`、全零 `timings` 与零文件计数。在默认 `indexFreshness: "stale"`（30s）下——`"manual"` 策略下则无限期——`ensureFreshIndex` 会原样返回该缓存结果，导致暖机窗口内每个工具/Web 响应都把**向量索引误报为禁用**（即便项目已建好向量索引），`timings`/文件计数同样归零。
+- 修复：暖机恢复改为铺展真实的 `projectStats.latestIndexEvent`（持久化的 `IndexEventSummary`，含真实 `vectorIndex`/`timings`/计数），其上仅铺 `project`/`projectId`/`projectRootPath` 三个身份字段；仅当 `latestIndexEvent` 为 `null` 时才回退到旧的硬编码默认值。
+- 不改动「暖机期间视为刚索引」的跳描行为（与 `stale` 契约一致且受 `indexFreshnessSeconds` 限界），仅修正上报的元数据。
+- 新增本地回归测试（`indexCoordinator.test.ts`）：`"manual"` 策略下恢复带 `enabled:true` 的事件后 `ensureFreshIndex` 透传 `vectorIndex.enabled=true`，`null` 事件回退仍为 `false`；测试 124→126 全绿。
+
 ## [4.6.4] - 2026-06-15
 
 ### 冷启动暖机——消除重启后首次查询延迟

@@ -76,14 +76,26 @@ async function warmupKnownProjects(
         continue;
       }
 
+      // Restore from the real last index event so cached metadata (vectorIndex,
+      // timings, counts) is faithful; fall back to defaults only when absent.
+      const event = projectStats.latestIndexEvent;
       const indexResult: IndexProjectResult = {
-        changedFiles: 0,
-        chunkCount: projectStats.chunkCount,
-        createdAt: projectStats.lastIndexAt ?? new Date().toISOString(),
-        deletedFiles: 0,
-        failedFileCount: 0,
-        failedFiles: [],
-        indexedFiles: projectStats.fileCount,
+        ...(event ?? {
+          changedFiles: 0,
+          chunkCount: projectStats.chunkCount,
+          createdAt: projectStats.lastIndexAt ?? new Date().toISOString(),
+          deletedFiles: 0,
+          failedFileCount: 0,
+          failedFiles: [],
+          indexedFiles: projectStats.fileCount,
+          scannedFiles: projectStats.fileCount,
+          timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: 0 },
+          vectorIndex: {
+            enabled: false,
+            hydratedChunkCount: 0,
+            mode: "lazy" as const,
+          },
+        }),
         project: {
           rootPath: project.projectRootPath,
           projectType: "single-language",
@@ -92,13 +104,6 @@ async function warmupKnownProjects(
         },
         projectId: project.projectId,
         projectRootPath: project.projectRootPath,
-        scannedFiles: projectStats.fileCount,
-        timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: 0 },
-        vectorIndex: {
-          enabled: false,
-          hydratedChunkCount: 0,
-          mode: "lazy" as const,
-        },
       };
 
       indexCoordinator.restoreFreshnessState(project.projectRootPath, indexResult);

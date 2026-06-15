@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.4`
+当前版本：`v4.6.5`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -331,7 +331,11 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.4（当前版本）
+### v4.6.5（当前版本）
+
+- **修复暖机窗口内索引元数据失真**：v4.6.4 暖机用硬编码 `vectorIndex.enabled=false`、全零 `timings`/计数的合成结果恢复 freshness 状态，导致暖机窗口内（`stale` 默认 30s，`manual` 则无限期）所有工具/Web 响应把向量索引误报为禁用。改为铺展真实的 `latestIndexEvent`，仅 `null` 时回退默认值；不改动跳描行为，仅修正上报元数据
+
+### v4.6.4
 
 - **冷启动暖机（`--warm`）**：新增 `--warm` CLI 标志，服务启动后异步暖机已索引项目，消除重启后首次查询 18-22s 延迟。三层暖机策略：① 从数据库恢复 `ensureFreshIndex` 内存状态使 `"stale"` 策略跳过已知最新项目；② 预加载向量缓存 + 触发异步 HNSW 构建；③ 确保 `semantic FTS` 索引完整。暖机完全异步、不阻塞 MCP/Web 可用性
 
