@@ -1,0 +1,36 @@
+src/web/static/js/app.js
+  s_0f8113dba42c56::t_075bdb5d9301d1 1471-1475
+  s_0f8113dba42c56::t_59a515a620c16d 616-617,619-623
+  s_0f8113dba42c56::t_eef6ff764151d1 630-743,748-775
+  s_0f8113dba42c56::t_a95767efa34526 744-747
+src/version.ts
+  s_0f8113dba42c56::t_23bbce970f00ca 2
+src/web/static/css/main.css
+  s_0f8113dba42c56::t_0f2f38ef6dfa11 243-247
+package.json
+  s_0f8113dba42c56::t_140000041abc10 3
+ROADMAP.md
+  s_0f8113dba42c56::t_7eafb134b3ed09 68
+README.md
+  s_0f8113dba42c56::t_679580c96191f8 317-321
+  s_0f8113dba42c56::t_34e255f57a0823 37
+  s_0f8113dba42c56::t_188464c1ac6ede 5
+CHANGELOG.md
+  s_0f8113dba42c56::t_0bf3c9f11be9a4 5-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1d63b37309a4bdfc1dd1769c830dea3d7aea57a4",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
