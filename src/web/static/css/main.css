@@ -240,6 +240,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .qa-flow-diagram .mermaid { background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; }
 .qa-flow-diagram .mermaid svg { max-width: 100%; }
 
+/* ── v4.6.2: Diagram export toolbar (flow + call-chain) ── */
+.diagram-export-toolbar { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 8px; }
+.diagram-export-btn { font-size: 12px; color: #475569; cursor: pointer; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 10px; transition: all 0.2s; }
+.diagram-export-btn:hover { background: #e2e8f0; color: #1e293b; }
+
 /* ── Autostart ── */
 .autostart-status { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
 .autostart-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }

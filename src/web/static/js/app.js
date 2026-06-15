@@ -613,11 +613,164 @@ async function renderAnswerFlowDiagrams(containerEl) {
     if (!window.mermaid || !containerEl) return;
     const nodes = containerEl.querySelectorAll('.qa-flow-diagram pre.mermaid:not([data-processed])');
     if (nodes.length) {
+      // Capture original Mermaid source before run() replaces textContent with svg
+      const sources = Array.from(nodes).map((n) => n.textContent);
       await mermaid.run({ nodes });
+      // v4.6.2: attach export toolbar to each rendered flow diagram
+      const diagrams = containerEl.querySelectorAll('.qa-flow-diagram');
+      diagrams.forEach((diagram, i) => {
+        attachDiagramExport(diagram, () => sources[i] || '', `业务流程图-${i + 1}`);
+      });
     }
   } catch (err) {
     console.warn('flow diagram render failed:', err);
   }
+}
+
+// ── v4.6.2: Mermaid diagram export (PNG / SVG / copy source) ──
+
+function sanitizeFileName(name) {
+  return (name || 'diagram').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+}
+
+// Clone the rendered SVG and give it explicit pixel dimensions + namespaces so
+// it can stand alone as a file and be rasterized to PNG. Mermaid emits a svg
+// with a viewBox + style:max-width but no concrete width/height attributes.
+function serializeSvg(svgEl) {
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+  const { width, height } = getSvgPixelSize(svgEl);
+  clone.setAttribute('width', String(width));
+  clone.setAttribute('height', String(height));
+  clone.style.maxWidth = '';
+  return { xml: new XMLSerializer().serializeToString(clone), width, height };
+}
+
+function getSvgPixelSize(svgEl) {
+  const viewBox = svgEl.viewBox && svgEl.viewBox.baseVal;
+  if (viewBox && viewBox.width && viewBox.height) {
+    return { width: Math.ceil(viewBox.width), height: Math.ceil(viewBox.height) };
+  }
+  try {
+    const box = svgEl.getBBox();
+    if (box.width && box.height) return { width: Math.ceil(box.width), height: Math.ceil(box.height) };
+  } catch { /* getBBox may throw if detached */ }
+  const rect = svgEl.getBoundingClientRect();
+  return { width: Math.ceil(rect.width) || 800, height: Math.ceil(rect.height) || 600 };
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportDiagramSvg(svgEl, baseName) {
+  const { xml } = serializeSvg(svgEl);
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+  downloadBlob(blob, `${sanitizeFileName(baseName)}.svg`);
+}
+
+function exportDiagramPng(svgEl, baseName) {
+  const { xml, width, height } = serializeSvg(svgEl);
+  const scale = 2; // retina-quality raster
+  const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) downloadBlob(pngBlob, `${sanitizeFileName(baseName)}.png`);
+        else alert('PNG 导出失败，请改用 SVG 下载');
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (err) {
+      console.warn('PNG export failed:', err);
+      alert('PNG 导出失败，请改用 SVG 下载');
+      URL.revokeObjectURL(url);
+    }
+  };
+  img.onerror = () => {
+    console.warn('PNG export: image load failed');
+    alert('PNG 导出失败，请改用 SVG 下载');
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+async function copyTextToClipboard(text, btn) {
+  const flash = (msg) => {
+    if (!btn) return;
+    const original = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  };
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    flash('已复制 ✓');
+  } catch (err) {
+    console.warn('copy failed:', err);
+    flash('复制失败');
+  }
+}
+
+// Inject a PNG/SVG/copy toolbar at the top of a rendered diagram container.
+// getSource() returns the original Mermaid source for the copy action.
+function attachDiagramExport(rootEl, getSource, baseName) {
+  if (!rootEl || !rootEl.querySelector('svg')) return; // render failed — no toolbar
+  // Replace any stale toolbar (call-chain container is reused across questions)
+  const existing = rootEl.querySelector(':scope > .diagram-export-toolbar');
+  if (existing) existing.remove();
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'diagram-export-toolbar';
+
+  const makeBtn = (label, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'diagram-export-btn';
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  toolbar.appendChild(makeBtn('⬇ PNG', () => {
+    const svg = rootEl.querySelector('svg');
+    if (svg) exportDiagramPng(svg, baseName);
+  }));
+  toolbar.appendChild(makeBtn('⬇ SVG', () => {
+    const svg = rootEl.querySelector('svg');
+    if (svg) exportDiagramSvg(svg, baseName);
+  }));
+  toolbar.appendChild(makeBtn('⧉ 复制源码', (e) => {
+    copyTextToClipboard(getSource() || '', e.currentTarget);
+  }));
+
+  rootEl.insertBefore(toolbar, rootEl.firstChild);
 }
 
 function renderSourceCard(source, maxScore, searchTerms = []) {
@@ -1315,7 +1468,11 @@ function renderCallChainDiagram(chains) {
     // Use mermaid.run() for rendering
     if (typeof mermaid !== 'undefined') {
       try {
-        mermaid.run({ nodes: [mermaidEl] });
+        // v4.6.2: attach export toolbar once the svg is rendered
+        const contentEl = mermaidEl.parentElement;
+        Promise.resolve(mermaid.run({ nodes: [mermaidEl] }))
+          .then(() => attachDiagramExport(contentEl, () => mermaidCode, '调用链关系'))
+          .catch((err) => console.warn('Mermaid render error:', err));
       } catch (err) {
         console.warn('Mermaid render error:', err);
         mermaidEl.innerHTML = `<pre style="color:#666;font-size:12px;">${escapeHtml(mermaidCode)}</pre>`;
