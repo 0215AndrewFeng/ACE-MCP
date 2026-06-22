@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.6] - 2026-06-22
+
+### 补齐质量防线
+
+- 恢复 `npm test` 的真实可执行性：补齐脚本中引用但仓库缺失的 17 个测试文件，覆盖 CLI、查询分析、端到端索引/搜索、Web `/health` 与参数校验、SQLite/VectorCache、搜索打分/辅助函数、语义文本、远程 Embedding fallback、QA 缓存、共享 schema、源码解码、IndexCoordinator freshness 与 evalRunner。当前仓库测试为 50 个用例。
+- 测试暴露并修复中文复杂问题 source 估算缺陷：中文无空格问题此前会先命中 `wordCount <= 3` 的简单查询分支，即使包含「流程/逻辑/实现/整体」也只给 5 个 sources；现复杂/Review 意图优先，复杂问题按 15~20 个 sources 估算。
+- 测试暴露并修复 GBK 中文源码解码评分缺陷：旧评分只看可打印字符数，GBK 中文可能被 latin1 乱码误判；现对可读 CJK 字符加权，优先选择可读中文解码结果。
+- 验证：`npm test`、`npm run build`。
+
 ## [4.6.5] - 2026-06-15
 
 ### 修复暖机窗口内索引元数据失真

@@ -1,0 +1,69 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import type { Settings } from "../core/common/types.js";
+import {
+  parseAskRequest,
+  parseCallGraphRequest,
+  parseFileSnippetRequest,
+  parseIndexProjectRequest,
+  parseSearchContextRequest,
+} from "./requestValidation.js";
+
+const settings = {
+  defaultTopK: 8,
+  qaMaxContextTokens: 48000,
+  qaMaxContextTokensMax: 200000,
+  qaMaxSourcesDefault: 15,
+  qaMaxSourcesMax: 50,
+} as Settings;
+
+test("parseSearchContextRequest keeps web parsing lenient but clamps unsafe values", () => {
+  const parsed = parseSearchContextRequest({
+    enableReranker: true,
+    includeContextLines: 999,
+    languages: "javascript,unknown,markdown",
+    mode: "invalid",
+    pathPrefix: "./src",
+    projectRootPath: "/tmp/project",
+    query: "refund",
+    resultMode: "metadata",
+    topK: 999,
+  }, settings);
+
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.mode, "auto");
+  assert.equal(parsed.value.topK, 50);
+  assert.equal(parsed.value.includeContextLines, 50);
+  assert.deepEqual(parsed.value.filters.languages, ["javascript", "markdown"]);
+  assert.equal(parsed.value.filters.pathPrefix, "src");
+  assert.equal(parsed.value.enableReranker, true);
+});
+
+test("web parsers reject only missing required fields", () => {
+  assert.deepEqual(parseSearchContextRequest({ projectRootPath: "/tmp/project" }, settings), { ok: false, error: "query is required" });
+  assert.deepEqual(parseFileSnippetRequest({ projectRootPath: "/tmp/project" }), { ok: false, error: "filePath is required" });
+  assert.deepEqual(parseIndexProjectRequest({}), { ok: false, error: "projectRootPath is required" });
+});
+
+test("parseCallGraphRequest and parseAskRequest clamp request-specific fields", () => {
+  const graph = parseCallGraphRequest({ projectRootPath: "/tmp/project", query: "refund", depth: 999 }, settings);
+  assert.equal(graph.ok && graph.value.depth, 5);
+
+  const ask = parseAskRequest({
+    callChainDepth: 999,
+    contextMode: "full-file",
+    maxContextTokens: 999999,
+    maxSources: 999,
+    projectRootPath: "/tmp/project",
+    question: "how does refund work?",
+    timeoutSeconds: 999,
+  }, settings);
+  assert.equal(ask.ok, true);
+  if (!ask.ok) return;
+  assert.equal(ask.value.maxSources, 50);
+  assert.equal(ask.value.maxContextTokens, 200000);
+  assert.equal(ask.value.callChainDepth, 3);
+  assert.equal(ask.value.timeoutSeconds, 600);
+});

@@ -82,11 +82,13 @@ type IndexedFileResult =
  * Balances transaction overhead vs memory usage
  */
 const DB_WRITE_BATCH_SIZE = 50;
+const CJK_DECODE_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 export function scoreDecodedContent(content: string): number {
   const replacementCount = (content.match(/\uFFFD/g) ?? []).length;
   const printableCount = [...content].filter((character) => character === "\n" || character === "\r" || character === "\t" || character >= " ").length;
-  return printableCount - replacementCount * 10;
+  const cjkCount = [...content].filter((character) => CJK_DECODE_PATTERN.test(character)).length;
+  return printableCount + cjkCount * 4 - replacementCount * 10;
 }
 
 export function isValidUtf8(buffer: Buffer): boolean {

@@ -7,4 +7,5 @@ coverage/
 .vscode/
 .claude
 *.test.ts
+!src/**/*.test.ts
 eval-cases/

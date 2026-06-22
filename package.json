@@ -1,11 +1,13 @@
 {
   "name": "ace-mcp",
-  "version": "4.6.5",
+  "version": "4.6.6",
   "private": true,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
   "files": [
     "dist",
+    "!dist/**/*.test.*",
+    "!dist/test/**",
     "README.md",
     "CHANGELOG.md"
   ],

@@ -162,12 +162,12 @@ export function estimateOptimalSources(question: string, defaultTopK: number = 1
   // Code review or refactoring questions
   const isReviewQuestion = /(review|重构|优化|改进|问题|bug|错误)/i.test(normalized);
 
-  if (isSimpleLookup) {
-    return Math.min(defaultTopK, 5);
-  }
-
   if (isComplexQuestion || isReviewQuestion) {
     return Math.min(Math.max(defaultTopK, 15), 20);
+  }
+
+  if (isSimpleLookup) {
+    return Math.min(defaultTopK, 5);
   }
 
   return defaultTopK;

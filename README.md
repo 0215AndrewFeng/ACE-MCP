@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.5`
+当前版本：`v4.6.6`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -331,7 +331,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.5（当前版本）
+### v4.6.6（当前版本）
+
+- **补齐质量防线**：恢复 `npm test` 的真实可执行性，补齐脚本中引用但仓库缺失的 17 个测试文件，覆盖 CLI、查询分析、端到端索引/搜索、Web `/health` 与参数校验、SQLite/VectorCache、搜索打分/辅助函数、语义文本、远程 Embedding fallback、QA 缓存、共享 schema、源码解码、IndexCoordinator freshness 与 evalRunner。当前仓库 `npm test` 跑 50 个用例全绿
+- **中文复杂问题 source 估算修复**：`estimateOptimalSources` 先判断复杂/Review 意图，再走短查询兜底，避免中文无空格问题因 `wordCount <= 3` 被误判为简单查询，只给 5 个参考源
+- **中文源码解码评分修复**：`decodeSourceBuffer` 评分对可读 CJK 字符加权，GBK 中文源码不再被 latin1 乱码误判
+
+### v4.6.5
 
 - **修复暖机窗口内索引元数据失真**：v4.6.4 暖机用硬编码 `vectorIndex.enabled=false`、全零 `timings`/计数的合成结果恢复 freshness 状态，导致暖机窗口内（`stale` 默认 30s，`manual` 则无限期）所有工具/Web 响应把向量索引误报为禁用。改为铺展真实的 `latestIndexEvent`，仅 `null` 时回退默认值；不改动跳描行为，仅修正上报元数据
 
