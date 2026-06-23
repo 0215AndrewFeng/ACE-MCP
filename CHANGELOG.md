@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.7] - 2026-06-23
+
+### npm/tgz 全局安装 + Windows 启动脚本
+
+- 包发布配置调整：`package.json` 改为可发布包，新增全局命令 `ace-mcp-web`，保留 `ace-mcp` 主命令；`files` 纳入 `scripts/`，继续排除 `dist/**/*.test.*` 与 `dist/test/**`，避免测试产物进入安装包。
+- 新增启动脚本：`scripts/start-web.mjs` 作为跨平台 bin，默认以 `--web-port 8787` 启动，也支持 `ace-mcp-web 9000` 或 `ACE_MCP_WEB_PORT=9000 ace-mcp-web`；Windows 额外提供 `scripts/start-web.cmd` 与 `scripts/start-web.ps1`。
+- 新增 `npm run release:pack`，执行 `npm run build && npm pack`，用于生成可全局安装的 `ace-mcp-4.6.7.tgz`。
+- README 补充 npm 全局安装、tgz 全局安装、Windows PowerShell/cmd 启动脚本、Windows MCP 客户端命令路径示例，以及 Windows 上 Node LTS 与 `better-sqlite3` 原生依赖注意事项。
+- 新增 `packageManifest.test.ts` 覆盖发布包清单、全局 bin、release 打包脚本和 Windows 启动脚本。
+
 ## [4.6.6] - 2026-06-22
 
 ### 补齐质量防线

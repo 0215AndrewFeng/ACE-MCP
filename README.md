@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.6`
+当前版本：`v4.6.7`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -52,39 +52,94 @@
 
 - Node.js `>= 18.18.0`
 - npm `>= 9`
+- Windows 建议使用 Node.js 20/22 LTS。`better-sqlite3` 是原生依赖，过新的 Node 版本可能触发本地编译。
 
-## 一键下载与启动
+## 推荐安装方式
 
-### GitHub
+### npm 全局安装
+
+发布到 npm registry 后可直接安装：
 
 ```bash
-git clone https://github.com/0215AndrewFeng/ACE-MCP.git && cd ACE-MCP && npm install && npm run build && npm start -- --web-port 8787
+npm install -g ace-mcp
+ace-mcp --version
+ace-mcp-web
 ```
 
-### Gitee
+`ace-mcp-web` 等价于使用默认端口启动 Web 面板：
 
 ```bash
-git clone https://gitee.com/AndrewFengCode/ace-mcp.git && cd ace-mcp && npm install && npm run build && npm start -- --web-port 8787
+ace-mcp --web-port 8787
 ```
 
-> 执行完毕后访问 http://127.0.0.1:8787/ 即可使用 Web 调试面板。
-
-## 安装
+可通过环境变量改默认端口：
 
 ```bash
+ACE_MCP_WEB_PORT=9000 ace-mcp-web
+```
+
+### tgz 全局安装
+
+从 Gitee Release 下载 `ace-mcp-4.6.7.tgz` 后安装：
+
+```bash
+npm install -g ./ace-mcp-4.6.7.tgz
+ace-mcp-web
+```
+
+Windows PowerShell：
+
+```powershell
+npm install -g .\ace-mcp-4.6.7.tgz
+ace-mcp-web
+```
+
+### 源码安装
+
+```bash
+git clone https://gitee.com/AndrewFengCode/ace-mcp.git
+cd ace-mcp
 npm install
-```
-
-## 构建
-
-```bash
 npm run build
+npm start -- --web-port 8787
 ```
 
-查看当前版本：
+GitHub 镜像：
 
 ```bash
-node dist/index.js --version
+git clone https://github.com/0215AndrewFeng/ACE-MCP.git
+```
+
+> 启动后访问 http://127.0.0.1:8787/ 即可使用 Web 调试面板。
+
+### Windows 启动脚本
+
+全局安装后优先使用：
+
+```powershell
+ace-mcp-web
+ace-mcp-web 9000
+```
+
+源码目录或解包后的 tgz 中也提供脚本：
+
+```cmd
+scripts\start-web.cmd
+scripts\start-web.cmd 9000
+```
+
+PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
+```
+
+### 本地打包
+
+```bash
+npm run release:pack
+npm install -g ./ace-mcp-4.6.7.tgz
 ```
 
 ## 本地运行
@@ -132,6 +187,8 @@ npm start -- --web-port 8787
 
 ### 开机自启管理
 
+`--autostart` 当前支持 macOS launchd 和 Linux systemd user service。Windows 可先使用任务计划程序手动配置，后续版本再补内置管理。
+
 ```bash
 # 启用开机自启（同时开启 Web 面板）
 node dist/index.js --autostart enable --web-port 8787
@@ -157,6 +214,32 @@ ace-mcp 启动时按以下顺序初始化：
 ## MCP 客户端配置示例
 
 以 Claude Desktop 或其他支持 MCP 的客户端为例：
+
+全局安装后：
+
+```json
+{
+  "mcpServers": {
+    "ace-mcp": {
+      "command": "ace-mcp"
+    }
+  }
+}
+```
+
+Windows 全局安装后，如果 MCP 宿主找不到 PATH 中的命令，可使用 npm 全局 shim 的绝对路径：
+
+```json
+{
+  "mcpServers": {
+    "ace-mcp": {
+      "command": "C:\\Users\\<用户名>\\AppData\\Roaming\\npm\\ace-mcp.cmd"
+    }
+  }
+}
+```
+
+源码运行：
 
 ```json
 {
@@ -331,7 +414,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.6（当前版本）
+### v4.6.7（当前版本）
+
+- **npm/tgz 全局安装**：包从私有项目改为可发布包，新增 `ace-mcp-web` 全局命令，`npm install -g ace-mcp` 或 `npm install -g ./ace-mcp-4.6.7.tgz` 后可直接启动 Web 面板
+- **Windows 启动脚本**：新增 `scripts/start-web.cmd` 与 `scripts/start-web.ps1`，支持默认 8787 端口、位置参数端口和 `ACE_MCP_WEB_PORT`
+- **发布打包脚本**：新增 `npm run release:pack`，打包时包含 `scripts/`，并继续排除 `dist/**/*.test.*` 与 `dist/test/**`
+
+### v4.6.6
 
 - **补齐质量防线**：恢复 `npm test` 的真实可执行性，补齐脚本中引用但仓库缺失的 17 个测试文件，覆盖 CLI、查询分析、端到端索引/搜索、Web `/health` 与参数校验、SQLite/VectorCache、搜索打分/辅助函数、语义文本、远程 Embedding fallback、QA 缓存、共享 schema、源码解码、IndexCoordinator freshness 与 evalRunner。当前仓库 `npm test` 跑 50 个用例全绿
 - **中文复杂问题 source 估算修复**：`estimateOptimalSources` 先判断复杂/Review 意图，再走短查询兜底，避免中文无空格问题因 `wordCount <= 3` 被误判为简单查询，只给 5 个参考源
