@@ -1,0 +1,63 @@
+README.md
+  s_35848f230f0f98::t_fb5fbfccdc4a3e 5,83,86,93,99,160,171-178,181-188,459-465
+scripts/README-WINDOWS.md
+  s_35848f230f0f98::t_6bfc71fc4225ca 3,15,29-30,66,104,113,116
+docs/release-checklist.md
+  s_35848f230f0f98::t_a4d48c5fd41fff 3,12,29,32,35-44,48-49,51
+src/config/doctor.ts
+  s_35848f230f0f98::t_2c7013cbe04c5b 71,75,263
+  s_35848f230f0f98::t_2e7b47b9f32b54 1-70,72-74,76-262,264-305
+scripts/smoke-release.mjs
+  s_35848f230f0f98::t_94702287349309 17
+  s_35848f230f0f98::t_3c838ccbb367ec 126-155,221
+  s_35848f230f0f98::t_eca81b27050554 1-16,18-125,156-220,222-234
+scripts/install-windows.cmd
+  s_35848f230f0f98::t_3940f421f71ad1 39-47
+ROADMAP.md
+  s_35848f230f0f98::t_326d1319042f13 73
+src/index.ts
+  s_35848f230f0f98::t_0a88342b0b15fa 6,180-192
+  s_35848f230f0f98::t_18ceb962879f01 1
+src/version.ts
+  s_35848f230f0f98::t_01773802f9dab4 2
+src/config/cli.test.ts
+  s_35848f230f0f98::t_ca9b852b0e263d 6,12,21,36
+package.json
+  s_35848f230f0f98::t_75031c023bd90c 3,26-27,29
+CHANGELOG.md
+  s_35848f230f0f98::t_1f5ba9ff69b139 5-14
+src/config/cli.ts
+  s_35848f230f0f98::t_b3a4d084166011 24,45-49,101,109,113
+scripts/install-windows.ps1
+  s_35848f230f0f98::t_71413f0ca9c9dd 30-35
+scripts/start-web.mjs
+  s_35848f230f0f98::t_ab9753e4d315cd 30-33,42-44
+src/core/common/types.ts
+  s_35848f230f0f98::t_b26a8be29e3031 61
+src/config/doctor.test.ts
+  s_35848f230f0f98::t_6b5aa6d7addf03 1-68
+src/config/packageManifest.test.ts
+  s_35848f230f0f98::t_25b48b91af201d 40-43
+  s_35848f230f0f98::t_6e4f6fbd650553 57-59
+  s_35848f230f0f98::t_094cddd1c8fa1f 87,90
+  s_35848f230f0f98::t_d49916e1e9184c 24,102
+  s_35848f230f0f98::t_0c0ce47c4e658b 88-89
+  s_35848f230f0f98::t_afe58abe2e114a 93,96,110
+  s_35848f230f0f98::t_37def1a148c73e 36-37,64,69,74,83-86,113,118-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a7bf1040c99e4e6b1b503dcea4b5e665766e2cc3",
+  "prompts": {},
+  "sessions": {
+    "s_35848f230f0f98": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef3e3-bbe3-7980-8ecb-aca997f7208d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
