@@ -1,0 +1,34 @@
+src/core/search/remoteEmbedding.test.ts
+  s_0f8113dba42c56::t_9acb8ca37db1af 30
+src/config/cli.test.ts
+  s_0f8113dba42c56::t_660d9e19169ab9 27-28
+  s_0f8113dba42c56::t_e5976e002c92d6 16
+src/core/search/evalRunner.test.ts
+  s_0f8113dba42c56::t_5b17f7efee553a 1-83
+src/core/indexing/indexCoordinator.test.ts
+  s_e2a438ee9c133f::t_bca7c0e7da7c36 2-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8d4ba931e1469d4e00515d8314310ac2f0a5a3cb",
+  "prompts": {},
+  "sessions": {
+    "s_0f8113dba42c56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f804a468-db25-4497-895e-6afe87a75cb4",
+        "model": "claude-opus-4.6"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_e2a438ee9c133f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "409d2eac-bf95-496d-beb3-268509c62681",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
