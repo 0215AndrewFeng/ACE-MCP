@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.7`
+当前版本：`v4.6.8`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -80,19 +80,37 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.6.7.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.6.8.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.6.7.tgz
+npm install -g ./ace-mcp-4.6.8.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.6.7.tgz
+npm install -g .\ace-mcp-4.6.8.tgz
 ace-mcp-web
 ```
+
+### Windows zip 安装
+
+从 Gitee Release 下载 `ace-mcp-v4.6.8-win-x64.zip`，解压后在目录内执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+.\start-web.cmd
+```
+
+cmd：
+
+```cmd
+install.cmd
+start-web.cmd
+```
+
+详细说明见 [`scripts/README-WINDOWS.md`](./scripts/README-WINDOWS.md)。
 
 ### 源码安装
 
@@ -139,7 +157,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.6.7.tgz
+npm install -g ./ace-mcp-4.6.8.tgz
+```
+
+`release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
+
+Windows zip：
+
+```bash
+npm run release:win
 ```
 
 ## 本地运行
@@ -414,7 +440,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.7（当前版本）
+### v4.6.8（当前版本）
+
+- **Windows zip 打包**：新增 `npm run release:win`，构建后生成 `release/ace-mcp-v4.6.8-win-x64.zip`，包含 `dist/`、生产依赖安装入口、README、许可证与启动脚本
+- **Windows 安装脚本**：新增 `install.cmd` / `install.ps1` 包装入口及 `scripts/install-windows.{cmd,ps1}`，检查 Node/npm 版本并执行 `npm install --omit=dev`，失败时提示 `better-sqlite3` 与 Visual Studio Build Tools 处理方式
+- **Windows 专用 README + 发布清单**：补充 zip/npm/tgz 全局安装、`ace-mcp.cmd` MCP 路径、`ExecutionPolicy` 说明，并新增 `docs/release-checklist.md` 固化发版验证步骤
+
+### v4.6.7
 
 - **npm/tgz 全局安装**：包从私有项目改为可发布包，新增 `ace-mcp-web` 全局命令，`npm install -g ace-mcp` 或 `npm install -g ./ace-mcp-4.6.7.tgz` 后可直接启动 Web 面板
 - **Windows 启动脚本**：新增 `scripts/start-web.cmd` 与 `scripts/start-web.ps1`，支持默认 8787 端口、位置参数端口和 `ACE_MCP_WEB_PORT`

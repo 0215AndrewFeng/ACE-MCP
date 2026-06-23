@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.8] - 2026-06-23
+
+### Windows zip 安装包 + 发布清单
+
+- 新增 `npm run release:win`，执行 `npm run build && node scripts/package-windows.mjs`，生成 `release/ace-mcp-v4.6.8-win-x64.zip`，zip 内包含 `dist/`、`package-lock.json`、README/CHANGELOG/LICENSE、Windows 启动脚本和安装入口。
+- 新增 `scripts/install-windows.cmd` 与 `scripts/install-windows.ps1`，用于 zip 解压后的 Windows 本地安装；脚本检查 Node/npm，执行 `npm install --omit=dev`，并对 `better-sqlite3` 原生依赖失败给出 Node LTS 与 Visual Studio Build Tools 提示。
+- 新增 `scripts/README-WINDOWS.md`，覆盖 zip 安装、npm/tgz 全局安装、`start-web.cmd`/PowerShell 启动、MCP 客户端 `ace-mcp.cmd` 路径、`ExecutionPolicy` 与常见问题。
+- 新增 `docs/release-checklist.md` 与 `release:check` 脚本，固化 `npm test`、`npm run build`、`release:pack`、`release:win`、包内容检查、git tag/push 的发版步骤；`release:pack` 使用仓库内 `.npm-cache/`，避免全局 npm cache 权限问题影响打包。
+- `packageManifest.test.ts` 扩展到 Windows zip 打包器、安装脚本、Windows README 和 release checklist，作为发布契约测试。
+
 ## [4.6.7] - 2026-06-23
 
 ### npm/tgz 全局安装 + Windows 启动脚本

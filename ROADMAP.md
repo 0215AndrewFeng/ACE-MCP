@@ -69,3 +69,4 @@
 48. ✅ **冷启动暖机（`--warm`）**：新增 `--warm` CLI 标志，服务启动后异步暖机已索引项目——从 DB 恢复 `ensureFreshIndex` 内存状态跳过已知最新项目、预加载向量缓存 + 异步 HNSW 构建、确保 semantic FTS 完整——首次查询延迟从 18-22s 降至 <2s；暖机不阻塞 MCP/Web 可用性（v4.6.4）；暖机元数据失真修复——恢复缓存改为铺展真实 `latestIndexEvent`，暖机窗口内 `vectorIndex`/`timings`/计数不再误报为禁用/零值（v4.6.5）
 49. ✅ **质量防线补齐**：补齐 `npm test` 引用但仓库缺失的 17 个测试文件，覆盖 CLI、查询分析、索引/搜索工作流、Web、SQLite/VectorCache、搜索纯函数、QA 缓存、校验、源码解码、IndexCoordinator 与 evalRunner；测试暴露并修复中文复杂问题 source 估算与 GBK 中文解码评分问题（v4.6.6）
 50. ✅ **npm/tgz 全局安装 + Windows 启动脚本**：包改为可发布，新增 `ace-mcp-web` 全局命令、`release:pack`、`scripts/start-web.{mjs,cmd,ps1}`，README 补充 npm/tgz 全局安装与 Windows MCP 配置（v4.6.7）
+51. ✅ **Windows zip 安装包 + 发布清单**：新增 `release:win` 与 `scripts/package-windows.mjs` 生成 `ace-mcp-v4.6.8-win-x64.zip`，补 `install-windows.{cmd,ps1}`、`scripts/README-WINDOWS.md`、`docs/release-checklist.md` 与发布契约测试（v4.6.8）
