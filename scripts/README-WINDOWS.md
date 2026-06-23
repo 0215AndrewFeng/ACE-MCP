@@ -1,6 +1,6 @@
 # ace-mcp Windows 安装说明
 
-适用包名：`ace-mcp-v4.6.8-win-x64.zip`。
+适用包名：`ace-mcp-v4.6.9-win-x64.zip`。
 
 ## 环境要求
 
@@ -12,7 +12,7 @@
 
 ## Zip 安装
 
-1. 解压 `ace-mcp-v4.6.8-win-x64.zip`。
+1. 解压 `ace-mcp-v4.6.9-win-x64.zip`。
 2. 在解压目录打开 PowerShell。
 3. 执行：
 
@@ -25,6 +25,8 @@ cmd 也可以执行：
 ```cmd
 install.cmd
 ```
+
+安装脚本会在依赖安装后自动运行 `node dist\index.js --doctor`，检查 Node/npm、`better-sqlite3`、SQLite FTS5、目录写权限和端口占用。
 
 ## 启动 Web 面板
 
@@ -61,7 +63,7 @@ ace-mcp-web
 本地 tgz：
 
 ```powershell
-npm install -g .\ace-mcp-4.6.8.tgz
+npm install -g .\ace-mcp-4.6.9.tgz
 ace-mcp-web
 ```
 
@@ -99,7 +101,7 @@ Zip 解压运行时：
     "ace-mcp": {
       "command": "node",
       "args": [
-        "C:\\path\\to\\ace-mcp-v4.6.8-win-x64\\dist\\index.js"
+        "C:\\path\\to\\ace-mcp-v4.6.9-win-x64\\dist\\index.js"
       ]
     }
   }
@@ -108,6 +110,8 @@ Zip 解压运行时：
 
 ## 常见问题
 
+- 先运行 `ace-mcp --doctor` 或在 zip 解压目录运行 `node dist\index.js --doctor`，按输出的 `Next steps` 处理。
 - PowerShell 拒绝执行脚本：使用 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。
 - `better-sqlite3` 安装失败：先切换到 Node.js 20/22 LTS；仍失败时安装 Visual Studio Build Tools 的 C++ 工作负载。
+- Web 面板打不开：检查 doctor 的 `Web port` 项，或改用 `start-web.cmd 9000`。
 - `ace-mcp` 命令找不到：在 MCP 客户端里改用 `C:\Users\<用户名>\AppData\Roaming\npm\ace-mcp.cmd`。

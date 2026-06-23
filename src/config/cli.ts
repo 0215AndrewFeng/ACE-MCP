@@ -21,6 +21,7 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
   let help = false;
   let version = false;
   let warm = false;
+  let doctor = false;
   let autostart: AutostartAction | undefined;
   let evalPath: string | undefined;
 
@@ -38,6 +39,11 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
 
     if (arg === "--warm") {
       warm = true;
+      continue;
+    }
+
+    if (arg === "--doctor") {
+      doctor = true;
       continue;
     }
 
@@ -92,7 +98,7 @@ export function parseCliArgs(argv: string[]): CliOptions & { autostart?: Autosta
     }
   }
 
-  return { evalPath, help, version, warm, webPort, autostart };
+  return { doctor, evalPath, help, version, warm, webPort, autostart };
 }
 
 export function formatHelpText(): string {
@@ -100,10 +106,11 @@ export function formatHelpText(): string {
     APP_NAME,
     "",
     "Usage:",
-    "  node dist/index.js [--web-port 8787] [--warm] [--eval <caseFile>] [--autostart enable|disable|status] [--version]",
+    "  node dist/index.js [--web-port 8787] [--warm] [--doctor] [--eval <caseFile>] [--autostart enable|disable|status] [--version]",
     "",
     "Options:",
     "  --warm                     Warm up previously-indexed projects on startup",
+    "  --doctor                   Check local install health, dependencies, storage, and config",
     "  --web-port <port>          Start the HTTP debug panel on the specified port",
     "  --eval <caseFile>          Run search-quality evaluation against a JSON golden-case",
     "                             file, print a report, then exit (0 = pass, 1 = fail)",

@@ -1,7 +1,9 @@
+#!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { disableAutostart, enableAutostart, getAutostartStatus } from "./autostart/index.js";
 import { formatHelpText, parseCliArgs } from "./config/cli.js";
+import { formatDoctorReport, runDoctorChecks } from "./config/doctor.js";
 import { loadSettings } from "./config/settings.js";
 import { Logger } from "./core/common/logger.js";
 import { IndexCoordinator } from "./core/indexing/indexCoordinator.js";
@@ -175,6 +177,19 @@ async function main(): Promise<void> {
   }
 
   const settings = await loadSettings();
+
+  if (cliOptions.doctor) {
+    const result = await runDoctorChecks({
+      cwd: process.cwd(),
+      env: process.env,
+      settings,
+      webPort: cliOptions.webPort,
+    });
+    process.stdout.write(`${formatDoctorReport(result)}\n`);
+    process.exitCode = result.ok ? 0 : 1;
+    return;
+  }
+
   const logger = new Logger(settings.logFilePath, settings.logLevel);
   const store = new SQLiteStore(settings.databasePath, logger);
   store.initialize();

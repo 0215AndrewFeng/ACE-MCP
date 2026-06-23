@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.6.9] - 2026-06-23
+
+### 安装自检 + 发布 smoke test
+
+- 新增 `ace-mcp --doctor`，检查 Node/npm、`better-sqlite3` 原生绑定、SQLite FTS5、数据/日志/配置目录写权限、Web 端口占用，以及 LLM/Embedding 配置；输出 `OK/WARN/ERROR` 与 `Next steps`，有错误时退出码为 1。
+- 新增 `npm run release:smoke`（`scripts/smoke-release.mjs`）：从当前 `ace-mcp-4.6.9.tgz` 安装到临时全局 prefix，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web <随机端口>` 和 `/health`，并要求 Windows zip 已生成。
+- `release:check` 纳入 `release:smoke`，发版链路变为 `npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke`。
+- Windows zip 安装脚本在 `npm install --omit=dev` 后自动运行 `node dist\index.js --doctor`，安装阶段即可暴露原生依赖、FTS5、目录权限和端口问题。
+- README、Windows README 与 release checklist 更新到 v4.6.9，并补充安装失败、Web 打不开、`better-sqlite3` 编译失败和 MCP 命令路径问题的 doctor 排障入口。
+
 ## [4.6.8] - 2026-06-23
 
 ### Windows zip 安装包 + 发布清单

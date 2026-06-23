@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.8`
+当前版本：`v4.6.9`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -80,23 +80,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.6.8.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.6.9.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.6.8.tgz
+npm install -g ./ace-mcp-4.6.9.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.6.8.tgz
+npm install -g .\ace-mcp-4.6.9.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.6.8-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.6.9-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -157,7 +157,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.6.8.tgz
+npm install -g ./ace-mcp-4.6.9.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -168,7 +168,23 @@ Windows zip：
 npm run release:win
 ```
 
+安装包 smoke test：
+
+```bash
+npm run release:smoke
+```
+
+`release:smoke` 会把当前 tgz 安装到临时目录，验证 `ace-mcp --version`、`ace-mcp --doctor` 和 `ace-mcp-web` 的 `/health`。
+
 ## 本地运行
+
+### 安装自检 / 排障
+
+```bash
+ace-mcp --doctor
+```
+
+`--doctor` 检查 Node/npm、`better-sqlite3`、SQLite FTS5、数据/日志目录写权限、默认 Web 端口和 LLM/Embedding 配置。安装失败、Web 面板打不开、`better-sqlite3` 编译失败或 MCP 客户端找不到命令时，先运行它查看下一步修复建议。
 
 ### 搜索质量回归（发版前建议）
 
@@ -440,7 +456,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.8（当前版本）
+### v4.6.9（当前版本）
+
+- **安装自检（`--doctor`）**：新增本地健康检查，覆盖 Node/npm、`better-sqlite3`、SQLite FTS5、数据/日志/配置目录写权限、Web 端口占用与 LLM/Embedding 配置，输出明确修复建议
+- **安装包 smoke test**：新增 `npm run release:smoke`，从当前 tgz 安装到临时目录，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web` 与 `/health`
+- **Windows 安装闭环**：zip 安装脚本在 `npm install --omit=dev` 后自动运行 `node dist\index.js --doctor`，更早暴露原生依赖和环境问题
+
+### v4.6.8
 
 - **Windows zip 打包**：新增 `npm run release:win`，构建后生成 `release/ace-mcp-v4.6.8-win-x64.zip`，包含 `dist/`、生产依赖安装入口、README、许可证与启动脚本
 - **Windows 安装脚本**：新增 `install.cmd` / `install.ps1` 包装入口及 `scripts/install-windows.{cmd,ps1}`，检查 Node/npm 版本并执行 `npm install --omit=dev`，失败时提示 `better-sqlite3` 与 Visual Studio Build Tools 处理方式

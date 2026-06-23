@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.6.8
+## v4.6.9
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -9,6 +9,7 @@
 npm test
 npm run build
 node dist/index.js --version
+node dist/index.js --doctor
 ```
 
 3. 生成 npm/tgz 包：
@@ -25,19 +26,27 @@ npm run release:pack
 npm run release:win
 ```
 
-5. 检查包内容：
+5. 运行安装包 smoke test：
 
 ```bash
-tar -tf ace-mcp-4.6.8.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md)"
-unzip -l release/ace-mcp-v4.6.8-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md"
+npm run release:smoke
 ```
 
-6. 提交并打 tag：
+`release:smoke` 会临时全局安装当前 tgz，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web` 与 `/health`。
+
+6. 检查包内容：
+
+```bash
+tar -tf ace-mcp-4.6.9.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs)"
+unzip -l release/ace-mcp-v4.6.9-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md"
+```
+
+7. 提交并打 tag：
 
 ```bash
 git add .
-git commit -m "chore: release v4.6.8 windows package"
-git tag -a v4.6.8 -m "v4.6.8"
+git commit -m "chore: release v4.6.9 install diagnostics"
+git tag -a v4.6.9 -m "v4.6.9"
 git push origin master
-git push origin v4.6.8
+git push origin v4.6.9
 ```

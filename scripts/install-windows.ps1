@@ -27,6 +27,12 @@ try {
 
   Write-Host ""
   Write-Host "ace-mcp is installed."
+  Write-Host "Running local health check..."
+  & node dist\index.js --doctor
+  if ($LASTEXITCODE -ne 0) {
+    throw "ace-mcp doctor found an installation problem. Review the messages above and run install.ps1 again after fixing it."
+  }
+  Write-Host ""
   Write-Host "Start Web UI: .\start-web.cmd or powershell -ExecutionPolicy Bypass -File .\start-web.ps1"
   Write-Host "MCP command after global npm install: $env:APPDATA\npm\ace-mcp.cmd"
 }

@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 
 import { formatHelpText, parseCliArgs } from "./cli.js";
 
-test("parseCliArgs parses web, warm, eval, version, and autostart flags", () => {
+test("parseCliArgs parses web, warm, eval, doctor, version, and autostart flags", () => {
   const parsed = parseCliArgs([
     "--web-port",
     "8787",
     "--warm",
     "--eval=eval-cases/golden.json",
+    "--doctor",
     "--autostart",
     "status",
     "-v",
@@ -17,6 +18,7 @@ test("parseCliArgs parses web, warm, eval, version, and autostart flags", () => 
   assert.equal(parsed.webPort, 8787);
   assert.equal(parsed.warm, true);
   assert.equal(parsed.evalPath, "eval-cases/golden.json");
+  assert.equal(parsed.doctor, true);
   assert.equal(parsed.autostart, "status");
   assert.equal(parsed.version, true);
 });
@@ -31,5 +33,6 @@ test("formatHelpText documents v4 CLI quality gates", () => {
 
   assert.match(help, /--warm/);
   assert.match(help, /--eval <caseFile>/);
+  assert.match(help, /--doctor/);
   assert.match(help, /--autostart <action>/);
 });

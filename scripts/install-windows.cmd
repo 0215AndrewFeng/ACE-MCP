@@ -36,6 +36,15 @@ if errorlevel 1 (
 
 echo.
 echo ace-mcp is installed.
+echo Running local health check...
+node dist\index.js --doctor
+if errorlevel 1 (
+  echo.
+  echo ace-mcp doctor found an installation problem. Review the messages above and run install.cmd again after fixing it.
+  popd >nul
+  exit /b 1
+)
+echo.
 echo Start Web UI: start-web.cmd
 echo MCP command after global npm install: %%APPDATA%%\npm\ace-mcp.cmd
 

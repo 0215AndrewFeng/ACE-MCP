@@ -27,6 +27,10 @@ const child = spawn(process.execPath, [entryPath, ...buildArgs(inputArgs)], {
   windowsHide: false,
 });
 
+function forwardSignal(signal) {
+  child.kill(signal);
+}
+
 child.on("error", (error) => {
   console.error(`Failed to start ace-mcp web panel: ${error.message}`);
   process.exit(1);
@@ -35,3 +39,6 @@ child.on("error", (error) => {
 child.on("exit", (code) => {
   process.exit(code ?? 0);
 });
+
+process.once("SIGINT", () => forwardSignal("SIGINT"));
+process.once("SIGTERM", () => forwardSignal("SIGTERM"));

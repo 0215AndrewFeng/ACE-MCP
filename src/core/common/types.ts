@@ -58,6 +58,7 @@ export interface Settings {
 }
 
 export interface CliOptions {
+  doctor: boolean;
   evalPath?: string;
   help: boolean;
   version: boolean;

@@ -70,3 +70,4 @@
 49. ✅ **质量防线补齐**：补齐 `npm test` 引用但仓库缺失的 17 个测试文件，覆盖 CLI、查询分析、索引/搜索工作流、Web、SQLite/VectorCache、搜索纯函数、QA 缓存、校验、源码解码、IndexCoordinator 与 evalRunner；测试暴露并修复中文复杂问题 source 估算与 GBK 中文解码评分问题（v4.6.6）
 50. ✅ **npm/tgz 全局安装 + Windows 启动脚本**：包改为可发布，新增 `ace-mcp-web` 全局命令、`release:pack`、`scripts/start-web.{mjs,cmd,ps1}`，README 补充 npm/tgz 全局安装与 Windows MCP 配置（v4.6.7）
 51. ✅ **Windows zip 安装包 + 发布清单**：新增 `release:win` 与 `scripts/package-windows.mjs` 生成 `ace-mcp-v4.6.8-win-x64.zip`，补 `install-windows.{cmd,ps1}`、`scripts/README-WINDOWS.md`、`docs/release-checklist.md` 与发布契约测试（v4.6.8）
+52. ✅ **安装自检 + 发布 smoke test**：新增 `--doctor` 检查 Node/npm、better-sqlite3、SQLite FTS5、目录写权限、Web 端口与 LLM/Embedding 配置；新增 `release:smoke` 临时安装 tgz 并验证 `ace-mcp --version`、`--doctor`、`ace-mcp-web` 与 `/health`；Windows zip 安装后自动运行 doctor（v4.6.9）
