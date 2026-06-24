@@ -123,3 +123,37 @@ Reduce duplicate background index work and make queue/coalescing state visible, 
 - 2026-06-24: Added focused regression for duplicate same-project index requests. It exposed missing `dedupedRequests/status` visibility and an unhandled rejection risk in `indexPromise.finally()` cleanup.
 - 2026-06-24: Implemented `dedupedRequests`, `queuedRequests`, and `status` in `getInFlightIndexInfo()`, added timeout timer cleanup, and verified focused IndexCoordinator/Web tests plus build.
 - 2026-06-24: Verification passed: focused IndexCoordinator/Web/package tests, `npm test` (62 tests), `npm run build`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 42ms, health p95 7ms, event-loop responsive 1/1.
+
+# v4.7.4 JS Cross-file Type Propagation
+
+Author: feng.ling
+
+## Goal
+
+Resolve JS/TS method calls like `foo.method()` to imported class methods across files when `foo` is constructed from an imported type, while preserving existing query behavior for other languages.
+
+## Plan
+
+- [x] Review relevant lessons and current task state.
+- [x] Locate JS/TS symbol extraction, usage extraction, and call/reference resolution paths.
+- [x] Write a failing regression test for cross-file JS/TS `new ImportedClass().method()` resolution.
+- [x] Add a non-JS/TS guard regression proving other languages keep their existing query behavior.
+- [x] Implement the smallest JS/TS-only type propagation change.
+- [x] Run focused tests, full `npm test`, `npm run build`, and full `npm run release:check`.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and lessons.
+- [ ] Commit, tag, push, and replace the local 8787 process if verification passes.
+
+## Validation Plan
+
+- Focused regression test for JS/TS cross-file constructor/import method call resolution.
+- Focused regression or existing suite coverage showing non-JS/TS language queries are unchanged.
+- Full unit/regression test suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-24: Started v4.7.4 after v4.7.3 release. Constraint from user: do not affect existing query behavior for other languages.
+- 2026-06-24: RED test confirmed `import { discountService }` where `discountService` is `export const discountService = new DiscountService()` did not resolve `discountService.applyDiscount()` to `DiscountService.applyDiscount`; Python variable-type call graph guard stayed green.
+- 2026-06-24: Implemented JS-only exported value type propagation using an internal candidate prefix and JavaScript-only alias resolution priority. Focused workflow test, `npm test` (64 tests), and `npm run build` passed before release docs were updated.
+- 2026-06-24: Final verification passed: focused workflow test, `npm test` (64 tests), `npm run build`, `node dist/index.js --version` returning `4.7.4`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, and event-loop responsive 1/1.

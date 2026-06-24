@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.3`
+当前版本：`v4.7.4`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -80,23 +80,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.3.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.4.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.3.tgz
+npm install -g ./ace-mcp-4.7.4.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.3.tgz
+npm install -g .\ace-mcp-4.7.4.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.3-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.4-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -157,7 +157,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.3.tgz
+npm install -g ./ace-mcp-4.7.4.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -464,7 +464,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.3（当前版本）
+### v4.7.4（当前版本）
+
+- **JS/TS 导出实例类型传播**：`export const service = new Service()` 被其他文件 `import { service }` 后，`service.method()` 现在会优先解析到 `Service.method`，而不是同模块里第一个同名方法
+- **JavaScript 限定的解析增强**：内部导出值类型候选只由 JS/TS AST adapter 产生，SQLite resolve 阶段也只在 `language === "javascript"` 的 import alias 上消费，避免改变 Java、Python、.NET、Markdown 查询路径
+- **回归测试**：新增 JS/TS exported instance 调用链测试，并保留 Python variable type inference guard，覆盖目标修复和非 JS 语言查询不回退
+
+### v4.7.3
 
 - **索引去重可观测性**：同项目索引运行期间的重复请求继续复用 in-flight Promise，并在 `/health` 的 `indexing` 条目中暴露 `status`、`queuedRequests` 和 `dedupedRequests`
 - **队列清理稳定性**：复用 in-flight 索引的 timeout 会在 Promise 完成后清理，队列清理链路吞掉已处理错误，避免失败索引在测试或一次性命令中留下 unhandled rejection

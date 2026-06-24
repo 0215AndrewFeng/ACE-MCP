@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.4] - 2026-06-24
+
+### JavaScript/TypeScript exported value type propagation
+
+- JS/TS adapter 对 `export const value = new Type()` 记录内部导出值类型候选；其他文件 `import { value }` 后，`value.method()` 可解析到 `Type.method`。
+- SQLite 符号解析在 import alias 第一阶段之后消费这些内部候选，把导出实例名映射回真实类型；同模块存在多个同名方法时，JavaScript 类型限定命中优先于同模块裸方法回退，避免误连到文件内更靠前的同名方法。
+- 该增强限定在 JavaScript import alias：内部候选只由 JS/TS AST adapter 产生，resolver 只对 `language === "javascript"` 的导入补充类型映射，Java、Python、.NET、Markdown 的既有查询路径不变。
+- 新增工作流回归测试：覆盖 exported instance 跨文件调用链，并保留 Python variable type inference guard，防止非 JS 语言调用链解析回退。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.4。
+
 ## [4.7.3] - 2026-06-24
 
 ### Index queue coalescing visibility

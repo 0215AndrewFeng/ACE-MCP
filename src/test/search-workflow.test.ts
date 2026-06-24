@@ -42,3 +42,69 @@ test("index and search workflow finds text, definitions, references, and call gr
     await env.cleanup();
   }
 });
+
+test("javascript call graph resolves imported exported instance methods by exported variable type", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/checkout.ts": [
+      "import { discountService } from './discounts';",
+      "",
+      "export function checkout(orderId: string) {",
+      "  return discountService.applyDiscount(orderId);",
+      "}",
+      "",
+    ].join("\n"),
+    "src/discounts.ts": [
+      "export class AuditDiscounts {",
+      "  applyDiscount(orderId: string) {",
+      "    return `audit ${orderId}`;",
+      "  }",
+      "}",
+      "",
+      "export class DiscountService {",
+      "  applyDiscount(orderId: string) {",
+      "    return `discount ${orderId}`;",
+      "  }",
+      "}",
+      "",
+      "export const discountService = new DiscountService();",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "DiscountService.applyDiscount", 5);
+    assert.ok(callers.results.some((result) => result.ownerSymbol === "checkout"));
+
+    const auditCallers = await env.searchService.findCallers(env.projectRootPath, "AuditDiscounts.applyDiscount", 5);
+    assert.ok(!auditCallers.results.some((result) => result.ownerSymbol === "checkout"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("python call graph behavior remains scoped to existing variable type inference", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/workflow.py": [
+      "class Ledger:",
+      "    def post(self, amount):",
+      "        return amount",
+      "",
+      "def submit(amount):",
+      "    ledger = Ledger()",
+      "    return ledger.post(amount)",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "Ledger.post", 5);
+    assert.ok(callers.results.some((result) => result.ownerSymbol === "submit"));
+  } finally {
+    await env.cleanup();
+  }
+});

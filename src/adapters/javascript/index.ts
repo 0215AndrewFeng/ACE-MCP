@@ -2,6 +2,7 @@ import path from "node:path";
 
 import ts from "typescript";
 
+import { JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX } from "../../core/common/types.js";
 import type { ImportInfo, LanguageAdapter, SourceAnalysis, SymbolInfo, SymbolUsageInfo } from "../../core/common/types.js";
 import { buildStableId } from "../../core/indexing/fileFingerprint.js";
 import { buildModulePath, normalizeSignature } from "../helpers.js";
@@ -128,6 +129,15 @@ function getTypeNameFromExpression(
   }
 
   return undefined;
+}
+
+function isExportedVariableDeclaration(node: ts.VariableDeclaration): boolean {
+  const statement = node.parent.parent;
+  if (!ts.isVariableStatement(statement)) {
+    return false;
+  }
+
+  return ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
 function analyzeSourceWithAst(fileId: string, relativePath: string, content: string): SourceAnalysis {
@@ -382,6 +392,15 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
             ownerSymbol: state.currentSymbol,
             rawName: typeName,
           });
+          if (isExportedVariableDeclaration(node)) {
+            pushUsage(usages, {
+              candidateNames: [`${JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX}${typeName}`, typeName],
+              kind: "usage",
+              line: getLineNumber(sourceFile, node.initializer),
+              ownerSymbol: state.currentSymbol,
+              rawName: variableName,
+            });
+          }
         }
       }
     }

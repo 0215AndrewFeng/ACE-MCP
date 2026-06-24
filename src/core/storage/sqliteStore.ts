@@ -5,6 +5,7 @@ import fsPromises from "node:fs/promises";
 import Database from "better-sqlite3";
 
 import { buildStableId } from "../indexing/fileFingerprint.js";
+import { JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX } from "../common/types.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { buildSemanticFtsQuery, buildSemanticText } from "../search/semanticText.js";
 import type {
@@ -829,6 +830,8 @@ export class SQLiteStore {
         const rightPart = normalizedCandidate.split(".").slice(1).join(".");
         if (leftPart && rightPart && aliasMap?.has(leftPart)) {
           const rightBareName = rightPart.split(".").pop() ?? rightPart;
+          const typeQualifiedAliasScore = language === "javascript" ? 1.16 : 1.08;
+          const namedAliasScore = language === "javascript" ? 1.14 : 1.04;
           for (const importedSymbol of aliasMap.get(leftPart) ?? []) {
             if (
               importedSymbol.name.toLowerCase() === rightPart ||
@@ -841,10 +844,10 @@ export class SQLiteStore {
             }
 
             for (const row of byFullName.get(`${importedSymbol.full_name}.${rightPart}`.toLowerCase()) ?? []) {
-              addCandidate(row, 1.08);
+              addCandidate(row, typeQualifiedAliasScore);
             }
             for (const row of byFullName.get(`${importedSymbol.name}.${rightPart}`.toLowerCase()) ?? []) {
-              addCandidate(row, 1.04);
+              addCandidate(row, namedAliasScore);
             }
             if (importedSymbol.module_path) {
               for (const row of byModuleAndName.get(`${importedSymbol.module_path}::${rightBareName}`) ?? []) {
@@ -906,6 +909,84 @@ export class SQLiteStore {
     });
 
     importTx();
+
+    const exportedValueTypeRows = this.db
+      .prepare(
+        `SELECT
+           su.file_id,
+           su.raw_name,
+           su.candidate_names,
+           f.language,
+           f.relative_path
+         FROM symbol_usage su
+         JOIN file f ON f.file_id = su.file_id
+         WHERE f.project_id = ?
+           AND f.language = 'javascript'
+           AND su.usage_kind = 'usage'
+           AND instr(su.candidate_names, ?) > 0`,
+      )
+      .all(projectId, JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX) as Array<{
+      candidate_names: string;
+      file_id: string;
+      language: Language;
+      raw_name: string;
+      relative_path: string;
+    }>;
+
+    const exportedValueTypesByModuleAndName = new Map<string, SymbolRow[]>();
+    for (const row of exportedValueTypeRows) {
+      const candidateNames = safeJsonParse<string[]>(row.candidate_names, [], this.logger, "symbol_usage.candidate_names");
+      const exportedTypeNames = candidateNames
+        .filter((candidate) => candidate.startsWith(JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX))
+        .map((candidate) => candidate.slice(JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX.length))
+        .filter((candidate) => candidate.length > 0);
+      if (exportedTypeNames.length === 0) {
+        continue;
+      }
+
+      const plainCandidates = candidateNames.filter((candidate) => !candidate.startsWith(JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX));
+      const resolvedTypes = resolveRows(
+        [...exportedTypeNames, ...plainCandidates],
+        row.file_id,
+        row.relative_path,
+        row.language,
+      );
+      if (resolvedTypes.length === 0) {
+        continue;
+      }
+
+      exportedValueTypesByModuleAndName.set(
+        `${normalizeModulePath(row.relative_path)}::${row.raw_name.toLowerCase()}`,
+        resolvedTypes,
+      );
+    }
+
+    const exportedValueImportTx = this.db.transaction(() => {
+      for (const row of importRows) {
+        if (row.language !== "javascript" || row.imported_name === "*") {
+          continue;
+        }
+
+        const resolvedSourceModule = resolveImportSourceModule(row.relative_path, row.source_module, row.language);
+        if (!resolvedSourceModule) {
+          continue;
+        }
+
+        const resolvedTypes = exportedValueTypesByModuleAndName.get(`${resolvedSourceModule}::${row.imported_name.toLowerCase()}`);
+        if (!resolvedTypes || resolvedTypes.length === 0) {
+          continue;
+        }
+
+        const aliases = aliasMapByFile.get(row.file_id) ?? new Map<string, SymbolRow[]>();
+        const existing = aliases.get(row.alias.toLowerCase()) ?? [];
+        const merged = [...new Map([...resolvedTypes, ...existing].map((symbol) => [symbol.symbol_id, symbol])).values()];
+        aliases.set(row.alias.toLowerCase(), merged);
+        aliasMapByFile.set(row.file_id, aliases);
+        updateImportResolution.run(resolvedTypes[0]?.symbol_id ?? null, row.import_id);
+      }
+    });
+
+    exportedValueImportTx();
 
     const usageRows = this.db
       .prepare(

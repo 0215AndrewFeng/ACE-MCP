@@ -1,6 +1,6 @@
 # ace-mcp Windows 安装说明
 
-适用包名：`ace-mcp-v4.7.3-win-x64.zip`。
+适用包名：`ace-mcp-v4.7.4-win-x64.zip`。
 
 ## 环境要求
 
@@ -12,7 +12,7 @@
 
 ## Zip 安装
 
-1. 解压 `ace-mcp-v4.7.3-win-x64.zip`。
+1. 解压 `ace-mcp-v4.7.4-win-x64.zip`。
 2. 在解压目录打开 PowerShell。
 3. 执行：
 
@@ -63,7 +63,7 @@ ace-mcp-web
 本地 tgz：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.3.tgz
+npm install -g .\ace-mcp-4.7.4.tgz
 ace-mcp-web
 ```
 
@@ -101,7 +101,7 @@ Zip 解压运行时：
     "ace-mcp": {
       "command": "node",
       "args": [
-        "C:\\path\\to\\ace-mcp-v4.7.3-win-x64\\dist\\index.js"
+        "C:\\path\\to\\ace-mcp-v4.7.4-win-x64\\dist\\index.js"
       ]
     }
   }

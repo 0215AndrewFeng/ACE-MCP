@@ -132,6 +132,8 @@ export interface SymbolInfo {
 
 export type SymbolUsageKind = "call" | "import" | "instantiation" | "type" | "usage";
 
+export const JS_EXPORTED_VALUE_TYPE_CANDIDATE_PREFIX = "__ace_js_export_type__:";
+
 export interface ImportInfo {
   alias: string;
   importedName: string;
