@@ -1,0 +1,68 @@
+docs/release-checklist.md
+  s_bf4660fb3995ee::t_ff56318282db59 3,29,33,37,42-43,50-51,53
+package-lock.json
+  ai_agent 3,9
+src/core/storage/sqliteStore.test.ts
+  s_bf4660fb3995ee::t_9e712694c2e0af 3-6,9-17,22-25
+  s_bf4660fb3995ee::t_cd754c3d52e92e 18-21
+README.md
+  s_bf4660fb3995ee::t_be397b19796279 469
+  s_bf4660fb3995ee::t_ff56318282db59 5,83,86,93,99,160,179-186,467-468,470-473
+CHANGELOG.md
+  s_bf4660fb3995ee::t_be397b19796279 10
+  s_bf4660fb3995ee::t_ff56318282db59 5-9,11-14
+tasks/todo.md
+  s_bf4660fb3995ee::t_be397b19796279 62
+  s_bf4660fb3995ee::t_88c4663bafa134 42-44,61
+  s_bf4660fb3995ee::t_b59b85784ca03e 45
+  s_bf4660fb3995ee::t_5d45f43ce384e5 46-47,63
+  s_bf4660fb3995ee::t_7bb6a37283c885 31-41,48-60
+package.json
+  s_bf4660fb3995ee::t_ff56318282db59 3
+  s_bf4660fb3995ee::t_4eba823d0daefa 27-28
+  s_bf4660fb3995ee::t_30bbd1ae13c4c7 29
+tasks/lessons.md
+  s_bf4660fb3995ee::t_5d45f43ce384e5 7-9
+src/config/packageManifest.test.ts
+  s_bf4660fb3995ee::t_baa5938d6682e2 106-107
+  s_bf4660fb3995ee::t_8bbeb0a266c981 101
+  s_bf4660fb3995ee::t_e167dee692f7d9 103-104
+  s_bf4660fb3995ee::t_ff56318282db59 24,119,127,130,136-138
+  s_bf4660fb3995ee::t_1c8065cecff1c4 105
+  s_bf4660fb3995ee::t_95c509e77240cf 39,67,73,79,96-100
+  s_bf4660fb3995ee::t_4eba823d0daefa 37-38,102
+scripts/benchmark-search.mjs
+  s_bf4660fb3995ee::t_376d6ee15de33e 6-7,10,17,201-250,280-281,283-284,287-290,292-295,297,306-307,317-318,320-326,354-361,363-367,369-370,374,376-403,405-411,424-426
+  s_bf4660fb3995ee::t_44bfadc3334487 124-125,285-286,296,298-305,308-312,316
+  s_bf4660fb3995ee::t_8bbeb0a266c981 16,28,66-68,99,106-123,126-127,165,180,197-198,336-337
+  s_bf4660fb3995ee::t_13fb22f4e17c78 8-9,27,60-65,101,182-194,353,362,421-423,427-446
+  s_bf4660fb3995ee::t_8159a1c4306706 5,251-279,282,313-315,319,414-418
+  s_bf4660fb3995ee::t_cf01af582e14e3 291
+  s_bf4660fb3995ee::t_eae09570348b41 412-413,419-420
+  s_bf4660fb3995ee::t_30bbd1ae13c4c7 1-4,11-15,18-26,29-59,69-98,100,102-105,128-159,166-179,181,195-196,199-200,327-335,338-344,346-352,368,375,404,447-452
+  s_bf4660fb3995ee::t_fbcedfd6aade59 160-164,345,371-373
+scripts/README-WINDOWS.md
+  s_bf4660fb3995ee::t_ff56318282db59 3,15,66,104
+src/core/storage/sqliteStore.ts
+  s_bf4660fb3995ee::t_3ea194c9acc170 49,68-81
+ROADMAP.md
+  s_bf4660fb3995ee::t_ff56318282db59 20-28
+src/version.ts
+  s_bf4660fb3995ee::t_ff56318282db59 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d769197a54e4954f95aa82a9ab7b332e60d7fb0d",
+  "prompts": {},
+  "sessions": {
+    "s_bf4660fb3995ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef76c-79f5-7190-ad14-4aa359758ded",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
