@@ -1,0 +1,45 @@
+src/web/routes/metaRoutes.ts
+  s_bf4660fb3995ee::t_f57d6eff8cbefe 17,22-25,36-38
+README.md
+  s_bf4660fb3995ee::t_c99183de2e53a3 5,83,86,93,99,160,467-473
+CHANGELOG.md
+  s_bf4660fb3995ee::t_c99183de2e53a3 5-13
+ROADMAP.md
+  s_bf4660fb3995ee::t_c99183de2e53a3 21-29
+src/web/app.test.ts
+  s_bf4660fb3995ee::t_68ca6aed078172 4,8-14,55-107
+tasks/lessons.md
+  s_bf4660fb3995ee::t_099975faff9ce9 10
+tasks/todo.md
+  s_bf4660fb3995ee::t_87412e0c06ce52 80,94
+  s_bf4660fb3995ee::t_31b591023bcd41 65-75,81-91
+  s_bf4660fb3995ee::t_099975faff9ce9 76-79,92-93
+package-lock.json
+  ai_agent 3,9
+src/config/packageManifest.test.ts
+  s_bf4660fb3995ee::t_c99183de2e53a3 24,119,127,130,138
+docs/release-checklist.md
+  s_bf4660fb3995ee::t_c99183de2e53a3 3,42-43,50-51,53
+scripts/README-WINDOWS.md
+  s_bf4660fb3995ee::t_c99183de2e53a3 3,15,66,104
+src/version.ts
+  s_bf4660fb3995ee::t_c99183de2e53a3 2
+package.json
+  s_bf4660fb3995ee::t_c99183de2e53a3 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a8030a8b3c32246424f29f5fe9092cf730f1e795",
+  "prompts": {},
+  "sessions": {
+    "s_bf4660fb3995ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef76c-79f5-7190-ad14-4aa359758ded",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
