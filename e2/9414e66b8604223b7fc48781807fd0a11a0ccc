@@ -1,0 +1,51 @@
+README.md
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 5,83,86,93,99,160,467-473
+CHANGELOG.md
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 5-14
+src/core/indexing/indexCoordinator.test.ts
+  s_bf4660fb3995ee::t_db58a25c94453b 33
+  s_bf4660fb3995ee::t_17a7994d38efbd 52
+  s_bf4660fb3995ee::t_110b94f5f18451 3-5,60-72,74-96
+  s_bf4660fb3995ee::t_4f66d74715a276 73
+package.json
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 3
+src/version.ts
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 2
+src/config/packageManifest.test.ts
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 24,119,127,130,138
+tasks/todo.md
+  s_bf4660fb3995ee::t_11b370028f652c 106-109,123-124
+  s_bf4660fb3995ee::t_68a6ac1ee44379 95-105,111-122
+  s_bf4660fb3995ee::t_7f404dcc8b9f3e 110,125
+docs/release-checklist.md
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 3,42-43,50-51,53
+scripts/README-WINDOWS.md
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 3,15,66,104
+src/core/indexing/indexCoordinator.ts
+  s_bf4660fb3995ee::t_a5da5825feb530 391,399
+  s_bf4660fb3995ee::t_2b428c203702b6 59-66,157-158,163-164,169,172-173,261,364,368,374,394,404-409
+ROADMAP.md
+  s_bf4660fb3995ee::t_5dfc2b6a34c48e 22-30
+tasks/lessons.md
+  s_bf4660fb3995ee::t_11b370028f652c 11
+package-lock.json
+  ai_agent 3,9
+src/web/app.test.ts
+  s_bf4660fb3995ee::t_b470fcd8a5fcbf 60-68,113-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e29414e66b8604223b7fc48781807fd0a11a0ccc",
+  "prompts": {},
+  "sessions": {
+    "s_bf4660fb3995ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef76c-79f5-7190-ad14-4aa359758ded",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
