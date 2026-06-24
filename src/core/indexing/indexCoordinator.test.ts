@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import type { IndexProjectResult, Settings } from "../common/types.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
@@ -27,7 +30,7 @@ test("restoreFreshnessState lets stale freshness reuse the cached index result",
   const settings = {
     indexFreshness: "stale",
     indexFreshnessSeconds: 60,
-  } as Settings;
+  } as unknown as Settings;
   const logger = {
     debug() {},
     info() {},
@@ -46,11 +49,49 @@ test("manual freshness also reuses a restored cached result", async () => {
   const settings = {
     indexFreshness: "manual",
     indexFreshnessSeconds: 60,
-  } as Settings;
+  } as unknown as Settings;
   const coordinator = new IndexCoordinator(settings, {} as never, { debug() {}, info() {}, warn() {} } as never, {} as EmbeddingProvider);
   const result = cachedResult(process.cwd());
 
   coordinator.restoreFreshnessState(process.cwd(), result);
 
   assert.equal(await coordinator.ensureFreshIndex(process.cwd(), 1), result);
+});
+
+test("duplicate same-project index requests report deduped in-flight pressure", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-index-dedupe-"));
+  const settings = {
+    batchSize: 1,
+    enableVectorSearch: false,
+    excludePatterns: [],
+    indexFreshness: "always",
+    indexFreshnessSeconds: 0,
+    maxFileSizeKb: 1024,
+    maxLinesPerChunk: 100,
+    textExtensions: [".ts"],
+    vectorIndexingMode: "lazy",
+  } as unknown as Settings;
+  const coordinator = new IndexCoordinator(
+    settings,
+    {
+      getLastIndexedCommit: () => null,
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+  );
+
+  try {
+    const first = coordinator.indexProject(projectRootPath, "incremental");
+    const second = coordinator.indexProject(projectRootPath, "incremental");
+    const info = coordinator.getInFlightIndexInfo();
+
+    assert.equal(info.length, 1);
+    assert.equal(info[0].projectRootPath, projectRootPath);
+    assert.equal(info[0].status, "running");
+    assert.equal(info[0].dedupedRequests, 1);
+
+    await Promise.allSettled([first, second]);
+  } finally {
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
 });

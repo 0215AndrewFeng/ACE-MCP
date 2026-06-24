@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.3] - 2026-06-24
+
+### Index queue coalescing visibility
+
+- 同项目索引运行期间的重复 `indexProject` 请求继续复用 in-flight Promise，并在 `getInFlightIndexInfo()` 中记录 `dedupedRequests`，让 `/health` 能暴露重复请求压力。
+- in-flight 状态新增 `status: "running"` 与 `queuedRequests` 字段，健康检查可直接展示索引队列/去重状态，而不需要读深度 SQLite 统计。
+- 修复 in-flight 复用 timeout 与队列清理派生 Promise 的资源/错误处理：timeout 完成后会清理 timer，失败索引不会通过 cleanup `finally` 产生额外 unhandled rejection。
+- 新增 `IndexCoordinator` 重复请求回归测试和 Web health shape 断言。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.3。
+
 ## [4.7.2] - 2026-06-24
 
 ### Health responsiveness under background indexing

@@ -8,3 +8,4 @@
 - 2026-06-24: Web search responses use the standard response envelope (`data.results`), so benchmark tooling must read enveloped results and assert non-empty smoke output. A p95 number with `resultCount: 0` is not a valid search benchmark.
 - 2026-06-24: SQLite PRAGMAs that affect locking (`busy_timeout`, WAL, `synchronous`) must be configured in the SQLiteStore constructor, not only initialize(), because worker read connections construct their own store and may not run schema initialization first.
 - 2026-06-24: `/health` must never perform per-project SQLite stats reads. Keep it to runtime, lightweight project-list fields, and in-flight index state; deep aggregate counts belong on slower project detail endpoints.
+- 2026-06-24: When attaching cleanup with `promise.finally()` to an index operation that may reject, always handle the derived Promise. Otherwise the original caller may catch the error but the cleanup branch can still emit an unhandled rejection.

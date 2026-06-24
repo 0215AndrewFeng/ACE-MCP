@@ -56,6 +56,14 @@ export interface IndexProgressEvent {
 
 export type IndexProgressCallback = (event: IndexProgressEvent) => void;
 
+export interface InFlightIndexInfo {
+  dedupedRequests: number;
+  elapsedMs: number;
+  projectRootPath: string;
+  queuedRequests: number;
+  status: "running";
+}
+
 /**
  * v4.3.1: Extended result type for batch processing
  */
@@ -146,18 +154,23 @@ export class IndexCoordinator {
   private inFlightIndex = new Map<string, Promise<IndexProjectResult>>();
   /** v4.5.2: Track start time for in-flight indices */
   private inFlightStartTimes = new Map<string, number>();
+  /** v4.7.3: Count duplicate requests coalesced into an in-flight project index */
+  private inFlightDedupedRequests = new Map<string, number>();
 
   /**
    * v4.5.2: Return info about currently in-flight index operations
    */
-  public getInFlightIndexInfo(): Array<{ projectRootPath: string; elapsedMs: number }> {
-    const result: Array<{ projectRootPath: string; elapsedMs: number }> = [];
+  public getInFlightIndexInfo(): InFlightIndexInfo[] {
+    const result: InFlightIndexInfo[] = [];
     const now = Date.now();
     for (const [projectRootPath] of this.inFlightIndex) {
       const startTime = this.inFlightStartTimes.get(projectRootPath);
       result.push({
+        dedupedRequests: this.inFlightDedupedRequests.get(projectRootPath) ?? 0,
         projectRootPath,
         elapsedMs: startTime ? now - startTime : 0,
+        queuedRequests: this.projectQueue.has(projectRootPath) ? 1 : 0,
+        status: "running",
       });
     }
     return result;
@@ -245,12 +258,7 @@ export class IndexCoordinator {
     timeoutMs: number,
   ): Promise<IndexProjectResult> {
     try {
-      const result = await Promise.race([
-        this.indexProject(normalizedRoot, mode),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`index timeout after ${timeoutMs}ms`)), timeoutMs),
-        ),
-      ]);
+      const result = await this.withTimeout(this.indexProject(normalizedRoot, mode), timeoutMs, `index timeout after ${timeoutMs}ms`);
       return result;
     } catch (error) {
       this.logger.warn("ensureFreshIndex timeout, using fallback", {
@@ -353,20 +361,17 @@ export class IndexCoordinator {
     // But we'll wait for the in-flight one to complete first
     const inFlight = this.inFlightIndex.get(normalizedRoot);
     if (inFlight && !onProgress) {
+      this.inFlightDedupedRequests.set(normalizedRoot, (this.inFlightDedupedRequests.get(normalizedRoot) ?? 0) + 1);
       this.logger.debug("reusing in-flight index", { projectRootPath: normalizedRoot, mode });
       // v4.3.9: Add timeout when reusing in-flight promise to avoid blocking forever
       try {
-        return await Promise.race([
-          inFlight,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("in-flight index reuse timeout")), 60_000),
-          ),
-        ]);
+        return await this.withTimeout(inFlight, 60_000, "in-flight index reuse timeout");
       } catch {
         // Stuck in-flight promise — clear it and start fresh
         this.logger.warn("in-flight index stuck, clearing and restarting", { projectRootPath: normalizedRoot });
         this.inFlightIndex.delete(normalizedRoot);
         this.inFlightStartTimes.delete(normalizedRoot);
+        this.inFlightDedupedRequests.delete(normalizedRoot);
       }
     }
 
@@ -383,16 +388,25 @@ export class IndexCoordinator {
     this.inFlightStartTimes.set(normalizedRoot, Date.now());
 
     // Clean up when done
-    indexPromise.finally(() => {
+    void indexPromise.finally(() => {
       this.inFlightIndex.delete(normalizedRoot);
       this.inFlightStartTimes.delete(normalizedRoot);
+      this.inFlightDedupedRequests.delete(normalizedRoot);
       // Only delete from queue if this is still the latest promise
       if (this.projectQueue.get(normalizedRoot) === queuePromise) {
         this.projectQueue.delete(normalizedRoot);
       }
-    });
+    }).catch(() => {});
 
     return indexPromise;
+  }
+
+  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   /**

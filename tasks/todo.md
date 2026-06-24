@@ -92,3 +92,34 @@ Keep `/health` responsive while background indexing or SQLite writes are active,
 - 2026-06-24: RED test added in `src/web/app.test.ts`; current `/health` waited for simulated slow `getProjectStats` and took 252ms.
 - 2026-06-24: `/health` now avoids per-project `getProjectStats`, keeps lightweight runtime/project/in-flight fields, and focused test passes in about 8ms.
 - 2026-06-24: Verification passed: focused Web/package tests, `npm test` (61 tests), `npm run build`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 43ms, health p95 6ms, event-loop responsive 1/1.
+
+# v4.7.3 Index Queue Coalescing
+
+Author: feng.ling
+
+## Goal
+
+Reduce duplicate background index work and make queue/coalescing state visible, so watch-triggered churn does not keep hammering SQLite with redundant same-project scans.
+
+## Plan
+
+- [x] Inspect current `IndexCoordinator` queue, in-flight reuse, and watch debounce behavior.
+- [x] Write a failing regression test for same-project duplicate index requests and queue status visibility.
+- [x] Implement coalesced queue status counters for running, queued, and deduped requests without changing public indexing results.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.7.3.
+- [x] Run focused tests, `npm test`, `npm run build`, `npm run release:check`, commit, tag, push, and replace the local 8787 process.
+
+## Validation Plan
+
+- Focused `IndexCoordinator` test for duplicate same-project requests.
+- Focused Web health/runtime surface check if queue status shape changes.
+- Full `npm test`.
+- TypeScript build.
+- Full `npm run release:check`.
+
+## Comments
+
+- 2026-06-24: Started v4.7.3 after v4.7.2 release. Current code reuses in-flight promises but `/health` only exposes elapsed in-flight indexes, not queued/deduped pressure, making repeated watch/index churn hard to diagnose.
+- 2026-06-24: Added focused regression for duplicate same-project index requests. It exposed missing `dedupedRequests/status` visibility and an unhandled rejection risk in `indexPromise.finally()` cleanup.
+- 2026-06-24: Implemented `dedupedRequests`, `queuedRequests`, and `status` in `getInFlightIndexInfo()`, added timeout timer cleanup, and verified focused IndexCoordinator/Web tests plus build.
+- 2026-06-24: Verification passed: focused IndexCoordinator/Web/package tests, `npm test` (62 tests), `npm run build`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 42ms, health p95 7ms, event-loop responsive 1/1.

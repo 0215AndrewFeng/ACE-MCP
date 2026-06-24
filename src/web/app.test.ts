@@ -57,7 +57,15 @@ test("health does not wait for per-project SQLite stats", async () => {
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,
     indexCoordinator: {
-      getInFlightIndexInfo: () => [{ ageMs: 12_000, projectRootPath: "/repo", queued: 1 }],
+      getInFlightIndexInfo: () => [
+        {
+          dedupedRequests: 3,
+          elapsedMs: 12_000,
+          projectRootPath: "/repo",
+          queuedRequests: 1,
+          status: "running",
+        },
+      ],
       isWatching: () => true,
     } as never,
     llmClient: {} as never,
@@ -102,6 +110,9 @@ test("health does not wait for per-project SQLite stats", async () => {
     assert.equal(body.status, "ok");
     assert.equal(body.projects.total, 1);
     assert.equal(body.projects.ready, 1);
+    assert.equal(body.indexing[0].dedupedRequests, 3);
+    assert.equal(body.indexing[0].queuedRequests, 1);
+    assert.equal(body.indexing[0].status, "running");
     assert.ok(elapsedMs < 100, `health took ${elapsedMs}ms`);
   } finally {
     await app.close();
