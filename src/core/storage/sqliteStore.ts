@@ -46,6 +46,7 @@ export class SQLiteStore {
 
   public constructor(private readonly databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
+    this.configureConnection();
     // HNSW cache directory next to database
     this.vectorStore = new VectorCacheStore(
       this.db,
@@ -62,6 +63,20 @@ export class SQLiteStore {
 
   public getDatabasePath(): string {
     return this.databasePath;
+  }
+
+  private configureConnection(): void {
+    // Connection-level PRAGMAs must apply to both the main store and read-only search worker connections.
+    this.db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA foreign_keys = ON;
+      PRAGMA cache_size = -128000;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA temp_store = MEMORY;
+      PRAGMA mmap_size = 268435456;
+      PRAGMA busy_timeout = 30000;
+      PRAGMA wal_autocheckpoint = 10000;
+    `);
   }
 
   private ensureColumn(tableName: string, columnName: string, definition: string): void {
@@ -256,18 +271,6 @@ export class SQLiteStore {
   }
 
   public initialize(): void {
-    // v4.3.1: Optimized SQLite PRAGMA settings for better performance
-    this.db.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA foreign_keys = ON;
-      PRAGMA cache_size = -128000;
-      PRAGMA synchronous = NORMAL;
-      PRAGMA temp_store = MEMORY;
-      PRAGMA mmap_size = 268435456;
-      PRAGMA busy_timeout = 30000;
-      PRAGMA wal_autocheckpoint = 10000;
-    `);
-
     this.db.exec(`
 
       CREATE TABLE IF NOT EXISTS project (

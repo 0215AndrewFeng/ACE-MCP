@@ -1,7 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import Database from "better-sqlite3";
 
 import { createTestProjectEnvironment } from "../../test/helpers.js";
+import { Logger } from "../common/logger.js";
+import { SQLiteStore } from "./sqliteStore.js";
+
+test("SQLiteStore constructor applies connection pragmas used by search worker connections", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-sqlite-pragmas-"));
+  const databasePath = path.join(tempDir, "index.db");
+
+  try {
+    const logger = new Logger(path.join(tempDir, "ace-mcp.log"), "error");
+    const store = new SQLiteStore(databasePath, logger);
+    const db = (store as unknown as { db: Database.Database }).db;
+    const busyTimeout = db.pragma("busy_timeout", { simple: true }) as number;
+    assert.equal(busyTimeout, 30000);
+  } finally {
+    await rm(tempDir, { force: true, recursive: true });
+  }
+});
 
 test("SQLiteStore records indexed files, chunks, symbols, and latest index metadata", async () => {
   const env = await createTestProjectEnvironment({

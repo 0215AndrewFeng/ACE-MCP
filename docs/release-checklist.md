@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.7.0
+## v4.7.1
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -26,27 +26,29 @@ npm run release:pack
 npm run release:win
 ```
 
-5. 运行安装包 smoke test：
+5. 运行安装包 smoke test 与 benchmark smoke：
 
 ```bash
 npm run release:smoke
+npm run release:benchmark
 ```
 
 `release:smoke` 会临时全局安装当前 tgz，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web` 与 `/health`。
+`release:benchmark` 会启动隔离临时 Web 服务，索引小项目并输出 search/health p95 与事件循环响应性。
 
 6. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.7.0.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs)"
-unzip -l release/ace-mcp-v4.7.0-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md"
+tar -tf ace-mcp-4.7.1.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs)"
+unzip -l release/ace-mcp-v4.7.1-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs"
 ```
 
 7. 提交并打 tag：
 
 ```bash
 git add .
-git commit -m "chore: release v4.7.0 sqlite search worker"
-git tag -a v4.7.0 -m "v4.7.0"
+git commit -m "chore: release v4.7.1 benchmark tooling"
+git tag -a v4.7.1 -m "v4.7.1"
 git push origin master
-git push origin v4.7.0
+git push origin v4.7.1
 ```

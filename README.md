@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.0`
+当前版本：`v4.7.1`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -80,23 +80,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.0.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.1.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.0.tgz
+npm install -g ./ace-mcp-4.7.1.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.0.tgz
+npm install -g .\ace-mcp-4.7.1.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.0-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.1-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -157,7 +157,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.0.tgz
+npm install -g ./ace-mcp-4.7.1.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -175,6 +175,14 @@ npm run release:smoke
 ```
 
 `release:smoke` 会把当前 tgz 安装到临时目录，验证 `ace-mcp --version`、`ace-mcp --doctor` 和 `ace-mcp-web` 的 `/health`。
+
+搜索 benchmark smoke：
+
+```bash
+npm run release:benchmark
+```
+
+`release:benchmark` 会启动隔离的临时 Web 服务，索引一个小项目并输出 search/health p95 与事件循环响应性。
 
 ## 本地运行
 
@@ -456,7 +464,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.0（当前版本）
+### v4.7.1（当前版本）
+
+- **搜索 benchmark 工具**：新增 `npm run benchmark:search`，可对已索引项目输出 search p95、health p95 和事件循环响应性；`npm run release:benchmark` 提供隔离 smoke，当前 release check 结果为 resultCount 1、search p95 78ms、health p95 12ms、event-loop responsive 1/1
+- **SQLite 连接稳定性**：SQLite store 构造阶段统一设置 WAL、`busy_timeout=30000`、`synchronous=NORMAL` 等连接级 PRAGMA，搜索 worker 的独立连接也会应用同样的锁等待策略，降低并发索引/搜索时 `database is locked` 的概率
+- **发布诊断增强**：benchmark smoke 隔离 HOME、关闭一次性服务的 auto-watch，并在失败时输出子进程 stdout/stderr 与 `.ace-mcp/log`，便于定位 release 阶段崩溃
+
+### v4.7.0
 
 - **SQLite 搜索 worker**：`search_context` 普通/结构化查询中的 lexical、semantic FTS、unicode substring、symbol、path 和文件预览读取改由独立 SQLite 搜索 worker 执行，避免 `better-sqlite3` 同步大查询占住 Web/MCP 主事件循环
 - **源码测试兼容**：dist 使用 `worker_thread`，源码/dev/test 运行时使用 `node --import tsx` IPC 子进程执行同一 worker 入口，保证开发环境和发布包都走异步搜索读路径

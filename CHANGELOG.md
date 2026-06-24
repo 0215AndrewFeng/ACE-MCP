@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.1] - 2026-06-24
+
+### Benchmark tooling + SQLite lock stabilization
+
+- 新增 `scripts/benchmark-search.mjs`、`npm run benchmark:search` 与 `npm run release:benchmark`：支持 `--project`、`--query`、`--iterations`、`--concurrency`、`--timeout-ms`、`--json` 和 `--smoke`，输出 search p95、health p95 与事件循环响应性。
+- `release:check` 纳入 benchmark smoke；smoke 会启动隔离 HOME 的临时 Web 服务、索引小项目并跑一次 search/health 并发探针。当前 release check 结果：resultCount 1、search p95 78ms、health p95 12ms、event-loop responsive 1/1。
+- SQLite store 构造阶段统一应用 WAL、`busy_timeout=30000`、`synchronous=NORMAL`、`cache_size`、`mmap_size` 等连接级 PRAGMA，确保搜索 worker 的独立 SQLite 连接也具备同样的锁等待策略。
+- benchmark smoke 失败时会输出子进程 stdout/stderr 和 `.ace-mcp/log`；一次性 smoke 服务默认关闭 auto-watch，避免临时环境文件监听触发 `EMFILE` 干扰发布验证。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.1。
+
 ## [4.7.0] - 2026-06-24
 
 ### SQLite 搜索 worker — 避免 better-sqlite3 阻塞主事件循环
