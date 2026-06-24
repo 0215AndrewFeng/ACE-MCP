@@ -62,3 +62,33 @@ Add repeatable benchmark tooling that quantifies search latency and event-loop r
 - 2026-06-24: Fixed benchmark smoke by isolating HOME, surfacing child logs, disabling auto-watch during the one-shot smoke server, and requiring a non-empty search result. Full `npm run release:check` passed with benchmark resultCount 1, search p95 78ms, health p95 12ms, and event-loop responsive 1/1.
 - 2026-06-24: Version/docs updated to v4.7.1. Verification passed: focused package manifest + SQLite store tests, `npm test` (60 tests), `npm run build`, `npm run release:benchmark`, full `npm run release:check`, and `node dist/index.js --version` returned `4.7.1`.
 - 2026-06-24: Committed `d769197`, tagged `v4.7.1`, pushed `master` and `v4.7.1` to Gitee, replaced the local 8787 process, and verified `/health` returns version `4.7.1`.
+
+# v4.7.2 Health Responsiveness
+
+Author: feng.ling
+
+## Goal
+
+Keep `/health` responsive while background indexing or SQLite writes are active, so the long-lived Web service remains observable even during heavy local project churn.
+
+## Plan
+
+- [x] Inspect current health/meta route dependencies and identify synchronous SQLite reads.
+- [x] Write a failing regression test that simulates slow project stats and requires `/health` to return quickly.
+- [x] Move `/health` to cached or in-memory runtime/index snapshots instead of blocking storage reads.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.7.2.
+- [x] Run focused tests, `npm test`, `npm run build`, `npm run release:check`, commit, tag, push, and replace the local 8787 process.
+
+## Validation Plan
+
+- Focused Web app regression test for `/health` responsiveness under slow stats reads.
+- Full `npm test`.
+- TypeScript build.
+- Full `npm run release:check`.
+
+## Comments
+
+- 2026-06-24: Started v4.7.2 after v4.7.1 release. Trigger: local 8787 was running v4.7.1, but `/health` still timed out while background indexing was active.
+- 2026-06-24: RED test added in `src/web/app.test.ts`; current `/health` waited for simulated slow `getProjectStats` and took 252ms.
+- 2026-06-24: `/health` now avoids per-project `getProjectStats`, keeps lightweight runtime/project/in-flight fields, and focused test passes in about 8ms.
+- 2026-06-24: Verification passed: focused Web/package tests, `npm test` (61 tests), `npm run build`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 43ms, health p95 6ms, event-loop responsive 1/1.

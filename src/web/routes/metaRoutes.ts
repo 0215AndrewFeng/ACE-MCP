@@ -14,29 +14,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const staticPath = path.join(__dirname, "..", "static");
 
 export function registerMetaRoutes(app: Express, dependencies: WebAppDependencies): void {
-  // Health check - v4.3.6: Enhanced with project and index stats
+  // Health check - keep this path free of per-project SQLite stats reads.
   app.get("/health", (_req: Request, res: Response) => {
     try {
       const projects = dependencies.store.listProjects();
       const readyProjects = projects.filter(p => p.status === "ready");
-
-      // Calculate aggregate stats
-      let totalFiles = 0;
-      let totalChunks = 0;
-      let totalSymbols = 0;
-      let latestIndexAt: string | null = null;
-
-      for (const project of projects) {
-        const stats = dependencies.store.getProjectStats(project.projectRootPath);
-        if (stats) {
-          totalFiles += stats.fileCount;
-          totalChunks += stats.chunkCount;
-          totalSymbols += stats.symbolCount;
-          if (stats.lastIndexAt && (!latestIndexAt || stats.lastIndexAt > latestIndexAt)) {
-            latestIndexAt = stats.lastIndexAt;
-          }
-        }
-      }
+      const latestIndexAt = projects.reduce<string | null>(
+        (latest, project) => project.lastIndexAt && (!latest || project.lastIndexAt > latest) ? project.lastIndexAt : latest,
+        null,
+      );
 
       res.json({
         status: "ok",
@@ -47,9 +33,9 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
           ready: readyProjects.length,
         },
         index: {
-          totalFiles,
-          totalChunks,
-          totalSymbols,
+          totalFiles: null,
+          totalChunks: null,
+          totalSymbols: null,
           latestIndexAt,
         },
         indexing: dependencies.indexCoordinator.getInFlightIndexInfo(),

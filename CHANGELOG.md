@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.2] - 2026-06-24
+
+### Health responsiveness under background indexing
+
+- `/health` 改为轻量健康检查，不再遍历项目并逐个调用 `getProjectStats` 做同步 SQLite 统计，避免后台索引、写锁或大库统计期间健康检查被拖慢到超时。
+- 健康检查仍返回 runtime、watch 状态、项目数量、in-flight indexing、向量配置，并从 `listProjects()` 的轻量字段推导 `latestIndexAt`；深度 file/chunk/symbol 统计继续留在项目详情接口。
+- 新增 Web 回归测试模拟慢速 per-project SQLite stats，验证 `/health` 不等待该路径；focused 测试从 252ms 降到约 8ms。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.2。
+
 ## [4.7.1] - 2026-06-24
 
 ### Benchmark tooling + SQLite lock stabilization
