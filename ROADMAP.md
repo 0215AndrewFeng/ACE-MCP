@@ -16,7 +16,7 @@
 
 8. ✅ **vectorCache 内存控制**：HNSW 可用时释放 vectors 数组，暴力搜索时从 SQLite 懒加载（v4.5.4）
 9. ✅ **HNSW 二进制序列化**：JSON 替换为紧凑二进制格式（Float32 + 变长 ID），体积缩小约 5 倍；向后兼容旧 JSON 格式（v4.5.5）
-10. **better-sqlite3 阻塞事件循环**：同步查询阻塞所有并发请求，大结果集应移 worker_thread 或分页
+10. ✅ **better-sqlite3 阻塞事件循环**：普通/结构化搜索中的 lexical、semantic FTS、unicode substring、symbol、path 与文件预览读取移到 SQLite 搜索 worker；dist 用 `worker_thread`，源码/dev/test 用 `node --import tsx` IPC 子进程；新增事件循环响应性回归测试（v4.7.0）
 11. ✅ **symbol_usage 组合索引**：添加双列组合索引加速 findCallGraph/findResolvedReferences（v4.5.3）
 12. ✅ **HNSW 构建不阻塞**：addBatchAsync 每 500 节点 await setImmediate 让出事件循环（v4.5.6）
 13. ✅ **多源分数归一化**：mergeResults 合并前对每个源 min-max 归一化至 [0,1]，消除量级差异（v4.5.5）

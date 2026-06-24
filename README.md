@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.6.9`
+当前版本：`v4.7.0`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -80,23 +80,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.6.9.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.0.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.6.9.tgz
+npm install -g ./ace-mcp-4.7.0.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.6.9.tgz
+npm install -g .\ace-mcp-4.7.0.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.6.9-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.0-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -157,7 +157,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.6.9.tgz
+npm install -g ./ace-mcp-4.7.0.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -456,7 +456,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.6.9（当前版本）
+### v4.7.0（当前版本）
+
+- **SQLite 搜索 worker**：`search_context` 普通/结构化查询中的 lexical、semantic FTS、unicode substring、symbol、path 和文件预览读取改由独立 SQLite 搜索 worker 执行，避免 `better-sqlite3` 同步大查询占住 Web/MCP 主事件循环
+- **源码测试兼容**：dist 使用 `worker_thread`，源码/dev/test 运行时使用 `node --import tsx` IPC 子进程执行同一 worker 入口，保证开发环境和发布包都走异步搜索读路径
+- **并发回归测试**：新增 `searchServiceConcurrency.test.ts`，证明 SQLite 搜索 pending 时 `setTimeout(0)` 能先于搜索 Promise 完成被调度
+
+### v4.6.9
 
 - **安装自检（`--doctor`）**：新增本地健康检查，覆盖 Node/npm、`better-sqlite3`、SQLite FTS5、数据/日志/配置目录写权限、Web 端口占用与 LLM/Embedding 配置，输出明确修复建议
 - **安装包 smoke test**：新增 `npm run release:smoke`，从当前 tgz 安装到临时目录，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web` 与 `/health`

@@ -44,7 +44,7 @@ export class SQLiteStore {
   private readonly db: Database.Database;
   private readonly vectorStore: VectorCacheStore;
 
-  public constructor(databasePath: string, private readonly logger: Logger) {
+  public constructor(private readonly databasePath: string, private readonly logger: Logger) {
     this.db = new Database(databasePath);
     // HNSW cache directory next to database
     this.vectorStore = new VectorCacheStore(
@@ -58,6 +58,10 @@ export class SQLiteStore {
   /** Allow external configuration of vector cache size */
   public setVectorCacheMaxProjects(max: number): void {
     this.vectorStore.setVectorCacheMaxProjects(max);
+  }
+
+  public getDatabasePath(): string {
+    return this.databasePath;
   }
 
   private ensureColumn(tableName: string, columnName: string, definition: string): void {

@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.6.9
+## v4.7.0
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -37,16 +37,16 @@ npm run release:smoke
 6. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.6.9.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs)"
-unzip -l release/ace-mcp-v4.6.9-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md"
+tar -tf ace-mcp-4.7.0.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs)"
+unzip -l release/ace-mcp-v4.7.0-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md"
 ```
 
 7. 提交并打 tag：
 
 ```bash
 git add .
-git commit -m "chore: release v4.6.9 install diagnostics"
-git tag -a v4.6.9 -m "v4.6.9"
+git commit -m "chore: release v4.7.0 sqlite search worker"
+git tag -a v4.7.0 -m "v4.7.0"
 git push origin master
-git push origin v4.6.9
+git push origin v4.7.0
 ```

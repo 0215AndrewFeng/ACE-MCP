@@ -85,15 +85,17 @@ export async function createTestProjectEnvironment(files: Record<string, string>
   const store = new SQLiteStore(settings.databasePath, logger);
   store.initialize();
   const provider = embeddingProvider ?? createEmbeddingProvider(settings);
+  const searchService = new SearchService(store, logger, settings, provider);
 
   return {
     cleanup: async () => {
+      await searchService.close();
       await rm(tempDir, { force: true, recursive: true });
     },
     embeddingProvider: provider,
     indexCoordinator: new IndexCoordinator(settings, store, logger, provider),
     projectRootPath,
-    searchService: new SearchService(store, logger, settings, provider),
+    searchService,
     settings,
     store,
     tempDir,

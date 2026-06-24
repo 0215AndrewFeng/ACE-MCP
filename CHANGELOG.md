@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.0] - 2026-06-24
+
+### SQLite 搜索 worker — 避免 better-sqlite3 阻塞主事件循环
+
+- 新增 `SQLiteSearchWorkerClient` 与 `sqliteSearchWorker`：普通/结构化搜索中的 lexical、semantic FTS、unicode substring、symbol、path 和文件预览读取改为通过独立 SQLite 搜索 worker 执行，主 Web/MCP 事件循环只等待异步消息，不再被这些 `better-sqlite3` 同步读查询占住。
+- dist 运行时使用 `worker_thread` 打开独立 SQLite 连接；源码/dev/test 运行时使用 `node --import tsx` IPC 子进程执行同一 worker 入口，规避 Node 原生 TS strip 对参数属性等语法的限制。
+- `SearchService` 的 identifier boost 与结构化查询 fallback 同步切到 worker 读路径；向量搜索仍保留主进程内存/HNSW 缓存路径，避免跨线程复制大向量。
+- 新增 `searchServiceConcurrency.test.ts`，先复现搜索 Promise 在 `setTimeout(0)` 前完成的问题，再验证 worker 化后 SQLite 搜索 pending 时事件循环可继续调度。
+- 版本号、README、Windows README、release checklist 与发布契约测试更新到 v4.7.0。
+
 ## [4.6.9] - 2026-06-23
 
 ### 安装自检 + 发布 smoke test

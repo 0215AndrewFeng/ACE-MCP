@@ -36,6 +36,7 @@ import { readFileSnippet } from "../project/fileSnippet.js";
 import { analyzeQuery, buildFtsQuery } from "./queryAnalyzer.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
+import { SQLiteSearchWorkerClient } from "../storage/sqliteSearchWorkerClient.js";
 import { collectPositiveStructuredTerms, parseStructuredQuery, type StructuredQueryTerm } from "./structuredQuery.js";
 import {
   SEARCH_FANOUT_LIMIT,
@@ -78,6 +79,7 @@ interface SearchCacheEntry {
 export class SearchService {
   /** Nested cache: projectId -> (cacheKey -> entry) for efficient per-project eviction */
   private readonly searchCache = new Map<string, Map<string, SearchCacheEntry>>();
+  private readonly sqliteSearchWorker: SQLiteSearchWorkerClient;
   private searchCacheSize = 0;
 
   private get cacheTtlMs(): number {
@@ -93,7 +95,16 @@ export class SearchService {
     private readonly logger: Logger,
     private readonly settings: Settings,
     private readonly embeddingProvider: EmbeddingProvider,
-  ) {}
+  ) {
+    this.sqliteSearchWorker = new SQLiteSearchWorkerClient(
+      {
+        databasePath: this.store.getDatabasePath(),
+        logFilePath: this.settings.logFilePath,
+        logLevel: this.settings.logLevel,
+      },
+      this.logger,
+    );
+  }
 
   private buildCacheKey(
     projectId: string,
@@ -175,6 +186,10 @@ export class SearchService {
 
     this.searchCache.clear();
     this.searchCacheSize = 0;
+  }
+
+  public async close(): Promise<void> {
+    await this.sqliteSearchWorker.close();
   }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
@@ -346,17 +361,14 @@ export class SearchService {
       runPhase(
         "lexical",
         lexicalEnabled,
-        () => this.store.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
+        () => this.sqliteSearchWorker.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
         analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
         budget.ftsMs,
       ),
       runPhase(
         "semantic-fts",
         semanticFtsEnabled,
-        () => {
-          this.store.ensureSemanticIndex(project.project_id);
-          return this.store.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters);
-        },
+        () => this.sqliteSearchWorker.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters),
         analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
         budget.ftsMs,
       ),
@@ -364,7 +376,7 @@ export class SearchService {
         "unicode-substring",
         unicodeEnabled,
         () =>
-          this.store.searchByTextSubstrings(
+          this.sqliteSearchWorker.searchByTextSubstrings(
             project.project_id,
             buildExpandedUnicodeTokens(analysis),
             fanoutLimit,
@@ -376,14 +388,14 @@ export class SearchService {
       runPhase(
         "symbol",
         symbolEnabled,
-        () => this.store.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        () => this.sqliteSearchWorker.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
         "mode-disabled",
         budget.symbolMs,
       ),
       runPhase(
         "path",
         pathEnabled,
-        () => this.store.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
+        () => this.sqliteSearchWorker.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
         analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
         budget.symbolMs,
       ),
@@ -466,7 +478,7 @@ export class SearchService {
       try {
         const idFtsQuery = buildFtsQuery(analysis.identifiers, false);
         if (idFtsQuery) {
-          const idResults = this.store.searchByText(
+          const idResults = await this.sqliteSearchWorker.searchByText(
             project.project_id, idFtsQuery, topK * 3, normalizedFilters,
           );
           if (idResults.length > 0) {
@@ -601,12 +613,12 @@ export class SearchService {
         : analysis.tokens.length > 0
           ? analysis.tokens
           : [normalizeComparablePath(term.value)];
-      return this.store.searchByPath(projectId, tokens, limit, filters);
+      return this.sqliteSearchWorker.searchByPath(projectId, tokens, limit, filters);
     }
 
     if (term.field === "content") {
       if (term.phrase) {
-        return this.store.searchByTextSubstrings(projectId, [term.value], limit, filters);
+        return this.sqliteSearchWorker.searchByTextSubstrings(projectId, [term.value], limit, filters);
       }
       return (await this.searchPlainQuery(projectRootPath, term.value, "lexical", limit, 0, filters, "metadata")).results;
     }
@@ -693,7 +705,7 @@ export class SearchService {
     );
 
     if (mergedResults.length === 0 && matchedFiles.size > 0) {
-      mergedResults = this.store.getFilePreviewResults(project.project_id, [...matchedFiles].slice(0, fanoutLimit));
+      mergedResults = await this.sqliteSearchWorker.getFilePreviewResults(project.project_id, [...matchedFiles].slice(0, fanoutLimit));
       notes.push("Structured query matched files through boolean filtering; returning file previews because no positive clause produced direct snippets.");
     }
 
