@@ -45,7 +45,7 @@ Add repeatable benchmark tooling that quantifies search latency and event-loop r
 - [x] Stabilize benchmark smoke isolation and surface child-process logs on failures.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.7.1.
 - [x] Run focused tests, `npm test`, `npm run build`, benchmark smoke, and `npm run release:check`.
-- [ ] Commit, tag, push, and replace the local 8787 process.
+- [x] Commit, tag, push, and replace the local 8787 process.
 
 ## Validation Plan
 
@@ -61,3 +61,4 @@ Add repeatable benchmark tooling that quantifies search latency and event-loop r
 - 2026-06-24: During benchmark smoke, the existing 4.7.0 local service exposed SQLite lock failures and health timeouts. Expanded v4.7.1 scope to include worker connection busy-timeout/WAL pragmas plus smoke isolation diagnostics.
 - 2026-06-24: Fixed benchmark smoke by isolating HOME, surfacing child logs, disabling auto-watch during the one-shot smoke server, and requiring a non-empty search result. Full `npm run release:check` passed with benchmark resultCount 1, search p95 78ms, health p95 12ms, and event-loop responsive 1/1.
 - 2026-06-24: Version/docs updated to v4.7.1. Verification passed: focused package manifest + SQLite store tests, `npm test` (60 tests), `npm run build`, `npm run release:benchmark`, full `npm run release:check`, and `node dist/index.js --version` returned `4.7.1`.
+- 2026-06-24: Committed `d769197`, tagged `v4.7.1`, pushed `master` and `v4.7.1` to Gitee, replaced the local 8787 process, and verified `/health` returns version `4.7.1`.
