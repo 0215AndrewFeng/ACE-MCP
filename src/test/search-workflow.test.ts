@@ -148,3 +148,82 @@ test("markdown headings are searchable section definitions and fenced code ident
     await env.cleanup();
   }
 });
+
+test("vue single-file component script participates in javascript call graph resolution", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/Checkout.vue": [
+      "<template>",
+      "  <button @click=\"checkout\">Checkout</button>",
+      "</template>",
+      "",
+      "<script setup lang=\"ts\">",
+      "import { discountService } from './discounts';",
+      "",
+      "function checkout(orderId: string) {",
+      "  return discountService.applyDiscount(orderId);",
+      "}",
+      "</script>",
+      "",
+    ].join("\n"),
+    "src/discounts.ts": [
+      "export class DiscountService {",
+      "  applyDiscount(orderId: string) {",
+      "    return `discount ${orderId}`;",
+      "  }",
+      "}",
+      "",
+      "export const discountService = new DiscountService();",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "DiscountService.applyDiscount", 5);
+    const vueCaller = callers.results.find((result) => result.filePath === "src/Checkout.vue");
+    assert.equal(vueCaller?.ownerSymbol, "checkout");
+    assert.equal(vueCaller?.line, 9);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("svelte single-file component script participates in javascript call graph resolution", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/LedgerPanel.svelte": [
+      "<script lang=\"ts\">",
+      "import { Ledger } from './ledger';",
+      "",
+      "export function submit(amount: number) {",
+      "  const ledger = new Ledger();",
+      "  return ledger.post(amount);",
+      "}",
+      "</script>",
+      "",
+      "<button>Submit</button>",
+      "",
+    ].join("\n"),
+    "src/ledger.ts": [
+      "export class Ledger {",
+      "  post(amount: number) {",
+      "    return amount;",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "Ledger.post", 5);
+    const svelteCaller = callers.results.find((result) => result.filePath === "src/LedgerPanel.svelte");
+    assert.equal(svelteCaller?.ownerSymbol, "submit");
+    assert.equal(svelteCaller?.line, 6);
+  } finally {
+    await env.cleanup();
+  }
+});

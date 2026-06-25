@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.6] - 2026-06-25
+
+### Vue/Svelte SFC script extraction
+
+- JavaScript adapter 支持 `.vue` / `.svelte`：仅保留 `<script>` / `<script setup>` 块交给现有 TS/JS AST 分析，避免 template/style 中看起来像代码的文本被误索引。
+- SFC 脚本提取使用等长虚拟源码，symbols、imports、usages 的行号保持为原始组件文件行号，源码跳转和调用图定位不偏移。
+- 默认 `textExtensions` 与测试环境加入 `.vue` / `.svelte`，SFC 文件会被收集为 `javascript` 语言文件，继续复用既有 JS/TS resolver、import alias、导出实例类型传播和调用图逻辑。
+- 新增 JavaScript adapter 单测和端到端 workflow 测试，覆盖 Vue `<script setup lang="ts">`、Svelte `<script lang="ts">`、style/template 噪音隔离、跨文件 caller 解析。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.6。
+
 ## [4.7.5] - 2026-06-25
 
 ### Markdown symbol extraction for docs/RAG recall

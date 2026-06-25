@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.5`
+当前版本：`v4.7.6`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -18,7 +18,7 @@
 - 语义召回（本地语义词扩展 + 远程 Embedding API 支持）
 - 懒加载向量索引与项目级向量缓存
 - 结构化查询语言：`AND` / `OR` / `NOT` + `symbol:` / `path:` / `content:`
-- JavaScript/TypeScript AST 级分析，Java / Python / .NET 增强轻量符号、import、usage 抽取
+- JavaScript/TypeScript AST 级分析，支持 `.vue` / `.svelte` 单文件组件 `<script>` 脚本块索引，Java / Python / .NET 增强轻量符号、import、usage 抽取
 - Markdown 标题作为 `section` 符号索引，fenced code 示例中的标识符作为 usage 索引，提升文档/RAG 召回
 - 语言级 definition/reference 解析、跨文件引用精度提升与多跳调用关系图
 - 搜索质量指标：`passRate` / `top1Recall` / `top5Recall` / `meanReciprocalRank`
@@ -81,23 +81,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.5.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.6.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.5.tgz
+npm install -g ./ace-mcp-4.7.6.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.5.tgz
+npm install -g .\ace-mcp-4.7.6.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.5-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.6-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -158,7 +158,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.5.tgz
+npm install -g ./ace-mcp-4.7.6.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -365,7 +365,7 @@ enableVectorSearch = true
 maxFileSizeKb = 1024
 maxLinesPerChunk = 220
 logLevel = "info"
-textExtensions = [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py"]
+textExtensions = [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"]
 excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "obj", "__pycache__", ".venv"]
 vectorIndexingMode = "lazy"
 
@@ -465,7 +465,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.5（当前版本）
+### v4.7.6（当前版本）
+
+- **Vue/Svelte SFC 脚本索引**：`.vue` / `.svelte` 文件会被收集为 JavaScript 语言文件，仅抽取 `<script>` / `<script setup>` 内容交给现有 TS/JS AST adapter 分析
+- **原始行号映射**：SFC 脚本分析使用等长虚拟源码，symbols/imports/usages 的行号仍指向原始组件文件，源码跳转和调用图位置不偏移
+- **调用图联通**：SFC 内 import、实例化和方法调用参与既有 JS/TS resolver，支持从普通 `.ts` 定义反查 Vue/Svelte 组件 caller
+
+### v4.7.5
 
 - **Markdown section 符号**：`#`~`######` 标题会被索引为 `section`，支持 `symbol:` 搜索和 `find_definition` 查文档章节，层级标题保留父级和文档路径信息
 - **文档示例反向引用**：fenced code block 内的代码标识符会作为 `usage` 写入，`find_references` 查询代码符号时能召回引用该符号的 Markdown 示例

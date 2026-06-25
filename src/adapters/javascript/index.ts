@@ -15,6 +15,33 @@ function buildCanonicalName(modulePath: string, fullName: string): string {
   return modulePath.length > 0 ? `${modulePath}#${fullName}` : fullName;
 }
 
+function isSingleFileComponentPath(relativePath: string): boolean {
+  return /\.(?:vue|svelte)$/i.test(relativePath);
+}
+
+function extractScriptOnlyContent(content: string): string {
+  const output: string[] = content.split("").map((character) => (character === "\n" || character === "\r" ? character : " "));
+  const scriptPattern = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
+
+  for (const match of content.matchAll(scriptPattern)) {
+    const fullMatch = match[0];
+    const matchStart = match.index ?? 0;
+    const openTag = fullMatch.match(/^<script\b[^>]*>/i)?.[0];
+    const closeTag = fullMatch.match(/<\/script\s*>$/i)?.[0];
+    if (!openTag || !closeTag) {
+      continue;
+    }
+
+    const scriptStart = matchStart + openTag.length;
+    const scriptEnd = matchStart + fullMatch.length - closeTag.length;
+    for (let index = scriptStart; index < scriptEnd; index += 1) {
+      output[index] = content[index] ?? " ";
+    }
+  }
+
+  return output.join("");
+}
+
 function getLineNumber(sourceFile: ts.SourceFile, node: ts.Node): number {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
 }
@@ -141,6 +168,7 @@ function isExportedVariableDeclaration(node: ts.VariableDeclaration): boolean {
 }
 
 function analyzeSourceWithAst(fileId: string, relativePath: string, content: string): SourceAnalysis {
+  const sourceContent = isSingleFileComponentPath(relativePath) ? extractScriptOnlyContent(content) : content;
   const scriptKind = relativePath.endsWith(".tsx")
     ? ts.ScriptKind.TSX
     : relativePath.endsWith(".jsx")
@@ -148,7 +176,7 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
       : relativePath.endsWith(".js") || relativePath.endsWith(".mjs") || relativePath.endsWith(".cjs")
         ? ts.ScriptKind.JS
         : ts.ScriptKind.TS;
-  const sourceFile = ts.createSourceFile(relativePath, content, ts.ScriptTarget.Latest, true, scriptKind);
+  const sourceFile = ts.createSourceFile(relativePath, sourceContent, ts.ScriptTarget.Latest, true, scriptKind);
   const modulePath = buildModulePath(relativePath);
   const symbols = new Map<string, SymbolInfo>();
   const imports: ImportInfo[] = [];
@@ -538,5 +566,5 @@ export const javascriptAdapter: LanguageAdapter = {
   },
   language: "javascript",
   projectMarkerPatterns: [/^package\.json$/i, /^tsconfig\.json$/i],
-  sourceExtensions: [".js", ".jsx", ".ts", ".tsx"],
+  sourceExtensions: [".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte"],
 };

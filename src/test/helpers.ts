@@ -57,7 +57,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     maxFileSizeKb: 1024,
     maxLinesPerChunk: 80,
     settingsFilePath: path.join(tempDir, "settings.toml"),
-    textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py", ".md"],
+    textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"],
     vectorIndexingMode: "lazy",
     indexFreshness: "always",
     indexFreshnessSeconds: 30,

@@ -40,7 +40,7 @@
 25. ✅ **CJK 单字 token 搜索**：修复 isSymbolLike 误判纯 CJK 单 token 导致 semantic-fts 被关闭（v4.5.6）
 26. ✅ **identifier boost 过滤修复**：二次搜索传 `{}` 绕过语言/路径过滤，已改为传 normalizedFilters（v4.5.3）
 27. ✅ **Markdown 符号提取**：提取标题为 section 符号、代码块标识符为 usage；文档标题可走 symbol/definition 检索，fenced code 示例中的标识符可解析为代码定义的 references（v4.7.5）
-28. **.vue/.svelte 单文件组件**：提取 `<script>` 块内容用 TS 解析器分析
+28. ✅ **.vue/.svelte 单文件组件**：提取 `<script>` / `<script setup>` 块内容用 TS/JS 解析器分析，保留原始 SFC 行号并参与 JS/TS 调用图解析（v4.7.6）
 29. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
 30. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
 31. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）

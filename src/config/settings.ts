@@ -62,7 +62,7 @@ const DEFAULT_PUBLIC_SETTINGS = {
   logLevel: "info",
   maxFileSizeKb: 1024,
   maxLinesPerChunk: 220,
-  textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".cs", ".py", ".md"],
+  textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"],
   vectorIndexingMode: "lazy",
   indexFreshness: "stale",
   indexFreshnessSeconds: 30,

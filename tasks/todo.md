@@ -221,3 +221,38 @@ Finish the v4.7.5 release after the commit/tag push by publishing release assets
 - 2026-06-25: Created Gitee Release `v4.7.5` in browser, attached `ace-mcp-4.7.5.tgz` (`attach_id=2855447`) and `ace-mcp-v4.7.5-win-x64.zip` (`attach_id=2855448`), and confirmed both release download links redirect to Gitee attach files.
 - 2026-06-25: Release edit page confirms the Markdown release notes are saved; Gitee detail page does not render the description in `innerText`, but assets/tag/commit are visible.
 - 2026-06-25: Replaced local `:8787` service from pid `34034` (`4.7.4`) to pid `7153`; `/health` reports version `4.7.5`.
+
+# v4.7.6 Vue/Svelte SFC Script Extraction
+
+Author: feng.ling
+
+## Goal
+
+Index Vue and Svelte single-file components by extracting `<script>` / `<script setup>` blocks, reusing the existing JavaScript/TypeScript adapter, and mapping symbols/usages back to original SFC line numbers.
+
+## Plan
+
+- [x] Review lessons and record the task plan before implementation.
+- [x] Locate JavaScript adapter, language inference, file collection, and workflow test paths.
+- [x] Write failing adapter/workflow tests for Vue and Svelte script extraction.
+- [x] Implement a minimal SFC wrapper around the JS/TS analyzer with line-number offset mapping.
+- [x] Update default/test extensions so `.vue` and `.svelte` are collected.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons.
+
+## Validation Plan
+
+- Focused adapter regression for Vue `<script setup lang="ts">` symbols/usages mapped to original lines.
+- Focused workflow regression proving `.vue` imports resolve and callers/references work.
+- Focused workflow regression for `.svelte` script symbols.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-25: Started v4.7.6 after user approved the SFC plan. Scope is script-only extraction; template deep parsing is intentionally out of scope for this first pass.
+- 2026-06-25: RED confirmed: JavaScript adapter currently can mis-index `function` text in SFC style/template content, and workflow tests do not find `.vue`/`.svelte` callers because those extensions are not collected.
+- 2026-06-25: GREEN confirmed: JavaScript adapter now analyzes only SFC `<script>` blocks while preserving original line numbers, and `.vue`/`.svelte` workflow call graph tests pass.
+- 2026-06-25: Initial full `npm test` passed with 71 tests, but `npm run build` caught a TypeScript narrow-literal array inference issue in the SFC script masking helper. Added `string[]` annotation and reran focused/full tests plus build successfully.
+- 2026-06-25: Final verification passed: focused adapter/workflow tests, package manifest test, `npm test` (71 tests), `npm run build`, `node dist/index.js --version` returning `4.7.6`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, and event-loop responsive 1/1.
