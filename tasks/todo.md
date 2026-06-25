@@ -141,7 +141,7 @@ Resolve JS/TS method calls like `foo.method()` to imported class methods across 
 - [x] Implement the smallest JS/TS-only type propagation change.
 - [x] Run focused tests, full `npm test`, `npm run build`, and full `npm run release:check`.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and lessons.
-- [ ] Commit, tag, push, and replace the local 8787 process if verification passes.
+- [x] Commit, tag, push, and replace the local 8787 process if verification passes.
 
 ## Validation Plan
 
@@ -157,3 +157,4 @@ Resolve JS/TS method calls like `foo.method()` to imported class methods across 
 - 2026-06-24: RED test confirmed `import { discountService }` where `discountService` is `export const discountService = new DiscountService()` did not resolve `discountService.applyDiscount()` to `DiscountService.applyDiscount`; Python variable-type call graph guard stayed green.
 - 2026-06-24: Implemented JS-only exported value type propagation using an internal candidate prefix and JavaScript-only alias resolution priority. Focused workflow test, `npm test` (64 tests), and `npm run build` passed before release docs were updated.
 - 2026-06-24: Final verification passed: focused workflow test, `npm test` (64 tests), `npm run build`, `node dist/index.js --version` returning `4.7.4`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, and event-loop responsive 1/1.
+- 2026-06-25: Committed `0e266ac`, tagged `v4.7.4`, pushed `master` and `v4.7.4` to Gitee, stopped old local pid `7233`, and verified `http://127.0.0.1:8787/health` returns version `4.7.4` on pid `34034`.
