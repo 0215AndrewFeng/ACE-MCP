@@ -191,3 +191,33 @@ Extract Markdown headings as searchable section symbols and identifiers from fen
 - 2026-06-25: GREEN confirmed: Markdown adapter now extracts heading `section` symbols and fenced code `usage` records; focused adapter and search workflow tests pass.
 - 2026-06-25: Build initially caught that `LanguageAdapter.analyzeSource` is optional in the interface, so the new adapter test needed a non-null assertion; reran focused tests afterward.
 - 2026-06-25: Final verification passed: focused Markdown adapter/workflow tests, package manifest test, `npm test` (67 tests), `npm run build`, `node dist/index.js --version` returning `4.7.5`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 40ms, health p95 5ms, and event-loop responsive 1/1.
+
+# v4.7.5 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.5 release after the commit/tag push by publishing release assets, verifying versioned documentation, and replacing the local Web service with v4.7.5.
+
+## Plan
+
+- [x] Commit `f9e8e7c`, create annotated tag `v4.7.5`, and push `master` plus tag to origin.
+- [x] Discover available Gitee release upload mechanism and publish or verify release assets.
+- [x] Confirm release docs point at v4.7.5 artifacts.
+- [x] Replace local `:8787` service with v4.7.5 and verify `/health`.
+- [x] Record final status and any release lessons.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.5^{}` point to `f9e8e7c`.
+- Versioned docs/package metadata reference v4.7.5.
+- Release assets exist: `ace-mcp-4.7.5.tgz` and `release/ace-mcp-v4.7.5-win-x64.zip`.
+- Local `/health` reports version `4.7.5`.
+
+## Comments
+
+- 2026-06-25: User asked to finish v4.7.5 release handoff after commit/tag/push. Starting from pushed commit `f9e8e7c` and existing full `npm run release:check` success.
+- 2026-06-25: Created Gitee Release `v4.7.5` in browser, attached `ace-mcp-4.7.5.tgz` (`attach_id=2855447`) and `ace-mcp-v4.7.5-win-x64.zip` (`attach_id=2855448`), and confirmed both release download links redirect to Gitee attach files.
+- 2026-06-25: Release edit page confirms the Markdown release notes are saved; Gitee detail page does not render the description in `innerText`, but assets/tag/commit are visible.
+- 2026-06-25: Replaced local `:8787` service from pid `34034` (`4.7.4`) to pid `7153`; `/health` reports version `4.7.5`.
