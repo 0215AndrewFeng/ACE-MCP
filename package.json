@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "4.7.4",
+  "version": "4.7.5",
   "private": false,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
@@ -28,7 +28,7 @@
     "release:check": "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark",
     "benchmark:search": "node scripts/benchmark-search.mjs",
     "eval": "node dist/index.js --eval eval-cases/golden.json",
-    "test": "node --import tsx --test src/config/cli.test.ts src/config/doctor.test.ts src/config/packageManifest.test.ts src/core/search/queryAnalyzer.test.ts src/core/search/searchServiceConcurrency.test.ts src/test/search-workflow.test.ts src/web/app.test.ts src/core/storage/sqliteStoreHelpers.test.ts src/core/search/searchScoring.test.ts src/core/search/searchHelpers.test.ts src/core/search/semanticText.test.ts src/core/search/remoteEmbedding.test.ts src/core/llm/qaCache.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/core/storage/vectorCacheStore.test.ts src/core/storage/sqliteStore.test.ts src/core/indexing/sourceDecoder.test.ts src/core/indexing/indexCoordinator.test.ts src/core/search/evalRunner.test.ts"
+    "test": "node --import tsx --test src/config/cli.test.ts src/config/doctor.test.ts src/config/packageManifest.test.ts src/adapters/markdown/index.test.ts src/core/search/queryAnalyzer.test.ts src/core/search/searchServiceConcurrency.test.ts src/test/search-workflow.test.ts src/web/app.test.ts src/core/storage/sqliteStoreHelpers.test.ts src/core/search/searchScoring.test.ts src/core/search/searchHelpers.test.ts src/core/search/semanticText.test.ts src/core/search/remoteEmbedding.test.ts src/core/llm/qaCache.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/core/storage/vectorCacheStore.test.ts src/core/storage/sqliteStore.test.ts src/core/indexing/sourceDecoder.test.ts src/core/indexing/indexCoordinator.test.ts src/core/search/evalRunner.test.ts"
   },
   "engines": {
     "node": ">=18.18.0"

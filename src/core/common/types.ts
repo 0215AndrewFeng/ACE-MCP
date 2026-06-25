@@ -122,7 +122,17 @@ export interface SymbolInfo {
   containerName?: string;
   fileId: string;
   fullName: string;
-  kind: "class" | "constructor" | "enum" | "field" | "function" | "interface" | "method" | "property" | "record";
+  kind:
+    | "class"
+    | "constructor"
+    | "enum"
+    | "field"
+    | "function"
+    | "interface"
+    | "method"
+    | "property"
+    | "record"
+    | "section";
   line: number;
   modulePath?: string;
   name: string;

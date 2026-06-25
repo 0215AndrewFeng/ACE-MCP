@@ -158,3 +158,36 @@ Resolve JS/TS method calls like `foo.method()` to imported class methods across 
 - 2026-06-24: Implemented JS-only exported value type propagation using an internal candidate prefix and JavaScript-only alias resolution priority. Focused workflow test, `npm test` (64 tests), and `npm run build` passed before release docs were updated.
 - 2026-06-24: Final verification passed: focused workflow test, `npm test` (64 tests), `npm run build`, `node dist/index.js --version` returning `4.7.4`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, and event-loop responsive 1/1.
 - 2026-06-25: Committed `0e266ac`, tagged `v4.7.4`, pushed `master` and `v4.7.4` to Gitee, stopped old local pid `7233`, and verified `http://127.0.0.1:8787/health` returns version `4.7.4` on pid `34034`.
+
+# v4.7.5 Markdown Symbol Extraction
+
+Author: feng.ling
+
+## Goal
+
+Extract Markdown headings as searchable section symbols and identifiers from fenced code blocks as symbol usage, improving documentation and RAG recall without perturbing existing code-language behavior.
+
+## Plan
+
+- [x] Review lessons and record the task plan before implementation.
+- [x] Locate Markdown indexing, language detection, symbol extraction, and usage extraction paths.
+- [x] Write failing regression tests for Markdown heading symbols and fenced code-block identifier usages.
+- [x] Implement the smallest Markdown-only extraction change.
+- [x] Run focused tests, `npm test`, `npm run build`, and release validation.
+- [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons.
+
+## Validation Plan
+
+- Focused regression proving Markdown headings are indexed as section symbols.
+- Focused regression proving fenced code identifiers are indexed as usage without creating false headings.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-25: Started v4.7.5 after user selected Markdown symbol extraction over SFC support. Relevant lessons reviewed: keep language-specific resolver changes scoped and guarded; verify full release path before handoff.
+- 2026-06-25: RED confirmed: new Markdown adapter tests failed with empty symbols/usages, and workflow test failed because no Markdown section definition was indexed.
+- 2026-06-25: GREEN confirmed: Markdown adapter now extracts heading `section` symbols and fenced code `usage` records; focused adapter and search workflow tests pass.
+- 2026-06-25: Build initially caught that `LanguageAdapter.analyzeSource` is optional in the interface, so the new adapter test needed a non-null assertion; reran focused tests afterward.
+- 2026-06-25: Final verification passed: focused Markdown adapter/workflow tests, package manifest test, `npm test` (67 tests), `npm run build`, `node dist/index.js --version` returning `4.7.5`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 40ms, health p95 5ms, and event-loop responsive 1/1.

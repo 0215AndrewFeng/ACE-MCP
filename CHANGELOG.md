@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.5] - 2026-06-25
+
+### Markdown symbol extraction for docs/RAG recall
+
+- Markdown adapter 不再是空实现：`#`~`######` 标题会被索引为 `section` 符号，保留层级 `fullName`、父级 `containerName`、文档 `modulePath` 和稳定 canonical section path。
+- fenced code block 内的代码标识符会写入 `symbol_usage`，用于 `find_references` 把代码定义反查到文档示例；dotted 调用只保留一条 usage，并把末尾成员作为候选名，减少重复噪音。
+- fenced code 内的 `#` 文本不会被误识别为 Markdown heading；usage 不绑定 owner symbol，因此不会把文档章节注入调用图 caller 链路。
+- 新增 Markdown adapter 单测和端到端索引/搜索工作流测试，覆盖 section definition 检索与 fenced code reference 解析。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.5。
+
 ## [4.7.4] - 2026-06-24
 
 ### JavaScript/TypeScript exported value type propagation

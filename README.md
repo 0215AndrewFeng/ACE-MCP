@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.4`
+当前版本：`v4.7.5`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -19,6 +19,7 @@
 - 懒加载向量索引与项目级向量缓存
 - 结构化查询语言：`AND` / `OR` / `NOT` + `symbol:` / `path:` / `content:`
 - JavaScript/TypeScript AST 级分析，Java / Python / .NET 增强轻量符号、import、usage 抽取
+- Markdown 标题作为 `section` 符号索引，fenced code 示例中的标识符作为 usage 索引，提升文档/RAG 召回
 - 语言级 definition/reference 解析、跨文件引用精度提升与多跳调用关系图
 - 搜索质量指标：`passRate` / `top1Recall` / `top5Recall` / `meanReciprocalRank`
 
@@ -80,23 +81,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.4.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.5.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.4.tgz
+npm install -g ./ace-mcp-4.7.5.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.4.tgz
+npm install -g .\ace-mcp-4.7.5.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.4-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.5-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -157,7 +158,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.4.tgz
+npm install -g ./ace-mcp-4.7.5.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -464,7 +465,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.4（当前版本）
+### v4.7.5（当前版本）
+
+- **Markdown section 符号**：`#`~`######` 标题会被索引为 `section`，支持 `symbol:` 搜索和 `find_definition` 查文档章节，层级标题保留父级和文档路径信息
+- **文档示例反向引用**：fenced code block 内的代码标识符会作为 `usage` 写入，`find_references` 查询代码符号时能召回引用该符号的 Markdown 示例
+- **噪音控制**：代码块内的 Markdown 样式文本不会被误识别为 heading，dotted 调用只记录一条 usage，且 Markdown usage 不绑定 owner symbol，避免污染调用图 caller
+
+### v4.7.4
 
 - **JS/TS 导出实例类型传播**：`export const service = new Service()` 被其他文件 `import { service }` 后，`service.method()` 现在会优先解析到 `Service.method`，而不是同模块里第一个同名方法
 - **JavaScript 限定的解析增强**：内部导出值类型候选只由 JS/TS AST adapter 产生，SQLite resolve 阶段也只在 `language === "javascript"` 的 import alias 上消费，避免改变 Java、Python、.NET、Markdown 查询路径

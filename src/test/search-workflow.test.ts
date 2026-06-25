@@ -108,3 +108,43 @@ test("python call graph behavior remains scoped to existing variable type infere
     await env.cleanup();
   }
 });
+
+test("markdown headings are searchable section definitions and fenced code identifiers resolve as references", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "docs/refund.md": [
+      "# Refund Guide",
+      "",
+      "## RefundService refundOrder",
+      "",
+      "Use the service directly in examples:",
+      "",
+      "```ts",
+      "const service = new RefundService();",
+      "service.refundOrder('order-1');",
+      "```",
+      "",
+    ].join("\n"),
+    "src/refundService.ts": [
+      "export class RefundService {",
+      "  refundOrder(orderId: string) {",
+      "    return `refund ${orderId}`;",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const definitions = await env.searchService.findDefinitions(env.projectRootPath, "RefundService refundOrder", 5);
+    assert.equal(definitions.results[0]?.filePath, "docs/refund.md");
+    assert.equal(definitions.results[0]?.kind, "section");
+
+    const references = await env.searchService.findReferences(env.projectRootPath, "RefundService.refundOrder", 5);
+    assert.ok(references.results.some((result) => result.filePath === "docs/refund.md"));
+  } finally {
+    await env.cleanup();
+  }
+});
