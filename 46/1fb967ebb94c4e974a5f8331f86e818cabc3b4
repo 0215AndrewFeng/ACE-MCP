@@ -1,0 +1,71 @@
+src/test/search-workflow.test.ts
+  s_c0644275d96e63::t_1d4ab281a9f3bd 193-224
+tasks/lessons.md
+  s_c0644275d96e63::t_ba42215991a160 22
+  s_c0644275d96e63::t_01690c5c6250d0 20-21
+src/version.ts
+  s_c0644275d96e63::t_7f56b1d9756830 2
+CHANGELOG.md
+  s_c0644275d96e63::t_6d0bd494c51ee6 5-15
+scripts/README-WINDOWS.md
+  s_c0644275d96e63::t_0d285dab7f0988 3,15,66,104
+scripts/package-windows.mjs
+  s_c0644275d96e63::t_bc2b9b0175e1ec 66-67
+tasks/todo.md
+  s_c0644275d96e63::t_2b610e07968cdd 292-302,311-325
+  s_c0644275d96e63::t_0a098986bbe240 303-305,307,326-330
+  s_c0644275d96e63::t_4f54aa1b9dad93 332
+  s_c0644275d96e63::t_26eaec545e0a8b 306
+  s_c0644275d96e63::t_c37e5da772fd6b 308
+  s_c0644275d96e63::t_5f3472d693f2d9 310,333
+  s_c0644275d96e63::t_1e73e5cdf12e2c 309,331
+ROADMAP.md
+  s_c0644275d96e63::t_ac7223687350d7 44-48
+src/adapters/javascript/index.test.ts
+  s_c0644275d96e63::t_1d2aedabab3626 57,103,106-115
+  s_c0644275d96e63::t_73864a1f6236e7 50-55,58-102,104-105,116-121,159-208
+  s_c0644275d96e63::t_a3f67f971de357 56
+src/config/packageManifest.test.ts
+  s_c0644275d96e63::t_0d285dab7f0988 24,129
+  s_c0644275d96e63::t_e725116bfd41eb 121,132,140
+  s_c0644275d96e63::t_aa8d855d5fe948 88-89
+README.md
+  s_c0644275d96e63::t_780b38293f3966 21,469-474
+  s_c0644275d96e63::t_0d285dab7f0988 5,84,87,94,100,161,468
+package.json
+  s_c93616a7e880dd::t_3201bd162d7c52 3
+docs/release-checklist.md
+  s_c0644275d96e63::t_0d285dab7f0988 3,42-43,51,53
+  s_c0644275d96e63::t_34924cd68371d9 50
+src/adapters/javascript/index.ts
+  s_c0644275d96e63::t_4f9b401cb5b426 386
+  s_c0644275d96e63::t_d230e5083d0956 22-107,119-132,140-192
+  s_c0644275d96e63::t_d17dcf04ca5e5e 288-295,306,314,333,376
+  s_c0644275d96e63::t_93ba425315c6f9 399,419
+  s_c0644275d96e63::t_85551307016470 268-287,296-305,307-313,315-332,334-375,377-385,387-398,400-418,420-421
+  s_c0644275d96e63::t_be53151e6a78e0 860
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "461fb967ebb94c4e974a5f8331f86e818cabc3b4",
+  "prompts": {},
+  "sessions": {
+    "s_c0644275d96e63": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efd50-49c0-78a2-a035-f8a9c9c864de",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_c93616a7e880dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019efd50-49c0-78a2-a035-f8a9c9c864de",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
