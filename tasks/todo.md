@@ -256,3 +256,36 @@ Index Vue and Svelte single-file components by extracting `<script>` / `<script 
 - 2026-06-25: GREEN confirmed: JavaScript adapter now analyzes only SFC `<script>` blocks while preserving original line numbers, and `.vue`/`.svelte` workflow call graph tests pass.
 - 2026-06-25: Initial full `npm test` passed with 71 tests, but `npm run build` caught a TypeScript narrow-literal array inference issue in the SFC script masking helper. Added `string[]` annotation and reran focused/full tests plus build successfully.
 - 2026-06-25: Final verification passed: focused adapter/workflow tests, package manifest test, `npm test` (71 tests), `npm run build`, `node dist/index.js --version` returning `4.7.6`, and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, and event-loop responsive 1/1.
+
+# v4.7.6 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.6 release after commit/tag/push by publishing release assets, verifying versioned documentation, replacing the local Web service with v4.7.6, and recording a reusable release-handoff rule for future version tasks.
+
+## Plan
+
+- [x] Confirm `origin/master` and annotated tag `v4.7.6` point at the v4.7.6 release commit.
+- [x] Verify v4.7.6 docs/package metadata and release assets are present.
+- [x] Create or verify the Gitee Release `v4.7.6` with both npm and Windows archive assets.
+- [x] Verify release download links redirect successfully.
+- [x] Replace local `:8787` service with v4.7.6 and verify `/health`.
+- [x] Record release results and future-release lesson, then commit and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.6^{}` point to `c6bbc3a`.
+- Versioned docs/package metadata reference v4.7.6.
+- Release assets exist: `ace-mcp-4.7.6.tgz` and `release/ace-mcp-v4.7.6-win-x64.zip`.
+- Gitee download URLs for both assets return a successful redirect chain.
+- Local `/health` reports version `4.7.6`.
+
+## Comments
+
+- 2026-06-26: User asked to finish v4.7.6 release handoff and requested future version tasks include this handoff automatically. Starting from pushed commit `c6bbc3a` and existing full `npm run release:check` success.
+- 2026-06-26: Remote verification passed: `origin/master` and `refs/tags/v4.7.6^{}` point to `c6bbc3a`, local annotated tag object exists, v4.7.6 package/docs references are present, and release assets exist locally.
+- 2026-06-26: Created Gitee Release `v4.7.6` in browser, attached `ace-mcp-4.7.6.tgz` (`attach_id=2857457`) and `ace-mcp-v4.7.6-win-x64.zip` (`attach_id=2857458`), confirmed release detail page shows commit `c6bbc3a`, and confirmed the edit page saved release notes.
+- 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `334627` bytes, Windows zip `532987` bytes.
+- 2026-06-26: Replaced local `:8787` service from v4.7.5 pid `7153`; `/health` now reports version `4.7.6` on pid `7727`.
