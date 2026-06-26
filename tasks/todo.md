@@ -308,7 +308,7 @@ Extract lightweight Vue/Svelte template and markup identifier usages from single
 - [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons for v4.7.7.
 - [x] Run full `npm run release:check` after version/docs updates.
 - [x] Fix Windows zip release contract so checklist-mentioned smoke/benchmark scripts are actually packaged.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff.
 
 ## Validation Plan
 
@@ -331,3 +331,36 @@ Extract lightweight Vue/Svelte template and markup identifier usages from single
 - 2026-06-26: Version/docs updated to v4.7.7. Full `npm run release:check` passed: `npm test` (74 tests), build, tgz pack, Windows zip, release smoke, and benchmark smoke. Benchmark smoke returned resultCount 1, search p95 41ms, health p95 6ms, and event-loop responsive 1/1.
 - 2026-06-26: Manual package content check found a release contract gap: the Windows zip checklist mentioned `benchmark-search.mjs`, but `scripts/package-windows.mjs` did not stage benchmark/smoke release scripts and the broad `rg` pattern did not catch the missing file. Pausing to add a focused packaging contract test and fix the zip contents before commit/tag.
 - 2026-06-26: Added a failing package manifest test for Windows zip release scripts, staged `scripts/smoke-release.mjs` and `scripts/benchmark-search.mjs` into the Windows zip, regenerated the archive, and confirmed both files are present. Reran full `npm run release:check`; final benchmark smoke returned resultCount 1, search p95 40ms, health p95 6ms, and event-loop responsive 1/1.
+- 2026-06-26: Committed `461fb96`, tagged `v4.7.7`, pushed `master` and `v4.7.7`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.7.7.
+
+# v4.7.7 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.7 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.7, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm `origin/master` and annotated tag `v4.7.7` point at the v4.7.7 release commit.
+- [x] Verify v4.7.7 docs/package metadata and release assets are present.
+- [x] Create the Gitee Release `v4.7.7` with npm and Windows archive assets.
+- [x] Verify release download links redirect successfully.
+- [x] Replace local `:8787` service with v4.7.7 and verify `/health`.
+- [x] Record release handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.7^{}` point to `461fb96`.
+- Versioned docs/package metadata reference v4.7.7.
+- Release assets exist: `ace-mcp-4.7.7.tgz` and `release/ace-mcp-v4.7.7-win-x64.zip`.
+- Gitee download URLs for both assets return a successful redirect chain.
+- Local `/health` reports version `4.7.7`.
+
+## Comments
+
+- 2026-06-26: Remote verification passed: `origin/master` and `refs/tags/v4.7.7^{}` point to `461fb96`, local annotated tag object exists, v4.7.7 package/docs references are present, and release assets exist locally.
+- 2026-06-26: Created Gitee Release `v4.7.7` in browser, attached `ace-mcp-4.7.7.tgz` (`attach_id=2857846`) and `ace-mcp-v4.7.7-win-x64.zip` (`attach_id=2857847`), confirmed release detail page shows commit `461fb96`, and confirmed the edit page saved release notes.
+- 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `337577` bytes, Windows zip `544395` bytes.
+- 2026-06-26: Replaced local `:8787` service from v4.7.6 pid `7727`; `/health` now reports version `4.7.7` on pid `34664`.
