@@ -398,7 +398,7 @@ Reduce missed-code risk by allowing larger snippet/context windows where the bac
 - [x] Write failing tests for higher backend limits and front-end maximum shortcut controls.
 - [x] Implement shared limit constants and Web UI max buttons near the relevant controls.
 - [x] Run focused tests, `npm test`, `npm run build`, and update docs/tasks/lessons.
-- [ ] If versioning as v4.7.8, run release validation and release handoff.
+- [x] If versioning as v4.7.8, run release validation and release handoff.
 
 ## Validation Plan
 
@@ -413,3 +413,37 @@ Reduce missed-code risk by allowing larger snippet/context windows where the bac
 - 2026-06-26: RED confirmed: focused request/schema/static tests fail because search context is still capped at 50 and the Web UI lacks max shortcut buttons plus `maxContextTokens` wiring.
 - 2026-06-26: GREEN confirmed: search context line cap is 200, Web static UI has max buttons for search context, file snippet range, QA sources, and QA context tokens, and the QA SSE request now sends `maxContextTokens`. Focused request/schema/static tests pass.
 - 2026-06-26: Validation passed: focused request/schema/static tests; `npm test` (76 tests); `npm run build`; `node dist/index.js --version` returning `4.7.8`; full `npm run release:check`; explicit tgz/Windows zip content checks; dist static checks for max buttons and `maxContextTokens`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, event-loop responsive 1/1.
+- 2026-06-26: Committed `5a86ed1`, tagged `v4.7.8`, pushed `master` and `v4.7.8`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.7.8.
+
+# v4.7.8 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.8 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.8, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm `origin/master` and annotated tag `v4.7.8` point at the v4.7.8 release commit.
+- [x] Verify v4.7.8 docs/package metadata and release assets are present.
+- [x] Create the Gitee Release `v4.7.8` with npm and Windows archive assets.
+- [x] Verify release download links redirect successfully.
+- [x] Replace local `:8787` service with v4.7.8 and verify `/health`.
+- [x] Record release handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.8^{}` point to `5a86ed1`.
+- Versioned docs/package metadata reference v4.7.8.
+- Release assets exist: `ace-mcp-4.7.8.tgz` and `release/ace-mcp-v4.7.8-win-x64.zip`.
+- Gitee download URLs for both assets return a successful redirect chain.
+- Local `/health` reports version `4.7.8`.
+- Local served `/static/index.html` includes the new max shortcut buttons.
+
+## Comments
+
+- 2026-06-26: Remote verification passed: `origin/master` and `refs/tags/v4.7.8^{}` point to `5a86ed1`, local annotated tag object exists, v4.7.8 package/docs references are present, and release assets exist locally.
+- 2026-06-26: Created Gitee Release `v4.7.8` in browser, attached `ace-mcp-4.7.8.tgz` (`attach_id=2858465`) and `ace-mcp-v4.7.8-win-x64.zip` (`attach_id=2858466`), confirmed release detail page shows commit `5a86ed1`, and confirmed the edit page saved release notes.
+- 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `338657` bytes, Windows zip `546330` bytes.
+- 2026-06-26: Replaced local `:8787` service from v4.7.7 pid `34664`; `/health` now reports version `4.7.8` on pid `57607`, and served `/static/index.html` contains the search/snippet/QA max shortcut buttons.
