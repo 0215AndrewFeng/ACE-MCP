@@ -1,0 +1,23 @@
+tasks/lessons.md
+  s_c0644275d96e63::t_f372d8c725c0c3 19
+tasks/todo.md
+  s_c0644275d96e63::t_3d5e73daae022b 270-274,288-291
+  s_c0644275d96e63::t_01a3069d398485 259-269,276-287
+  s_c0644275d96e63::t_667e2004530edf 275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ba12b24c00a440983e6b2975f6522d822eb38e1f",
+  "prompts": {},
+  "sessions": {
+    "s_c0644275d96e63": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efd50-49c0-78a2-a035-f8a9c9c864de",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
