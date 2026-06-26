@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { MAX_INCLUDE_CONTEXT_LINES } from "../common/types.js";
 import { parseStructuredQuery } from "./structuredQuery.js";
 import {
   buildStructuredQueryAnalysis,
@@ -21,7 +22,7 @@ test("withTimeout returns fallback when a promise exceeds the budget", async () 
 });
 
 test("normalizers clamp numeric request bounds and clean filters", () => {
-  assert.equal(normalizeIncludeContextLines(999), 50);
+  assert.equal(normalizeIncludeContextLines(999), MAX_INCLUDE_CONTEXT_LINES);
   assert.equal(normalizeCallGraphDepth(999), 5);
   assert.deepEqual(normalizeSearchFilters({
     excludePathPrefix: "./dist",

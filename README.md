@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.7`
+当前版本：`v4.7.8`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -28,7 +28,8 @@
 - **LLM 流式问答**：SSE 逐 token 显示，支持多轮对话追问
 - **调用链分析**：自动提取搜索结果中符号的上下游调用关系，作为额外上下文传递给 LLM
 - **调用链可视化**：Mermaid 流程图展示函数调用关系
-- **可配置参考代码数量**：用户可自行选择检索源数量（1~50），前端选择直接生效
+- **可配置参考代码数量**：用户可自行选择检索源数量（1~100），前端选择直接生效
+- **可调上下文预算**：Web 问答可按请求设置 `maxContextTokens`，需要更完整参考代码时可直接切到最大值
 - **LLM Reranker（可选）**：使用 LLM 对搜索结果二次排序，提升搜索精度
 - **LLM 响应缓存**：相同问题 5 分钟内直接返回缓存结果，节省 token
 - **代码引用高亮**：`[N]` 引用可点击跳转到对应源码卡片
@@ -81,23 +82,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.7.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.8.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.7.tgz
+npm install -g ./ace-mcp-4.7.8.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.7.tgz
+npm install -g .\ace-mcp-4.7.8.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.7-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.8-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -158,7 +159,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.7.tgz
+npm install -g ./ace-mcp-4.7.8.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -428,12 +429,14 @@ Web 面板提供完整的可视化调试体验：
 - **多轮对话**：自动保留上下文，支持追问
 - **代码引用**：`[N]` 引用可点击跳转
 - **会话统计**：显示 token 用量和请求次数
+- **最大上下文**：高级选项可一键使用最大参考代码数量和最大上下文 token 预算
 
 ### 代码搜索
 
 - **交互式搜索**：支持所有搜索模式和过滤条件
 - **语法高亮**：搜索词和代码语法高亮显示
 - **搜索历史**：点击历史记录快速填充
+- **上下文扩展**：搜索结果上下文行数上限提升到 200，并提供最大值快捷按钮
 
 ### 项目管理
 
@@ -465,7 +468,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.7（当前版本）
+### v4.7.8（当前版本）
+
+- **搜索上下文上限提升**：`includeContextLines` 共享上限从 50 提升到 200，MCP schema 和 Web 请求钳制保持一致，搜索结果可一次展开更大的命中邻近代码窗口
+- **Web 最大快捷按钮**：搜索上下文行数、文件片段结束行、智能问答参考代码数量和上下文 token 预算都新增“最大”按钮，减少手动输入
+- **QA 上下文预算直连**：Web 智能问答高级选项新增 `maxContextTokens` 输入，SSE 请求会把按请求预算传给后端，默认 48000、最大 200000
+
+### v4.7.7
 
 - **Vue 模板引用提取**：`.vue` 的 `<template>` 中组件标签、`@event` / `:prop` / `v-*` 指令表达式和 `{{ interpolation }}` 会作为 ownerless `usage` 写入，用于 `find_references` 与 RAG 召回
 - **Svelte markup 引用提取**：`.svelte` 的 markup 组件标签、`on:` / `bind:` / 普通 `{expression}` 和 `{#if}` 等块表达式会作为 usage 索引，并保留原始组件行号

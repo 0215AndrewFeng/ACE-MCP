@@ -364,3 +364,52 @@ Finish the v4.7.7 release after commit/tag/push by publishing release assets, ve
 - 2026-06-26: Created Gitee Release `v4.7.7` in browser, attached `ace-mcp-4.7.7.tgz` (`attach_id=2857846`) and `ace-mcp-v4.7.7-win-x64.zip` (`attach_id=2857847`), confirmed release detail page shows commit `461fb96`, and confirmed the edit page saved release notes.
 - 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `337577` bytes, Windows zip `544395` bytes.
 - 2026-06-26: Replaced local `:8787` service from v4.7.6 pid `7727`; `/health` now reports version `4.7.7` on pid `34664`.
+
+# v4.7.9 Planned Vue Options API Symbol Extraction
+
+Author: feng.ling
+
+## Goal
+
+Close the real Vue 2 gap exposed by `~/work/code/tc-flight-endorse-mng`: template usages are now indexed, but Options API methods/computed/watch handlers may not be indexed as symbols, so references such as `@change="changeLanguage"` and `@click="search"` cannot always resolve back to component method definitions.
+
+## Planned Scope
+
+- [ ] Extract `export default { methods: { ... } }` object methods as component method symbols with original `.vue` line numbers.
+- [ ] Extract common `computed`, `watch`, and lifecycle function entries as component symbols where they behave like callable component members.
+- [ ] Keep template/markup usages ownerless so `find_references` improves without adding template caller edges.
+- [ ] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue` and `src/views/endorse-lookup/index.vue`.
+
+## Comments
+
+- 2026-06-26: Recorded for v4.7.9 at user request after v4.7.7 real-project validation showed `toggleSideBar` could be found as a template reference, while Options API entries like `changeLanguage` and `search` were not always available as definitions.
+
+# v4.7.8 Snippet/Context Maximum Controls
+
+Author: feng.ling
+
+## Goal
+
+Reduce missed-code risk by allowing larger snippet/context windows where the backend can safely support them, and add Web UI "max" shortcuts near snippet/context controls so users do not need to type the maximum values manually.
+
+## Plan
+
+- [x] Locate current request validation limits for snippet context, search context lines, QA sources, and QA context tokens.
+- [x] Write failing tests for higher backend limits and front-end maximum shortcut controls.
+- [x] Implement shared limit constants and Web UI max buttons near the relevant controls.
+- [x] Run focused tests, `npm test`, `npm run build`, and update docs/tasks/lessons.
+- [ ] If versioning as v4.7.8, run release validation and release handoff.
+
+## Validation Plan
+
+- Request validation tests prove larger snippet/search context values are accepted and unsafe values are still clamped.
+- Front-end static contract test proves "max" buttons exist for snippet/search/QA context controls and use the same maximum values.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+
+## Comments
+
+- 2026-06-26: Started after user asked whether snippet size can be increased and requested maximum shortcut buttons near code snippet/context controls.
+- 2026-06-26: RED confirmed: focused request/schema/static tests fail because search context is still capped at 50 and the Web UI lacks max shortcut buttons plus `maxContextTokens` wiring.
+- 2026-06-26: GREEN confirmed: search context line cap is 200, Web static UI has max buttons for search context, file snippet range, QA sources, and QA context tokens, and the QA SSE request now sends `maxContextTokens`. Focused request/schema/static tests pass.
+- 2026-06-26: Validation passed: focused request/schema/static tests; `npm test` (76 tests); `npm run build`; `node dist/index.js --version` returning `4.7.8`; full `npm run release:check`; explicit tgz/Windows zip content checks; dist static checks for max buttons and `maxContextTokens`. Release benchmark smoke returned resultCount 1, search p95 39ms, health p95 5ms, event-loop responsive 1/1.

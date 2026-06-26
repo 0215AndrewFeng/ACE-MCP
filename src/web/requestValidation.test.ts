@@ -21,7 +21,7 @@ const settings = {
 test("parseSearchContextRequest keeps web parsing lenient but clamps unsafe values", () => {
   const parsed = parseSearchContextRequest({
     enableReranker: true,
-    includeContextLines: 999,
+    includeContextLines: 9999,
     languages: "javascript,unknown,markdown",
     mode: "invalid",
     pathPrefix: "./src",
@@ -35,10 +35,22 @@ test("parseSearchContextRequest keeps web parsing lenient but clamps unsafe valu
   if (!parsed.ok) return;
   assert.equal(parsed.value.mode, "auto");
   assert.equal(parsed.value.topK, 50);
-  assert.equal(parsed.value.includeContextLines, 50);
+  assert.equal(parsed.value.includeContextLines, 200);
   assert.deepEqual(parsed.value.filters.languages, ["javascript", "markdown"]);
   assert.equal(parsed.value.filters.pathPrefix, "src");
   assert.equal(parsed.value.enableReranker, true);
+});
+
+test("parseSearchContextRequest accepts larger context windows before clamping", () => {
+  const parsed = parseSearchContextRequest({
+    includeContextLines: 150,
+    projectRootPath: "/tmp/project",
+    query: "refund",
+  }, settings);
+
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.includeContextLines, 150);
 });
 
 test("web parsers reject only missing required fields", () => {

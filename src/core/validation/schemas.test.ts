@@ -20,6 +20,8 @@ const settings = {
 } as Settings;
 
 test("searchContextShape applies shared defaults and bounds", () => {
+  assert.equal(MAX_INCLUDE_CONTEXT_LINES, 200);
+
   const schema = z.object(searchContextShape(settings));
   const parsed = schema.parse({
     includeContextLines: MAX_INCLUDE_CONTEXT_LINES,
@@ -33,6 +35,11 @@ test("searchContextShape applies shared defaults and bounds", () => {
   assert.equal(parsed.topK, settings.defaultTopK);
   assert.deepEqual(parsed.languages, ["javascript"]);
   assert.throws(() => schema.parse({ projectRootPath: "/tmp/project", query: "refund", topK: TOPK_MAX + 1 }), /Number must be less than or equal/);
+  assert.throws(() => schema.parse({
+    includeContextLines: MAX_INCLUDE_CONTEXT_LINES + 1,
+    projectRootPath: "/tmp/project",
+    query: "refund",
+  }), /Number must be less than or equal/);
 });
 
 test("askCodebaseShape constrains QA source and context limits", () => {

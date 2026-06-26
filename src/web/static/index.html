@@ -46,8 +46,19 @@
             <div class="options-grid">
               <div>
                 <label for="qa-max-sources">参考代码数量</label>
-                <input id="qa-max-sources" type="number" min="1" max="100" value="10" />
+                <div class="field-with-action">
+                  <input id="qa-max-sources" type="number" min="1" max="100" value="15" />
+                  <button id="qa-max-sources-max" type="button" class="btn-secondary btn-small" title="使用最大参考代码数量">最大</button>
+                </div>
                 <span class="hint">搜索多少个代码片段作为上下文（1~100）</span>
+              </div>
+              <div>
+                <label for="qa-max-context-tokens">上下文预算</label>
+                <div class="field-with-action">
+                  <input id="qa-max-context-tokens" type="number" min="1000" max="200000" step="1000" value="48000" />
+                  <button id="qa-max-context-tokens-max" type="button" class="btn-secondary btn-small" title="使用最大上下文预算">最大</button>
+                </div>
+                <span class="hint">可注入给 LLM 的参考代码 token 预算（1000~200000）</span>
               </div>
               <div>
                 <label for="qa-max-tokens">LLM 最大输出</label>
@@ -150,8 +161,11 @@
               </div>
               <div>
                 <label for="include-context-lines">上下文行数</label>
-                <input id="include-context-lines" type="number" min="0" max="50" value="0" />
-                <span class="hint">匹配行前后额外显示几行</span>
+                <div class="field-with-action">
+                  <input id="include-context-lines" type="number" min="0" max="200" value="0" />
+                  <button id="include-context-lines-max" type="button" class="btn-secondary btn-small" title="使用最大上下文行数">最大</button>
+                </div>
+                <span class="hint">匹配行前后额外显示几行（0~200）</span>
               </div>
               <div>
                 <label for="search-languages">限定语言</label>
@@ -271,7 +285,10 @@
             </div>
             <div>
               <label for="snippet-end">结束行</label>
-              <input id="snippet-end" type="number" min="1" value="40" />
+              <div class="field-with-action">
+                <input id="snippet-end" type="number" min="1" value="40" />
+                <button id="snippet-range-max" type="button" class="btn-secondary btn-small" title="从第 1 行读到文件末尾">最大</button>
+              </div>
             </div>
             <button id="run-snippet" type="button" class="btn-secondary">查看</button>
           </div>

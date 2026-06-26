@@ -1,4 +1,10 @@
 const MAX_HISTORY = 20;
+const MAX_INCLUDE_CONTEXT_LINES = 200;
+const FILE_SNIPPET_MAX_END_LINE = 999999;
+const QA_MAX_SOURCES = 100;
+const QA_MAX_SOURCES_DEFAULT = 15;
+const QA_MAX_CONTEXT_TOKENS = 200000;
+const QA_CONTEXT_TOKENS_DEFAULT = 48000;
 
 const resultEl = document.getElementById("result");
 const resultSummaryEl = document.getElementById("result-summary");
@@ -18,6 +24,8 @@ const snippetStartInput = document.getElementById("snippet-start");
 const snippetEndInput = document.getElementById("snippet-end");
 const indexModeInput = document.getElementById("index-mode");
 const searchHistoryEl = document.getElementById("search-history");
+const qaMaxSourcesInput = document.getElementById("qa-max-sources");
+const qaMaxContextTokensInput = document.getElementById("qa-max-context-tokens");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
 
@@ -438,6 +446,27 @@ document.getElementById("run-snippet")?.addEventListener("click", () => run(() =
 })));
 
 renderHistory();
+
+includeContextLinesInput?.setAttribute("max", String(MAX_INCLUDE_CONTEXT_LINES));
+qaMaxSourcesInput?.setAttribute("max", String(QA_MAX_SOURCES));
+qaMaxContextTokensInput?.setAttribute("max", String(QA_MAX_CONTEXT_TOKENS));
+
+document.getElementById("include-context-lines-max")?.addEventListener("click", () => {
+  if (includeContextLinesInput) includeContextLinesInput.value = String(MAX_INCLUDE_CONTEXT_LINES);
+});
+
+document.getElementById("snippet-range-max")?.addEventListener("click", () => {
+  if (snippetStartInput) snippetStartInput.value = "1";
+  if (snippetEndInput) snippetEndInput.value = String(FILE_SNIPPET_MAX_END_LINE);
+});
+
+document.getElementById("qa-max-sources-max")?.addEventListener("click", () => {
+  if (qaMaxSourcesInput) qaMaxSourcesInput.value = String(QA_MAX_SOURCES);
+});
+
+document.getElementById("qa-max-context-tokens-max")?.addEventListener("click", () => {
+  if (qaMaxContextTokensInput) qaMaxContextTokensInput.value = String(QA_MAX_CONTEXT_TOKENS);
+});
 
 // LLM Config
 document.getElementById("load-llm-config")?.addEventListener("click", () => run(() => request("GET", "/api/llm/config")));
@@ -996,7 +1025,8 @@ async function runAskQuestion() {
 
   const timeoutSec = Number(document.getElementById("qa-timeout")?.value || 120);
   const projectRoot = projectRootInput.value;
-  const maxSources = Number(document.getElementById("qa-max-sources")?.value || 10);
+  const maxSources = Number(qaMaxSourcesInput?.value || QA_MAX_SOURCES_DEFAULT);
+  const maxContextTokens = Number(qaMaxContextTokensInput?.value || QA_CONTEXT_TOKENS_DEFAULT);
   const maxTokens = Number(document.getElementById("qa-max-tokens")?.value || 8192);
   const includeSummary = document.getElementById("qa-include-summary")?.checked ?? true;
   const localCode = document.getElementById("qa-local-code")?.checked ?? true;
@@ -1043,6 +1073,7 @@ async function runAskQuestion() {
         projectRootPath: projectRoot,
         question,
         maxSources,
+        maxContextTokens,
         includeSummary,
         contextMode,
         maxTokens,
