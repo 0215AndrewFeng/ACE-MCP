@@ -47,6 +47,78 @@ test("javascript adapter extracts Vue script setup symbols and maps lines to the
   );
 });
 
+test("javascript adapter extracts Vue template identifiers as usages without owners", () => {
+  const analysis = javascriptAdapter.analyzeSource!(
+    "file-checkout-template-vue",
+    "src/Checkout.vue",
+    [
+      "<template>",
+      "  <ProductCard :item=\"selectedItem\" @submit.stop=\"submitCheckout\" v-if=\"canCheckout && cart.total > 0\" />",
+      "  <hamburger @toggleClick=\"submitCheckout\" />",
+      "  <span>{{ formatCurrency(cart.total) }}</span>",
+      "</template>",
+      "",
+      "<script setup lang=\"ts\">",
+      "import ProductCard from './ProductCard.vue';",
+      "",
+      "const selectedItem = {};",
+      "const canCheckout = true;",
+      "const cart = { total: 10 };",
+      "",
+      "function submitCheckout() {",
+      "  return cart.total;",
+      "}",
+      "",
+      "function formatCurrency(value: number) {",
+      "  return String(value);",
+      "}",
+      "</script>",
+      "",
+    ].join("\n"),
+  );
+
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "ProductCard" &&
+        usage.kind === "usage" &&
+        usage.line === 2 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("ProductCard"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "submitCheckout" &&
+        usage.kind === "usage" &&
+        usage.line === 2 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("submitCheckout"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "hamburger" &&
+        usage.kind === "usage" &&
+        usage.line === 3 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("Hamburger"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "formatCurrency" &&
+        usage.kind === "usage" &&
+        usage.line === 4 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("formatCurrency"),
+    ),
+  );
+});
+
 test("javascript adapter extracts Svelte script symbols and maps lines to the original SFC", () => {
   const analysis = javascriptAdapter.analyzeSource!(
     "file-ledger-svelte",
@@ -81,6 +153,59 @@ test("javascript adapter extracts Svelte script symbols and maps lines to the or
         usage.kind === "call" &&
         usage.line === 6 &&
         usage.ownerSymbol === "submit",
+    ),
+  );
+});
+
+test("javascript adapter extracts Svelte markup identifiers as usages without owners", () => {
+  const analysis = javascriptAdapter.analyzeSource!(
+    "file-ledger-template-svelte",
+    "src/LedgerPanel.svelte",
+    [
+      "<script lang=\"ts\">",
+      "import LedgerButton from './LedgerButton.svelte';",
+      "export let ledger = { amount: 0 };",
+      "let canSubmit = true;",
+      "function submitLedger() { return ledger.amount; }",
+      "function formatAmount(value: number) { return String(value); }",
+      "</script>",
+      "",
+      "<LedgerButton on:click={submitLedger} bind:value={ledger.amount} disabled={!canSubmit} />",
+      "{#if canSubmit}",
+      "  <p>{formatAmount(ledger.amount)}</p>",
+      "{/if}",
+      "",
+    ].join("\n"),
+  );
+
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "LedgerButton" &&
+        usage.kind === "usage" &&
+        usage.line === 9 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("LedgerButton"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "submitLedger" &&
+        usage.kind === "usage" &&
+        usage.line === 9 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("submitLedger"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "formatAmount" &&
+        usage.kind === "usage" &&
+        usage.line === 11 &&
+        usage.ownerSymbol === undefined &&
+        usage.candidateNames.includes("formatAmount"),
     ),
   );
 });

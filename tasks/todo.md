@@ -289,3 +289,45 @@ Finish the v4.7.6 release after commit/tag/push by publishing release assets, ve
 - 2026-06-26: Created Gitee Release `v4.7.6` in browser, attached `ace-mcp-4.7.6.tgz` (`attach_id=2857457`) and `ace-mcp-v4.7.6-win-x64.zip` (`attach_id=2857458`), confirmed release detail page shows commit `c6bbc3a`, and confirmed the edit page saved release notes.
 - 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `334627` bytes, Windows zip `532987` bytes.
 - 2026-06-26: Replaced local `:8787` service from v4.7.5 pid `7153`; `/health` now reports version `4.7.6` on pid `7727`.
+
+# v4.7.7 Vue/Svelte Template Usage Extraction
+
+Author: feng.ling
+
+## Goal
+
+Extract lightweight Vue/Svelte template and markup identifier usages from single-file components, preserving original line numbers and improving `find_references`/RAG recall without adding template-derived caller edges.
+
+## Plan
+
+- [x] Review current SFC script extraction, JavaScript adapter tests, workflow tests, and release/version update paths.
+- [x] Write failing Vue/Svelte focused tests for template/markup usages with original SFC line numbers.
+- [x] Implement the smallest SFC-only template usage extractor, keeping owner symbols empty to avoid call graph pollution.
+- [x] Run focused tests, full `npm test`, and `npm run build`.
+- [x] Validate against `~/work/code/tc-flight-endorse-mng` as a real Vue project.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons for v4.7.7.
+- [x] Run full `npm run release:check` after version/docs updates.
+- [x] Fix Windows zip release contract so checklist-mentioned smoke/benchmark scripts are actually packaged.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff.
+
+## Validation Plan
+
+- Focused adapter regression proving Vue template expressions/tags produce usage records at original SFC lines.
+- Focused adapter regression proving Svelte markup expressions/events/bindings produce usage records at original SFC lines.
+- Workflow regression proving template usages are searchable as references but not treated as callers.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Real Vue project smoke using `~/work/code/tc-flight-endorse-mng`.
+
+## Comments
+
+- 2026-06-26: Started v4.7.7 after user approved the SFC-template follow-up and asked to use `~/work/code/tc-flight-endorse-mng` for Vue project testing. Relevant lessons reviewed: keep SFC parsing script/template scoped, preserve UTF-16 offset alignment, do not set `ownerSymbol` for doc-like usages unless intentionally affecting callers, and include release handoff before final response.
+- 2026-06-26: RED confirmed: Vue/Svelte adapter tests failed because template/markup identifiers were not extracted, and workflow failed because `@click="checkout"` did not resolve as a reference.
+- 2026-06-26: GREEN confirmed: Vue template tags/directives/interpolations and Svelte markup tags/brace expressions now emit ownerless `usage` records; workflow proves template references resolve while callers stay empty.
+- 2026-06-26: Added a second RED/GREEN edge for Vue directive modifiers and lowercase registered components after inspecting `tc-flight-endorse-mng`; `@submit.stop` and `<hamburger>` are now covered.
+- 2026-06-26: Verification passed before version bump: focused adapter/workflow tests, `npm test` (74 tests), and `npm run build`.
+- 2026-06-26: Real Vue project smoke passed on isolated port `8797`: indexed `~/work/code/tc-flight-endorse-mng` with 315 scanned/indexed files, 430 chunks, 0 failed files; `find-references toggleSideBar` found `src/layout/components/Navbar.vue` line 3 from template usage, while `find-callers toggleSideBar` returned no template caller.
+- 2026-06-26: Version/docs updated to v4.7.7. Full `npm run release:check` passed: `npm test` (74 tests), build, tgz pack, Windows zip, release smoke, and benchmark smoke. Benchmark smoke returned resultCount 1, search p95 41ms, health p95 6ms, and event-loop responsive 1/1.
+- 2026-06-26: Manual package content check found a release contract gap: the Windows zip checklist mentioned `benchmark-search.mjs`, but `scripts/package-windows.mjs` did not stage benchmark/smoke release scripts and the broad `rg` pattern did not catch the missing file. Pausing to add a focused packaging contract test and fix the zip contents before commit/tag.
+- 2026-06-26: Added a failing package manifest test for Windows zip release scripts, staged `scripts/smoke-release.mjs` and `scripts/benchmark-search.mjs` into the Windows zip, regenerated the archive, and confirmed both files are present. Reran full `npm run release:check`; final benchmark smoke returned resultCount 1, search p95 40ms, health p95 6ms, and event-loop responsive 1/1.

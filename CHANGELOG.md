@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.7] - 2026-06-26
+
+### Vue/Svelte template usage extraction
+
+- JavaScript adapter 在 `.vue` `<template>` 中抽取组件标签、`@event` / `:prop` / `v-*` 指令表达式和 `{{ interpolation }}` 标识符，作为 `usage` 参与引用检索。
+- `.svelte` markup 中的组件标签、`on:` / `bind:` / 普通 `{expression}` 和 `{#if}` 等块表达式会作为 `usage` 索引，保留原始 SFC 行号。
+- 模板/markup usage 不设置 `ownerSymbol`，因此 `find_references` 能召回模板引用，但不会污染 `find_callers` 调用图。
+- 新增 Vue/Svelte adapter 单测和 workflow 测试，覆盖 Vue 指令修饰符、小写注册组件、Svelte event/bind/brace 表达式，以及 reference 可查但 caller 不出现。
+- 使用真实 Vue 项目 `~/work/code/tc-flight-endorse-mng` 验证：315 个文件索引成功，`find-references toggleSideBar` 命中 `Navbar.vue` 模板事件，`find-callers toggleSideBar` 未产生模板 caller。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.7。
+
 ## [4.7.6] - 2026-06-25
 
 ### Vue/Svelte SFC script extraction

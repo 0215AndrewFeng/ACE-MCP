@@ -19,8 +19,92 @@ function isSingleFileComponentPath(relativePath: string): boolean {
   return /\.(?:vue|svelte)$/i.test(relativePath);
 }
 
-function extractScriptOnlyContent(content: string): string {
-  const output: string[] = content.split("").map((character) => (character === "\n" || character === "\r" ? character : " "));
+interface SourceRange {
+  end: number;
+  start: number;
+}
+
+const HTML_TAG_NAMES = new Set([
+  "a",
+  "article",
+  "aside",
+  "audio",
+  "button",
+  "canvas",
+  "code",
+  "div",
+  "em",
+  "fieldset",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hr",
+  "i",
+  "iframe",
+  "img",
+  "input",
+  "label",
+  "li",
+  "main",
+  "nav",
+  "ol",
+  "option",
+  "p",
+  "pre",
+  "section",
+  "select",
+  "small",
+  "span",
+  "strong",
+  "svg",
+  "table",
+  "tbody",
+  "td",
+  "textarea",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+  "video",
+]);
+
+const TEMPLATE_IDENTIFIER_STOP_WORDS = new Set([
+  "Array",
+  "Boolean",
+  "Date",
+  "JSON",
+  "Math",
+  "Number",
+  "Object",
+  "Promise",
+  "String",
+  "console",
+  "document",
+  "else",
+  "event",
+  "false",
+  "for",
+  "function",
+  "if",
+  "in",
+  "let",
+  "null",
+  "return",
+  "this",
+  "true",
+  "undefined",
+  "window",
+]);
+
+function collectScriptRanges(content: string): SourceRange[] {
+  const ranges: SourceRange[] = [];
   const scriptPattern = /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi;
 
   for (const match of content.matchAll(scriptPattern)) {
@@ -32,14 +116,80 @@ function extractScriptOnlyContent(content: string): string {
       continue;
     }
 
-    const scriptStart = matchStart + openTag.length;
-    const scriptEnd = matchStart + fullMatch.length - closeTag.length;
-    for (let index = scriptStart; index < scriptEnd; index += 1) {
+    ranges.push({
+      end: matchStart + fullMatch.length - closeTag.length,
+      start: matchStart + openTag.length,
+    });
+  }
+
+  return ranges;
+}
+
+function extractScriptOnlyContent(content: string): string {
+  const output: string[] = content.split("").map((character) => (character === "\n" || character === "\r" ? character : " "));
+
+  for (const range of collectScriptRanges(content)) {
+    for (let index = range.start; index < range.end; index += 1) {
       output[index] = content[index] ?? " ";
     }
   }
 
   return output.join("");
+}
+
+function collectVueTemplateRanges(content: string): SourceRange[] {
+  const ranges: SourceRange[] = [];
+  const templatePattern = /<template\b[^>]*>[\s\S]*?<\/template\s*>/gi;
+
+  for (const match of content.matchAll(templatePattern)) {
+    const fullMatch = match[0];
+    const matchStart = match.index ?? 0;
+    const openTag = fullMatch.match(/^<template\b[^>]*>/i)?.[0];
+    const closeTag = fullMatch.match(/<\/template\s*>$/i)?.[0];
+    if (!openTag || !closeTag) {
+      continue;
+    }
+
+    ranges.push({
+      end: matchStart + fullMatch.length - closeTag.length,
+      start: matchStart + openTag.length,
+    });
+  }
+
+  return ranges;
+}
+
+function collectSvelteMarkupRanges(content: string): SourceRange[] {
+  const scriptRanges = collectScriptRanges(content).sort((left, right) => left.start - right.start);
+  const ranges: SourceRange[] = [];
+  let cursor = 0;
+
+  for (const scriptRange of scriptRanges) {
+    const scriptOpenStart = content.lastIndexOf("<script", scriptRange.start);
+    const fullScriptStart = scriptOpenStart >= 0 ? scriptOpenStart : scriptRange.start;
+    const closeEnd = content.indexOf(">", scriptRange.end);
+    const fullScriptEnd = closeEnd >= 0 ? closeEnd + 1 : scriptRange.end;
+    if (cursor < fullScriptStart) {
+      ranges.push({ start: cursor, end: fullScriptStart });
+    }
+    cursor = Math.max(cursor, fullScriptEnd);
+  }
+
+  if (cursor < content.length) {
+    ranges.push({ start: cursor, end: content.length });
+  }
+
+  return ranges;
+}
+
+function getLineNumberAtOffset(content: string, offset: number): number {
+  let line = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (content[index] === "\n") {
+      line += 1;
+    }
+  }
+  return line;
 }
 
 function getLineNumber(sourceFile: ts.SourceFile, node: ts.Node): number {
@@ -113,6 +263,160 @@ function pushUsage(
     ...usage,
     candidateNames: dedupeCandidateNames(usage.candidateNames),
   });
+}
+
+function toPascalCase(value: string): string {
+  return value
+    .split(/[-_:]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+function buildTemplateCandidateNames(rawName: string): string[] {
+  const leafName = rawName.split(".").pop() ?? rawName;
+  const candidates = [rawName, leafName];
+  if (/[-_:]/.test(rawName)) {
+    candidates.push(toPascalCase(rawName));
+  }
+  if (/[-_:]/.test(leafName)) {
+    candidates.push(toPascalCase(leafName));
+  }
+  return dedupeCandidateNames(candidates);
+}
+
+function buildComponentTagCandidateNames(tagName: string): string[] {
+  const candidates = buildTemplateCandidateNames(tagName);
+  if (/^[a-z][a-z0-9]*$/.test(tagName)) {
+    candidates.push(tagName.charAt(0).toUpperCase() + tagName.slice(1));
+  }
+  return dedupeCandidateNames(candidates);
+}
+
+function isComponentLikeTag(tagName: string): boolean {
+  if (tagName.startsWith("svelte:")) {
+    return false;
+  }
+
+  const normalized = tagName.toLowerCase();
+  if (HTML_TAG_NAMES.has(normalized)) {
+    return false;
+  }
+
+  return true;
+}
+
+function pushTemplateUsage(
+  usages: SymbolUsageInfo[],
+  seen: Set<string>,
+  rawName: string,
+  line: number,
+  candidateNames = buildTemplateCandidateNames(rawName),
+): void {
+  const normalizedRawName = rawName.trim();
+  if (!normalizedRawName) {
+    return;
+  }
+
+  const rootName = normalizedRawName.split(".")[0];
+  if (!rootName || TEMPLATE_IDENTIFIER_STOP_WORDS.has(rootName)) {
+    return;
+  }
+
+  const key = `${line}:${normalizedRawName}`;
+  if (seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+
+  pushUsage(usages, {
+    candidateNames,
+    kind: "usage",
+    line,
+    rawName: normalizedRawName,
+  });
+}
+
+function stripTemplateExpressionNoise(expression: string): string {
+  return expression
+    .replace(/(['"`])(?:\\.|(?!\1)[\s\S])*\1/g, " ")
+    .replace(/^[:#/]\s*/, " ")
+    .replace(/^(if|each|await|key|then|catch|else)\b/, " ");
+}
+
+function extractTemplateExpressionUsages(
+  expression: string,
+  lineNumber: number,
+  usages: SymbolUsageInfo[],
+  seen: Set<string>,
+): void {
+  const expressionWithoutStrings = stripTemplateExpressionNoise(expression);
+  const identifierPattern = /\b[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\b/g;
+
+  for (const match of expressionWithoutStrings.matchAll(identifierPattern)) {
+    pushTemplateUsage(usages, seen, match[0], lineNumber);
+  }
+}
+
+function extractTemplateLineUsages(
+  line: string,
+  lineNumber: number,
+  mode: "svelte" | "vue",
+  usages: SymbolUsageInfo[],
+  seen: Set<string>,
+): void {
+  const tagPattern = /<\/?([A-Za-z][A-Za-z0-9_.:-]*)\b/g;
+  for (const match of line.matchAll(tagPattern)) {
+    if (match[0].startsWith("</")) {
+      continue;
+    }
+
+    const tagName = match[1];
+    if (tagName && isComponentLikeTag(tagName)) {
+      pushTemplateUsage(usages, seen, tagName, lineNumber, buildComponentTagCandidateNames(tagName));
+    }
+  }
+
+  if (mode === "vue") {
+    const moustachePattern = /{{([\s\S]*?)}}/g;
+    for (const match of line.matchAll(moustachePattern)) {
+      extractTemplateExpressionUsages(match[1] ?? "", lineNumber, usages, seen);
+    }
+
+    const directivePattern = /\s([:@#][\w:.-]+|v-[\w:.-]+)\s*=\s*(["'])(.*?)\2/g;
+    for (const match of line.matchAll(directivePattern)) {
+      extractTemplateExpressionUsages(match[3] ?? "", lineNumber, usages, seen);
+    }
+    return;
+  }
+
+  const svelteExpressionPattern = /{([^{}]+)}/g;
+  for (const match of line.matchAll(svelteExpressionPattern)) {
+    extractTemplateExpressionUsages(match[1] ?? "", lineNumber, usages, seen);
+  }
+}
+
+function extractTemplateUsages(relativePath: string, content: string): SymbolUsageInfo[] {
+  const isVue = /\.vue$/i.test(relativePath);
+  const isSvelte = /\.svelte$/i.test(relativePath);
+  if (!isVue && !isSvelte) {
+    return [];
+  }
+
+  const usages: SymbolUsageInfo[] = [];
+  const seen = new Set<string>();
+  const ranges = isVue ? collectVueTemplateRanges(content) : collectSvelteMarkupRanges(content);
+
+  for (const range of ranges) {
+    const rangeContent = content.slice(range.start, range.end);
+    const baseLine = getLineNumberAtOffset(content, range.start);
+    const lines = rangeContent.split(/\r\n|\r|\n/);
+    for (const [index, line] of lines.entries()) {
+      extractTemplateLineUsages(line, baseLine + index, isVue ? "vue" : "svelte", usages, seen);
+    }
+  }
+
+  return usages;
 }
 
 function getPropertyAccessText(expression: ts.Expression): string | null {
@@ -553,7 +857,7 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
   return {
     imports,
     symbols: [...symbols.values()].sort((left, right) => left.line - right.line || left.fullName.localeCompare(right.fullName)),
-    usages,
+    usages: isSingleFileComponentPath(relativePath) ? [...usages, ...extractTemplateUsages(relativePath, content)] : usages,
   };
 }
 

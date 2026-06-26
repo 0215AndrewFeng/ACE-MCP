@@ -190,6 +190,38 @@ test("vue single-file component script participates in javascript call graph res
   }
 });
 
+test("vue template usages resolve as references without call graph owners", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/Checkout.vue": [
+      "<template>",
+      "  <button @click=\"checkout\">Checkout</button>",
+      "</template>",
+      "",
+      "<script setup lang=\"ts\">",
+      "function checkout() {",
+      "  return 'ok';",
+      "}",
+      "</script>",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const references = await env.searchService.findReferences(env.projectRootPath, "checkout", 10);
+    assert.ok(
+      references.results.some((result) => result.filePath === "src/Checkout.vue" && result.startLine === 2),
+    );
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "checkout", 10);
+    assert.ok(!callers.results.some((result) => result.filePath === "src/Checkout.vue" && result.startLine === 2));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("svelte single-file component script participates in javascript call graph resolution", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",
