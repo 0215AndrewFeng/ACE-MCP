@@ -26,8 +26,9 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
         return;
       }
-      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds, retries } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds, retries, effectiveParams } = parsed.value;
       const { maxTokens, history } = req.body ?? {};
+      const effectiveRequest = { ...effectiveParams, maxTokens: Number(maxTokens) || undefined };
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
         return;
@@ -66,6 +67,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
           fallback: true,
           fallbackReason: pipelineResult.fallbackReason,
           message: "LLM 服务暂时不可用，以下是检索到的相关代码片段，您可以直接参考。",
+          request: effectiveRequest,
           sources: pipelineResult.sources.map((s, i) => ({
             index: i + 1,
             filePath: s.filePath,
@@ -84,6 +86,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
 
       res.json({
         answer: pipelineResult.answer,
+        request: effectiveRequest,
         sources: pipelineResult.sources.map((s, i) => ({
           index: i + 1,
           filePath: s.filePath,
@@ -153,8 +156,9 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.end();
         return;
       }
-      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds, retries } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds, retries, effectiveParams } = parsed.value;
       const maxTokens = Number(isPost ? req.body?.maxTokens : req.query.maxTokens) || 0;
+      const effectiveRequest = { ...effectiveParams, maxTokens: maxTokens || undefined };
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
       // v4.5.12: per-request context token budget, clamped to the configured max.
       const sseContextBudget = Math.min(
@@ -433,6 +437,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
             type: "done",
             answer: cachedResponse.answer,
             usage: cachedResponse.usage,
+            request: effectiveRequest,
             hadSummary: Boolean(summaryArchitecture),
             timing: { indexMs, searchMs, llmMs: 0, totalMs },
             cached: true,
@@ -529,6 +534,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         type: "done",
         answer: fullContent,
         usage,
+        request: effectiveRequest,
         hadSummary: Boolean(summaryArchitecture),
         hadCallChain: callChainContext.length > 0,
         callChains,

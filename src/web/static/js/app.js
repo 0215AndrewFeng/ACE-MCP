@@ -33,6 +33,11 @@ const qaMaxContextTokensInput = document.getElementById("qa-max-context-tokens")
 const qaMaxTokensInput = document.getElementById("qa-max-tokens");
 const qaTimeoutInput = document.getElementById("qa-timeout");
 const qaRetriesInput = document.getElementById("qa-retries");
+const serviceVersionEl = document.getElementById("service-version");
+const serviceWatchStatusEl = document.getElementById("service-watch-status");
+const serviceProjectsEl = document.getElementById("service-projects");
+const serviceLatestIndexEl = document.getElementById("service-latest-index");
+const qaEffectiveParamsEl = document.getElementById("qa-effective-params");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
 
@@ -237,6 +242,71 @@ function parseSearchLanguages(value) {
   return [...new Set(value.split(",").map(item => item.trim().toLowerCase()).filter(item => allowed.has(item)))];
 }
 
+function formatStatusTime(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function renderServiceStatus(health) {
+  if (serviceVersionEl) serviceVersionEl.textContent = health?.version || "--";
+  if (serviceWatchStatusEl) serviceWatchStatusEl.textContent = health?.watching ? "开启" : "关闭";
+  if (serviceProjectsEl) {
+    const total = health?.projects?.total ?? 0;
+    const ready = health?.projects?.ready ?? 0;
+    serviceProjectsEl.textContent = `${ready}/${total}`;
+  }
+  if (serviceLatestIndexEl) serviceLatestIndexEl.textContent = formatStatusTime(health?.index?.latestIndexAt);
+}
+
+async function refreshServiceStatus() {
+  try {
+    renderServiceStatus(await request("GET", "/health"));
+  } catch (err) {
+    console.warn("Failed to load service status:", err);
+  }
+}
+
+function setValueHint(input, max, label) {
+  const hint = document.querySelector(`[data-value-hint="${input?.id}"]`);
+  if (!input || !hint) return;
+  const current = input.value || input.getAttribute("value") || "";
+  hint.textContent = `${label || "当前"} ${current} / 最大 ${max}`;
+}
+
+function updateBoundedValueHints() {
+  setValueHint(topKInput, TOP_K_MAX, "当前");
+  setValueHint(includeContextLinesInput, MAX_INCLUDE_CONTEXT_LINES, "当前");
+  setValueHint(snippetEndInput, FILE_SNIPPET_MAX_END_LINE, "结束行");
+  setValueHint(qaMaxSourcesInput, QA_MAX_SOURCES, "当前");
+  setValueHint(qaMaxContextTokensInput, QA_MAX_CONTEXT_TOKENS, "当前");
+  setValueHint(qaMaxTokensInput, QA_MAX_TOKENS, "当前");
+  setValueHint(qaTimeoutInput, QA_TIMEOUT_SECONDS_MAX, "当前");
+  setValueHint(qaRetriesInput, QA_RETRIES_MAX, "当前");
+}
+
+function renderQaEffectiveParams(requestParams) {
+  if (!qaEffectiveParamsEl) return;
+  if (!requestParams) {
+    qaEffectiveParamsEl.hidden = true;
+    qaEffectiveParamsEl.innerHTML = "";
+    return;
+  }
+  const items = [
+    ["参考代码", requestParams.maxSources],
+    ["上下文", requestParams.maxContextTokens],
+    ["输出", requestParams.maxTokens || "默认"],
+    ["超时", `${requestParams.timeoutSeconds}s`],
+    ["重试", requestParams.retries],
+    ["模式", requestParams.contextMode],
+  ];
+  qaEffectiveParamsEl.hidden = false;
+  qaEffectiveParamsEl.innerHTML = items.map(([label, value]) =>
+    `<span class="qa-effective-param"><strong>${escapeHtml(label)}</strong>${escapeHtml(String(value ?? "--"))}</span>`
+  ).join("");
+}
+
 function render(data) {
   renderSummary(data);
   resultEl.textContent = JSON.stringify(data, null, 2);
@@ -309,7 +379,11 @@ function addToHistory(query, mode) {
   saveHistory();
 }
 
-document.getElementById("load-health")?.addEventListener("click", () => run(() => request("GET", "/health")));
+document.getElementById("load-health")?.addEventListener("click", () => run(async () => {
+  const health = await request("GET", "/health");
+  renderServiceStatus(health);
+  return health;
+}));
 document.getElementById("load-runtime")?.addEventListener("click", () => run(() => request("GET", "/api/runtime")));
 document.getElementById("load-config")?.addEventListener("click", () => run(() => request("GET", "/api/config")));
 document.getElementById("load-tools")?.addEventListener("click", () => run(() => request("GET", "/api/tools")));
@@ -374,6 +448,7 @@ projectRootSelect?.addEventListener("change", async () => {
 
 // v4.2.6: Initialize project select from LocalStorage on page load
 renderProjectSelect();
+refreshServiceStatus();
 
 // v4.4.1: Auto-sync project list from backend on page load
 (async function syncProjectsOnStartup() {
@@ -460,38 +535,50 @@ qaMaxContextTokensInput?.setAttribute("max", String(QA_MAX_CONTEXT_TOKENS));
 qaMaxTokensInput?.setAttribute("max", String(QA_MAX_TOKENS));
 qaTimeoutInput?.setAttribute("max", String(QA_TIMEOUT_SECONDS_MAX));
 qaRetriesInput?.setAttribute("max", String(QA_RETRIES_MAX));
+updateBoundedValueHints();
+
+[topKInput, includeContextLinesInput, snippetEndInput, qaMaxSourcesInput, qaMaxContextTokensInput, qaMaxTokensInput, qaTimeoutInput, qaRetriesInput]
+  .forEach(input => input?.addEventListener("input", updateBoundedValueHints));
 
 document.getElementById("top-k-max")?.addEventListener("click", () => {
   if (topKInput) topKInput.value = String(TOP_K_MAX);
+  updateBoundedValueHints();
 });
 
 document.getElementById("include-context-lines-max")?.addEventListener("click", () => {
   if (includeContextLinesInput) includeContextLinesInput.value = String(MAX_INCLUDE_CONTEXT_LINES);
+  updateBoundedValueHints();
 });
 
 document.getElementById("snippet-range-max")?.addEventListener("click", () => {
   if (snippetStartInput) snippetStartInput.value = "1";
   if (snippetEndInput) snippetEndInput.value = String(FILE_SNIPPET_MAX_END_LINE);
+  updateBoundedValueHints();
 });
 
 document.getElementById("qa-max-sources-max")?.addEventListener("click", () => {
   if (qaMaxSourcesInput) qaMaxSourcesInput.value = String(QA_MAX_SOURCES);
+  updateBoundedValueHints();
 });
 
 document.getElementById("qa-max-context-tokens-max")?.addEventListener("click", () => {
   if (qaMaxContextTokensInput) qaMaxContextTokensInput.value = String(QA_MAX_CONTEXT_TOKENS);
+  updateBoundedValueHints();
 });
 
 document.getElementById("qa-max-tokens-max")?.addEventListener("click", () => {
   if (qaMaxTokensInput) qaMaxTokensInput.value = String(QA_MAX_TOKENS);
+  updateBoundedValueHints();
 });
 
 document.getElementById("qa-timeout-max")?.addEventListener("click", () => {
   if (qaTimeoutInput) qaTimeoutInput.value = String(QA_TIMEOUT_SECONDS_MAX);
+  updateBoundedValueHints();
 });
 
 document.getElementById("qa-retries-max")?.addEventListener("click", () => {
   if (qaRetriesInput) qaRetriesInput.value = String(QA_RETRIES_MAX);
+  updateBoundedValueHints();
 });
 
 // LLM Config
@@ -1064,6 +1151,7 @@ async function runAskQuestion() {
   askBtn.textContent = '生成中...';
   if (stopBtn) stopBtn.hidden = false;
   [answerBodyEl, sourcesListEl, statsEl, errorEl].forEach(el => { if (el) { el.hidden = true; el.innerHTML = ''; } });
+  renderQaEffectiveParams(null);
   // v4.3.5: Also reset call chain diagram and related questions
   const callchainEl = document.getElementById('qa-callchain-diagram');
   if (callchainEl) { callchainEl.hidden = true; }
@@ -1198,6 +1286,7 @@ async function runAskQuestion() {
 
             case 'done':
               finalData = data;
+              renderQaEffectiveParams(finalData?.request);
               // v4.3.2: Show related questions
               setupRelatedQuestions(data.relatedQuestions);
               // v4.3.5: Render call chain diagram
@@ -1384,6 +1473,7 @@ document.getElementById('qa-new-conversation')?.addEventListener('click', functi
   document.getElementById('qa-sources-list').hidden = true;
   document.getElementById('qa-sources-list').innerHTML = '';
   document.getElementById('qa-stats').hidden = true;
+  renderQaEffectiveParams(null);
   document.getElementById('qa-feedback').hidden = true;
   document.getElementById('qa-error').hidden = true;
   document.getElementById('qa-raw').innerHTML = '';

@@ -576,6 +576,40 @@ Finish the v4.7.11 release after commit/tag/push by publishing release assets, v
 - 2026-06-29: Verified release download links return 200 with expected sizes: tgz `343599` bytes, Windows zip `555095` bytes.
 - 2026-06-29: Replaced local `:8787` service from v4.7.10 pid `52159`; `/health` now reports version `4.7.11` on pid `7903`. Served `/static/index.html` includes `include-context-lines max="500"`, `top-k-max`, and `qa-retries-max`; served `/static/js/app.js` includes `MAX_INCLUDE_CONTEXT_LINES = 500`, `QA_RETRIES_MAX = 5`, and `retries` in the QA request body.
 
+# v4.7.12 Web Runtime Visibility
+
+Author: feng.ling
+
+## Goal
+
+Make the Web page more self-explanatory during daily use: show service/runtime status, show current/max values for bounded advanced numeric options, and echo the actual QA request parameters used for each answer.
+
+## Plan
+
+- [x] Review Web static layout, `/health`, QA SSE done payload, and current option wiring.
+- [x] Write failing static contract tests for the service status strip, bounded value hints, and QA parameter echo.
+- [x] Write failing route/request tests proving QA responses emit parsed request parameters.
+- [x] Implement the smallest frontend/backend changes without touching indexing/search core behavior.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+
+## Validation Plan
+
+- Static contract tests prove the Web page exposes status and current/max option hints.
+- QA route or request tests prove the backend emits actual parsed QA parameters.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-29: Started after user approved the v4.7.12 plan. Scope is Web visibility and QA request parameter observability only.
+- 2026-06-29: RED confirmed Web static page lacked service status/effective request parameter UI and `parseAskRequest` did not expose clamped effective parameters.
+- 2026-06-29: GREEN confirmed Web header renders `/health` status, bounded numeric inputs render current/max hints, QA responses include effective request parameters, and the QA page displays them after completion.
+- 2026-06-29: Verification passed: focused tests (`src/config/packageManifest.test.ts`, `src/web/requestValidation.test.ts`, `src/web/app.test.ts`), `npm test` (86 tests), `npm run build`, `node dist/index.js --version` (`4.7.12`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 47ms, health p95 6ms, event-loop responsive 1/1.
+- 2026-06-29: Explicit package checks passed for `ace-mcp-4.7.12.tgz` and `release/ace-mcp-v4.7.12-win-x64.zip`; both include `dist/index.js`, packaged start/install scripts, benchmark/smoke scripts, and `dist/web/static/js/app.js`. `git diff --check` passed.
+
 # v4.7.8 Snippet/Context Maximum Controls
 
 Author: feng.ling

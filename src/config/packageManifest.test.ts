@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.7.11");
+  assert.equal(pkg.version, "4.7.12");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -118,7 +118,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.7\.11-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.7\.12-win-x64\.zip/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -126,10 +126,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.7.11 verification gates", () => {
+test("release checklist records the v4.7.12 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.7\.11/);
+  assert.match(checklist, /v4\.7\.12/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -137,7 +137,7 @@ test("release checklist records the v4.7.11 verification gates", () => {
   assert.match(checklist, /npm run release:smoke/);
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
-  assert.match(checklist, /git tag -a v4\.7\.11/);
+  assert.match(checklist, /git tag -a v4\.7\.12/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
@@ -174,4 +174,25 @@ test("web static controls expose maximum shortcuts for snippet and context sizin
   assert.match(appJs, /const retries = Number\(qaRetriesInput\?\.value \|\| 2\)/);
   assert.match(appJs, /timeoutSeconds: timeoutSec,[\s\S]*retries,/);
   assert.match(appJs, /maxContextTokens,/);
+});
+
+test("web static page exposes runtime status and effective request parameters", () => {
+  const html = readFileSync(path.join(rootDir, "src/web/static/index.html"), "utf8");
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+
+  assert.match(html, /id="service-status-strip"/);
+  assert.match(html, /id="service-version"/);
+  assert.match(html, /id="service-watch-status"/);
+  assert.match(html, /id="service-projects"/);
+  assert.match(html, /id="service-latest-index"/);
+  assert.match(html, /id="qa-effective-params"/);
+  assert.match(html, /data-value-hint="qa-max-sources"/);
+  assert.match(html, /data-value-hint="include-context-lines"/);
+  assert.match(html, /data-value-hint="qa-retries"/);
+
+  assert.match(appJs, /function renderServiceStatus\(/);
+  assert.match(appJs, /request\("GET", "\/health"\)[\s\S]*renderServiceStatus/);
+  assert.match(appJs, /function updateBoundedValueHints\(/);
+  assert.match(appJs, /function renderQaEffectiveParams\(/);
+  assert.match(appJs, /finalData\?\.request[\s\S]*renderQaEffectiveParams/);
 });

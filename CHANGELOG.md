@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.12] - 2026-06-29
+
+### Web runtime visibility and request parameter echo
+
+- Web 页头新增服务状态条，自动从 `/health` 展示当前版本、watch 状态、已就绪/总项目数和最近索引时间。
+- 搜索、代码片段和 QA 高级选项的 bounded numeric 输入新增“当前 / 最大”动态提示，点击“最大”或手动输入后会同步更新。
+- QA JSON 与 SSE 响应新增 `request` 字段，回显后端解析和 clamp 后的实际 `maxSources`、`maxContextTokens`、`maxTokens`、`timeoutSeconds`、`retries`、`contextMode` 等参数。
+- Web QA 完成后在答案下方展示本次实际请求参数，便于判断答案不完整是召回、上下文预算、输出 token 还是超时配置导致。
+- 新增 Web 静态契约、请求解析和 Web app 级测试，防止页面控件与后端实际行为再次脱节。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.12。
+
 ## [4.7.11] - 2026-06-29
 
 ### Larger snippet/context limits and complete max shortcuts

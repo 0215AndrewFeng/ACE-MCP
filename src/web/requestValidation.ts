@@ -99,6 +99,15 @@ export interface AskRequest {
   callChainDepth: number;
   timeoutSeconds: number;
   retries: number;
+  effectiveParams: {
+    callChainDepth: number;
+    contextMode: (typeof QA_CONTEXT_MODES)[number];
+    includeSummary: boolean;
+    maxContextTokens: number;
+    maxSources: number;
+    retries: number;
+    timeoutSeconds: number;
+  };
 }
 
 // ── Parsers ──────────────────────────────────────────────────────────────────
@@ -191,21 +200,37 @@ export function parseAskRequest(body: any, settings: Settings): ParseResult<AskR
   if (!projectRootPath) return { ok: false, error: "projectRootPath is required" };
   const question = nonEmptyString(body.question);
   if (!question) return { ok: false, error: "question is required" };
+  const maxSources = clampInteger(body.maxSources, 1, settings.qaMaxSourcesMax, settings.qaMaxSourcesDefault);
+  const maxContextTokens = body.maxContextTokens != null
+    ? clampInteger(body.maxContextTokens, 1000, settings.qaMaxContextTokensMax, settings.qaMaxContextTokens)
+    : undefined;
+  const includeSummary = body.includeSummary !== false;
+  const contextMode = enumOrDefault(body.contextMode, QA_CONTEXT_MODES, "merged-file");
+  const callChainDepth = clampInteger(body.callChainDepth, 1, 3, 1);
+  const timeoutSeconds = clampInteger(body.timeoutSeconds, 10, 600, 120);
+  const retries = clampInteger(body.retries, 0, 5, 2);
   return {
     ok: true,
     value: {
       projectRootPath,
       question,
-      maxSources: clampInteger(body.maxSources, 1, settings.qaMaxSourcesMax, settings.qaMaxSourcesDefault),
-      maxContextTokens: body.maxContextTokens != null
-        ? clampInteger(body.maxContextTokens, 1000, settings.qaMaxContextTokensMax, settings.qaMaxContextTokens)
-        : undefined,
-      includeSummary: body.includeSummary !== false,
+      maxSources,
+      maxContextTokens,
+      includeSummary,
       languages: normalizeSupportedLanguages(body.languages),
-      contextMode: enumOrDefault(body.contextMode, QA_CONTEXT_MODES, "merged-file"),
-      callChainDepth: clampInteger(body.callChainDepth, 1, 3, 1),
-      timeoutSeconds: clampInteger(body.timeoutSeconds, 10, 600, 120),
-      retries: clampInteger(body.retries, 0, 5, 2),
+      contextMode,
+      callChainDepth,
+      timeoutSeconds,
+      retries,
+      effectiveParams: {
+        callChainDepth,
+        contextMode,
+        includeSummary,
+        maxContextTokens: maxContextTokens ?? settings.qaMaxContextTokens,
+        maxSources,
+        retries,
+        timeoutSeconds,
+      },
     },
   };
 }

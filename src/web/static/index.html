@@ -10,6 +10,12 @@
     <header class="app-header">
       <h1>🔍 ace-mcp 代码助手</h1>
       <p class="subtitle">本地代码搜索与智能问答工具，支持 Java / JavaScript / Python / .NET 项目</p>
+      <div id="service-status-strip" class="service-status-strip" aria-live="polite">
+        <span>版本 <strong id="service-version">--</strong></span>
+        <span>监听 <strong id="service-watch-status">--</strong></span>
+        <span>项目 <strong id="service-projects">--</strong></span>
+        <span>最近索引 <strong id="service-latest-index">--</strong></span>
+      </div>
     </header>
 
     <div class="main-container">
@@ -51,6 +57,7 @@
                   <button id="qa-max-sources-max" type="button" class="btn-secondary btn-small" title="使用最大参考代码数量">最大</button>
                 </div>
                 <span class="hint">搜索多少个代码片段作为上下文（1~100）</span>
+                <span class="value-hint" data-value-hint="qa-max-sources"></span>
               </div>
               <div>
                 <label for="qa-max-context-tokens">上下文预算</label>
@@ -59,6 +66,7 @@
                   <button id="qa-max-context-tokens-max" type="button" class="btn-secondary btn-small" title="使用最大上下文预算">最大</button>
                 </div>
                 <span class="hint">可注入给 LLM 的参考代码 token 预算（1000~200000）</span>
+                <span class="value-hint" data-value-hint="qa-max-context-tokens"></span>
               </div>
               <div>
                 <label for="qa-max-tokens">LLM 最大输出</label>
@@ -67,6 +75,7 @@
                   <button id="qa-max-tokens-max" type="button" class="btn-secondary btn-small" title="使用最大输出 token 数">最大</button>
                 </div>
                 <span class="hint">LLM 回答的最大 token 数（512~32768），越大回答越完整但越慢</span>
+                <span class="value-hint" data-value-hint="qa-max-tokens"></span>
               </div>
               <div>
                 <label for="qa-timeout">超时时间（秒）</label>
@@ -75,6 +84,7 @@
                   <button id="qa-timeout-max" type="button" class="btn-secondary btn-small" title="使用最大超时时间">最大</button>
                 </div>
                 <span class="hint">LLM 响应的最大等待时间（10~600）</span>
+                <span class="value-hint" data-value-hint="qa-timeout"></span>
               </div>
               <div>
                 <label for="qa-retries">失败重试次数</label>
@@ -83,6 +93,7 @@
                   <button id="qa-retries-max" type="button" class="btn-secondary btn-small" title="使用最大重试次数">最大</button>
                 </div>
                 <span class="hint">LLM 超时后自动重试几次（0~5）</span>
+                <span class="value-hint" data-value-hint="qa-retries"></span>
               </div>
               <label class="checkbox-label">
                 <input id="qa-include-summary" type="checkbox" checked />
@@ -128,6 +139,7 @@
             <div id="qa-feedback-thanks" class="qa-feedback-thanks" hidden>✓ 感谢您的反馈！</div>
           </div>
           <div id="qa-sources-list" class="qa-sources-list" hidden></div>
+          <div id="qa-effective-params" class="qa-effective-params" hidden></div>
           <div id="qa-stats" class="qa-stats" hidden></div>
           <!-- v4.2.9: Session token stats -->
           <div id="session-token-stats" class="session-token-stats" hidden></div>
@@ -178,6 +190,7 @@
                   <button id="include-context-lines-max" type="button" class="btn-secondary btn-small" title="使用最大上下文行数">最大</button>
                 </div>
                 <span class="hint">匹配行前后额外显示几行（0~500）</span>
+                <span class="value-hint" data-value-hint="include-context-lines"></span>
               </div>
               <div>
                 <label for="search-languages">限定语言</label>
@@ -301,6 +314,7 @@
                 <input id="snippet-end" type="number" min="1" value="40" />
                 <button id="snippet-range-max" type="button" class="btn-secondary btn-small" title="从第 1 行读到文件末尾">最大</button>
               </div>
+              <span class="value-hint" data-value-hint="snippet-end"></span>
             </div>
             <button id="run-snippet" type="button" class="btn-secondary">查看</button>
           </div>

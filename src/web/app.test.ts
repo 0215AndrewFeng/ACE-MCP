@@ -118,3 +118,68 @@ test("health does not wait for per-project SQLite stats", async () => {
     await app.close();
   }
 });
+
+test("QA response includes effective request parameters", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/refund.ts": "export function refundOrder() { return 'ok'; }\n",
+  });
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: env.indexCoordinator,
+    llmClient: {
+      complete: async () => ({
+        content: "Refund flow answer",
+        usage: { promptTokens: 11, completionTokens: 3 },
+      }),
+      getModelName: () => "test-model",
+      isConfigured: () => true,
+    } as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: { loadSummary: async () => null } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/qa/ask`, {
+      body: JSON.stringify({
+        contextMode: "full-file",
+        maxContextTokens: 999999,
+        maxSources: 999,
+        maxTokens: 1234,
+        projectRootPath: env.projectRootPath,
+        question: "refund",
+        retries: 999,
+        timeoutSeconds: 999,
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.answer, "Refund flow answer");
+    assert.deepEqual(body.request, {
+      callChainDepth: 1,
+      contextMode: "full-file",
+      includeSummary: true,
+      maxContextTokens: 200000,
+      maxSources: 100,
+      maxTokens: 1234,
+      retries: 5,
+      timeoutSeconds: 600,
+    });
+  } finally {
+    await app.close();
+    await env.cleanup();
+  }
+});

@@ -81,3 +81,27 @@ test("parseCallGraphRequest and parseAskRequest clamp request-specific fields", 
   assert.equal(ask.value.retries, 5);
   assert.equal(ask.value.timeoutSeconds, 600);
 });
+
+test("parseAskRequest reports effective request parameters for Web display", () => {
+  const ask = parseAskRequest({
+    contextMode: "full-file",
+    maxContextTokens: 999999,
+    maxSources: 999,
+    projectRootPath: "/tmp/project",
+    question: "how does refund work?",
+    retries: 999,
+    timeoutSeconds: 999,
+  }, settings);
+
+  assert.equal(ask.ok, true);
+  if (!ask.ok) return;
+  assert.deepEqual(ask.value.effectiveParams, {
+    callChainDepth: 1,
+    contextMode: "full-file",
+    includeSummary: true,
+    maxContextTokens: 200000,
+    maxSources: 50,
+    retries: 5,
+    timeoutSeconds: 600,
+  });
+});
