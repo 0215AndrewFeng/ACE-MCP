@@ -592,7 +592,7 @@ Make the Web page more self-explanatory during daily use: show service/runtime s
 - [x] Implement the smallest frontend/backend changes without touching indexing/search core behavior.
 - [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
 - [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
 
 ## Validation Plan
 
@@ -609,6 +609,40 @@ Make the Web page more self-explanatory during daily use: show service/runtime s
 - 2026-06-29: GREEN confirmed Web header renders `/health` status, bounded numeric inputs render current/max hints, QA responses include effective request parameters, and the QA page displays them after completion.
 - 2026-06-29: Verification passed: focused tests (`src/config/packageManifest.test.ts`, `src/web/requestValidation.test.ts`, `src/web/app.test.ts`), `npm test` (86 tests), `npm run build`, `node dist/index.js --version` (`4.7.12`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 47ms, health p95 6ms, event-loop responsive 1/1.
 - 2026-06-29: Explicit package checks passed for `ace-mcp-4.7.12.tgz` and `release/ace-mcp-v4.7.12-win-x64.zip`; both include `dist/index.js`, packaged start/install scripts, benchmark/smoke scripts, and `dist/web/static/js/app.js`. `git diff --check` passed.
+- 2026-06-29: Committed `b65e38a`, tagged `v4.7.12`, pushed `master` and `v4.7.12`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.7.12.
+
+# v4.7.12 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.12 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.12, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm release commit and annotated tag were pushed.
+- [x] Create the Gitee Release `v4.7.12` with npm and Windows archive assets.
+- [x] Verify release notes are saved on the edit page.
+- [x] Verify both release download links return expected files.
+- [x] Replace local `:8787` service with v4.7.12 and verify served assets.
+- [x] Record final handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.12^{}` point to release commit `b65e38a`.
+- Release assets exist: `ace-mcp-4.7.12.tgz` and `release/ace-mcp-v4.7.12-win-x64.zip`.
+- Gitee download URLs for both assets return 200 with expected sizes.
+- Local `/health` reports version `4.7.12`.
+- Local served `/static/index.html` includes `service-status-strip`, `qa-effective-params`, and `data-value-hint="qa-retries"`.
+- Local served `/static/js/app.js` includes `renderServiceStatus`, `renderQaEffectiveParams`, and `finalData?.request` handling.
+
+## Comments
+
+- 2026-06-29: Remote release commit `b65e38a` was pushed to `master`; annotated tag `v4.7.12` was pushed to Gitee.
+- 2026-06-29: Created Gitee Release `v4.7.12`, attached `ace-mcp-4.7.12.tgz` (`attach_id=2864588`) and `ace-mcp-v4.7.12-win-x64.zip` (`attach_id=2864587`), and confirmed the edit page saved release notes.
+- 2026-06-29: Verified release download links return 200 with expected sizes: tgz `345844` bytes, Windows zip `558277` bytes.
+- 2026-06-29: Replaced local `:8787` service from v4.7.11 pid `7903` by restarting LaunchAgent `com.ace-mcp.server`; `/health` now reports version `4.7.12` on pid `56471`. Served `/static/index.html` includes `service-status-strip`, `qa-effective-params`, and `data-value-hint="qa-retries"`; served `/static/js/app.js` includes `renderServiceStatus`, `renderQaEffectiveParams`, and `finalData?.request`.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
