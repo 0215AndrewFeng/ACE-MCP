@@ -272,6 +272,63 @@ test("vue Options API methods resolve template references without template calle
   }
 });
 
+test("vue Options API props and data fields resolve template references without caller edges", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/layout/components/Navbar.vue": [
+      "<template>",
+      "  <el-select v-model=\"currentLang\" @change=\"changeLanguage\">",
+      "    <span>{{ avatar }}</span>",
+      "  </el-select>",
+      "</template>",
+      "",
+      "<script>",
+      "export default {",
+      "  name: 'Navbar',",
+      "  props: {",
+      "    avatar: String",
+      "  },",
+      "  data() {",
+      "    return {",
+      "      currentLang: 'zh-CN'",
+      "    };",
+      "  },",
+      "  methods: {",
+      "    changeLanguage(lang) {",
+      "      this.currentLang = lang;",
+      "    }",
+      "  }",
+      "};",
+      "</script>",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const currentLangDefinitions = await env.searchService.findDefinitions(env.projectRootPath, "Navbar.currentLang", 10);
+    assert.ok(
+      currentLangDefinitions.results.some((result) => result.filePath === "src/layout/components/Navbar.vue" && result.line === 15 && result.kind === "property"),
+    );
+
+    const avatarDefinitions = await env.searchService.findDefinitions(env.projectRootPath, "Navbar.avatar", 10);
+    assert.ok(
+      avatarDefinitions.results.some((result) => result.filePath === "src/layout/components/Navbar.vue" && result.line === 11 && result.kind === "property"),
+    );
+
+    const references = await env.searchService.findReferences(env.projectRootPath, "Navbar.currentLang", 10);
+    assert.ok(
+      references.results.some((result) => result.filePath === "src/layout/components/Navbar.vue" && result.startLine === 2),
+    );
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "Navbar.currentLang", 10);
+    assert.ok(!callers.results.some((result) => result.filePath === "src/layout/components/Navbar.vue" && result.startLine === 2));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("svelte single-file component script participates in javascript call graph resolution", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",

@@ -194,6 +194,71 @@ test("javascript adapter extracts Vue Options API members as component symbols",
   );
 });
 
+test("javascript adapter extracts Vue Options API props and data fields as component properties", () => {
+  const analysis = javascriptAdapter.analyzeSource!(
+    "file-options-state-vue",
+    "src/layout/components/Navbar.vue",
+    [
+      "<template>",
+      "  <el-select v-model=\"currentLang\" @change=\"changeLanguage\">",
+      "    <span>{{ avatar }}</span>",
+      "    <span>{{ compactMode }}</span>",
+      "    <span>{{ theme }}</span>",
+      "  </el-select>",
+      "</template>",
+      "",
+      "<script>",
+      "export default {",
+      "  name: 'Navbar',",
+      "  props: {",
+      "    avatar: String,",
+      "    compactMode: {",
+      "      type: Boolean,",
+      "      default: false",
+      "    }",
+      "  },",
+      "  data() {",
+      "    return {",
+      "      currentLang: 'zh-CN',",
+      "      theme: 'light'",
+      "    };",
+      "  },",
+      "  methods: {",
+      "    changeLanguage(lang) {",
+      "      this.currentLang = lang;",
+      "    }",
+      "  }",
+      "};",
+      "</script>",
+      "",
+    ].join("\n"),
+  );
+
+  const symbols = new Map(analysis.symbols.map((symbol) => [symbol.name, symbol]));
+  assert.equal(symbols.get("avatar")?.kind, "property");
+  assert.equal(symbols.get("avatar")?.fullName, "Navbar.avatar");
+  assert.equal(symbols.get("avatar")?.line, 13);
+  assert.equal(symbols.get("compactMode")?.kind, "property");
+  assert.equal(symbols.get("compactMode")?.fullName, "Navbar.compactMode");
+  assert.equal(symbols.get("compactMode")?.line, 14);
+  assert.equal(symbols.get("currentLang")?.kind, "property");
+  assert.equal(symbols.get("currentLang")?.fullName, "Navbar.currentLang");
+  assert.equal(symbols.get("currentLang")?.line, 21);
+  assert.equal(symbols.get("theme")?.kind, "property");
+  assert.equal(symbols.get("theme")?.fullName, "Navbar.theme");
+  assert.equal(symbols.get("theme")?.line, 22);
+
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "currentLang" &&
+        usage.kind === "usage" &&
+        usage.line === 2 &&
+        usage.ownerSymbol === undefined,
+    ),
+  );
+});
+
 test("javascript adapter extracts Svelte script symbols and maps lines to the original SFC", () => {
   const analysis = javascriptAdapter.analyzeSource!(
     "file-ledger-svelte",

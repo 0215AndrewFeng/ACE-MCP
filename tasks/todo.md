@@ -436,6 +436,42 @@ Finish the v4.7.9 release after commit/tag/push by publishing release assets, ve
 - 2026-06-29: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `340338` bytes, Windows zip `548962` bytes.
 - 2026-06-29: Replaced local `:8787` service from v4.7.8 pid `80870`; `/health` now reports version `4.7.9` on pid `13829`.
 
+# v4.7.10 Vue Options API Data/Props Symbol Extraction
+
+Author: feng.ling
+
+## Goal
+
+Complete the next small Vue 2 Options API gap after v4.7.9: template usages can now resolve methods/computed/watch/lifecycle definitions, but state fields from `props` and `data()` are not stable definition targets. Extract these as component `property` symbols so template references such as `v-model="currentLang"` and `{{ avatar }}` can resolve back to component state definitions without changing caller behavior.
+
+## Plan
+
+- [x] Review v4.7.9 Vue Options API extraction and existing SFC tests.
+- [x] Write failing adapter tests for `props` and `data()` return object fields with original `.vue` line numbers.
+- [x] Write a failing workflow test proving template references resolve to Options API properties without creating caller edges.
+- [x] Implement minimal Vue-only property extraction for `props` object/array forms and `data()` object returns.
+- [x] Keep template/markup usages ownerless so `find_references` improves without adding template caller edges.
+- [x] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue`.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+
+## Validation Plan
+
+- Focused JavaScript adapter regression for Vue `props` and `data()` property symbols and original SFC line numbers.
+- Workflow regression proving template usages resolve as references to Options API properties while `find_callers` remains clean.
+- Real Vue project smoke against `~/work/code/tc-flight-endorse-mng`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-29: Started v4.7.10 after user approved the small high-value follow-up. Scope is intentionally limited to Vue Options API `props` and `data()` state symbols; methods/computed/watch/lifecycle were completed in v4.7.9.
+- 2026-06-29: RED confirmed: JavaScript adapter did not emit `Navbar.avatar/currentLang/theme` property symbols from `props` and `data()`, and workflow definition lookup for `Navbar.currentLang` failed.
+- 2026-06-29: GREEN confirmed: `.vue` Options API `props` object/array forms and `data()` returned object fields now emit component `property` symbols with original SFC lines, while template usages remain ownerless.
+- 2026-06-29: Validation passed before release packaging: focused JavaScript adapter test, focused search workflow test, `npm test` (80 tests), `npm run build`, and real Vue project smoke. Real smoke indexed 315 files / 544 chunks / 0 failures in `tc-flight-endorse-mng`; `Navbar.currentLang` line 62, `Pagination.total` line 23, and `Pagination.hidden` line 53 resolve as property definitions, template references resolve, and property queries have no template caller pollution.
+
 # v4.7.8 Snippet/Context Maximum Controls
 
 Author: feng.ling

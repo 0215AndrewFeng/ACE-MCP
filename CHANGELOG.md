@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.10] - 2026-06-29
+
+### Vue Options API data/props property extraction
+
+- JavaScript adapter 在 `.vue` 的 Options API 中提取 `props` object/array 形式和 `data()` 返回对象字段为组件内 `property` 符号，保留原始 SFC 行号。
+- 状态字段使用组件限定全名，例如 `Navbar.currentLang`、`Pagination.total`、`Pagination.hidden`，可被 `find_definition` 和 symbol 搜索命中。
+- 模板 usage 继续保持 ownerless，因此 `v-model="currentLang"`、`:total="total"`、`{{ hidden }}` 等能被 `find_references` 召回，但不会污染 `find_callers`。
+- 新增 JavaScript adapter 与 workflow 回归测试，覆盖 props object/array、data return object、模板 reference 和 caller 噪音控制。
+- 使用真实 Vue 2 项目 `~/work/code/tc-flight-endorse-mng` 验证：315 个文件索引成功，`Navbar.currentLang`、`Pagination.total`、`Pagination.hidden` 均可查定义与模板引用，property 查询无模板 caller。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.10。
+
 ## [4.7.9] - 2026-06-29
 
 ### Vue Options API symbol extraction

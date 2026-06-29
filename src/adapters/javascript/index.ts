@@ -521,6 +521,53 @@ function isVueOptionsExportDefaultObject(node: ts.Node): node is ts.ExportAssign
   return ts.isExportAssignment(node) && !node.isExportEquals && ts.isObjectLiteralExpression(node.expression);
 }
 
+function getReturnedObjectLiteral(node: ts.Node): ts.ObjectLiteralExpression | undefined {
+  let returnedObject: ts.ObjectLiteralExpression | undefined;
+
+  const visitReturn = (child: ts.Node): void => {
+    if (returnedObject) {
+      return;
+    }
+
+    if (ts.isReturnStatement(child) && child.expression && ts.isObjectLiteralExpression(child.expression)) {
+      returnedObject = child.expression;
+      return;
+    }
+
+    ts.forEachChild(child, visitReturn);
+  };
+
+  ts.forEachChild(node, visitReturn);
+  return returnedObject;
+}
+
+function getObjectLiteralPropertyNames(sourceFile: ts.SourceFile, objectLiteral: ts.ObjectLiteralExpression): Array<{ name: string; node: ts.Node }> {
+  const properties: Array<{ name: string; node: ts.Node }> = [];
+
+  for (const property of objectLiteral.properties) {
+    if (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property) || ts.isMethodDeclaration(property)) {
+      const name = getDeclarationName(sourceFile, property.name);
+      if (name) {
+        properties.push({ name, node: property });
+      }
+    }
+  }
+
+  return properties;
+}
+
+function getArrayStringLiteralNames(arrayLiteral: ts.ArrayLiteralExpression): Array<{ name: string; node: ts.Node }> {
+  const properties: Array<{ name: string; node: ts.Node }> = [];
+
+  for (const element of arrayLiteral.elements) {
+    if (ts.isStringLiteralLike(element) && element.text.trim().length > 0) {
+      properties.push({ name: element.text.trim(), node: element });
+    }
+  }
+
+  return properties;
+}
+
 function analyzeSourceWithAst(fileId: string, relativePath: string, content: string): SourceAnalysis {
   const sourceContent = isSingleFileComponentPath(relativePath) ? extractScriptOnlyContent(content) : content;
   const isVueSingleFileComponent = /\.vue$/i.test(relativePath);
@@ -696,6 +743,16 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
       ts.isSetAccessorDeclaration(node)
     ) {
       const methodName = getDeclarationName(sourceFile, node.name);
+      if (methodName === "data" && state.vueOptionsComponentName && ts.isMethodDeclaration(node)) {
+        const returnedObject = getReturnedObjectLiteral(node);
+        if (returnedObject) {
+          for (const property of getObjectLiteralPropertyNames(sourceFile, returnedObject)) {
+            addSymbol("property", property.name, [state.vueOptionsComponentName], property.node);
+          }
+        }
+        return;
+      }
+
       if (methodName && state.classStack.length > 0) {
         const fullName = addSymbol("method", methodName, state.classStack, node);
         const nextState: VisitState = {
@@ -804,6 +861,29 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
     if (ts.isPropertyAssignment(node)) {
       const propertyName = getDeclarationName(sourceFile, node.name);
       if (propertyName && state.classStack.length > 0) {
+        if (state.vueOptionsComponentName && propertyName === "props") {
+          if (ts.isObjectLiteralExpression(node.initializer)) {
+            for (const property of getObjectLiteralPropertyNames(sourceFile, node.initializer)) {
+              addSymbol("property", property.name, [state.vueOptionsComponentName], property.node);
+            }
+          } else if (ts.isArrayLiteralExpression(node.initializer)) {
+            for (const property of getArrayStringLiteralNames(node.initializer)) {
+              addSymbol("property", property.name, [state.vueOptionsComponentName], property.node);
+            }
+          }
+          return;
+        }
+
+        if (state.vueOptionsComponentName && propertyName === "data" && isFunctionLikeExpression(node.initializer)) {
+          const returnedObject = getReturnedObjectLiteral(node.initializer);
+          if (returnedObject) {
+            for (const property of getObjectLiteralPropertyNames(sourceFile, returnedObject)) {
+              addSymbol("property", property.name, [state.vueOptionsComponentName], property.node);
+            }
+          }
+          return;
+        }
+
         if (state.vueOptionsComponentName && VUE_OPTIONS_MEMBER_GROUPS.has(propertyName) && ts.isObjectLiteralExpression(node.initializer)) {
           for (const member of node.initializer.properties) {
             visit(member, {

@@ -44,10 +44,11 @@
 29. ✅ **Vue/Svelte 模板引用提取**：提取 Vue template 和 Svelte markup 中的组件标签、事件/绑定/插值表达式标识符为 ownerless usage，提升 `find_references` 和 RAG 召回且不污染调用图 caller（v4.7.7）
 30. ✅ **片段/上下文最大化快捷入口**：`includeContextLines` 共享上限 50→200；Web 搜索上下文、文件片段范围、QA 参考代码数量和 `maxContextTokens` 都提供“最大”按钮，减少大接口/长文件漏代码风险（v4.7.8）
 31. ✅ **Vue Options API 符号提取**：真实 Vue 2 项目 `tc-flight-endorse-mng` 暴露出 `export default { methods/computed/watch }` 内方法不一定建成 symbol 的缺口；现提取 `methods` / `computed` / `watch` / 常见生命周期函数为组件内 method 符号，模板 usage 可解析回 `EndorseLookup.search`、`Navbar.changeLanguage` 等定义，并保持 ownerless 不污染 caller（v4.7.9）
-32. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-33. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-34. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-35. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+32. ✅ **Vue Options API 状态字段提取**：提取 `props` object/array 形式和 `data()` 返回对象字段为组件内 property 符号，模板 usage 可解析回 `Navbar.currentLang`、`Pagination.total`、`Pagination.hidden` 等定义，并保持 ownerless 不污染 caller（v4.7.10）
+33. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+34. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+35. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+36. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 
