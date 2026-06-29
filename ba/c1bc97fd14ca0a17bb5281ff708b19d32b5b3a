@@ -1,0 +1,62 @@
+README.md
+  s_fc21e4effd9723::t_04d9ba68832a5f 5,85,88,95,112-113,137,198,507
+  s_3a219f3e07a2c0::t_0bfbaf670a29c3 509-513
+src/adapters/java/index.test.ts
+  s_3a219f3e07a2c0::t_be616cf8e631e3 1-46
+scripts/README-WINDOWS.md
+  s_fc21e4effd9723::t_04d9ba68832a5f 3,15,66,104
+src/core/search/searchService.ts
+  s_3a219f3e07a2c0::t_9c3fc2c3ac745c 954,957
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_bce8cdf884b2ac 5-15
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_58a02f30407384 27
+src/version.ts
+  s_fc21e4effd9723::t_04d9ba68832a5f 2
+ROADMAP.md
+  s_3a219f3e07a2c0::t_57dfc4b049c240 50-54
+src/core/storage/sqliteStore.ts
+  s_3a219f3e07a2c0::t_d59c855365da97 1131-1162,1164-1207,1227-1230,1249-1251
+docs/release-checklist.md
+  s_fc21e4effd9723::t_04d9ba68832a5f 3,42-43,51,53
+  s_3a219f3e07a2c0::t_5a809e0b45d6cd 50
+src/adapters/java/index.ts
+  s_3a219f3e07a2c0::t_ca581e7e8995f4 13-14,33-34,80-103,116-117,192,201-203,213-214,219-220,258,266-268,281,284,346-368
+  s_3a219f3e07a2c0::t_160fcb2d4e193e 32,212,232,247-255,280,403,468-470
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_9345bf9ce6abc1 40
+  s_fc21e4effd9723::t_04d9ba68832a5f 24,122,130,133,141
+package.json
+  s_3a219f3e07a2c0::t_6b6be474c5612d 31
+  s_fc21e4effd9723::t_04d9ba68832a5f 3
+src/test/search-workflow.test.ts
+  s_3a219f3e07a2c0::t_1c6c989556fe23 112-181
+tasks/todo.md
+  s_3a219f3e07a2c0::t_8af1bca3b11292 647-657,663-676,681
+  s_3a219f3e07a2c0::t_896600308dbb72 661-662,679-680
+  s_3a219f3e07a2c0::t_3d168ef44525ca 658-660,677-678
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bac1bc97fd14ca0a17bb5281ff708b19d32b5b3a",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_fc21e4effd9723": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
