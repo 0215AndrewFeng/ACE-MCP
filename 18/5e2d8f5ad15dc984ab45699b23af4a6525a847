@@ -1,0 +1,21 @@
+README.md
+  s_3a219f3e07a2c0::t_5b0b77cfd0be61 99-134
+tasks/todo.md
+  s_3a219f3e07a2c0::t_805b624a59f7b0 474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "185e2d8f5ad15dc984ab45699b23af4a6525a847",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
