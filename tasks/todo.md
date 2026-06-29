@@ -454,7 +454,7 @@ Complete the next small Vue 2 Options API gap after v4.7.9: template usages can 
 - [x] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue`.
 - [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
 
 ## Validation Plan
 
@@ -472,6 +472,41 @@ Complete the next small Vue 2 Options API gap after v4.7.9: template usages can 
 - 2026-06-29: GREEN confirmed: `.vue` Options API `props` object/array forms and `data()` returned object fields now emit component `property` symbols with original SFC lines, while template usages remain ownerless.
 - 2026-06-29: Validation passed before release packaging: focused JavaScript adapter test, focused search workflow test, `npm test` (80 tests), `npm run build`, and real Vue project smoke. Real smoke indexed 315 files / 544 chunks / 0 failures in `tc-flight-endorse-mng`; `Navbar.currentLang` line 62, `Pagination.total` line 23, and `Pagination.hidden` line 53 resolve as property definitions, template references resolve, and property queries have no template caller pollution.
 - 2026-06-29: After the release commit/tag push, user requested macOS installation docs. Added a README macOS installation section covering Node LTS via Homebrew, Gitee tgz install, source install, and Xcode Command Line Tools fallback for `better-sqlite3`.
+- 2026-06-29: Final release validation passed after adding macOS docs: `npm run release:check` ran `npm test` (80 tests), build, tgz pack, Windows zip, release smoke, and benchmark smoke. Benchmark smoke returned resultCount 1, search p95 38ms, health p95 5ms, and event-loop responsive 1/1.
+- 2026-06-29: Committed `7285cb5`, tagged `v4.7.10`, pushed `master` and `v4.7.10`; then committed macOS install docs as `185e2d8` on master. Created the Gitee Release, uploaded regenerated assets containing the macOS README section, verified download links, and replaced local `:8787` with v4.7.10.
+
+# v4.7.10 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.10 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.10, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm `origin/master` and annotated tag `v4.7.10` are pushed.
+- [x] Verify v4.7.10 docs/package metadata and release assets are present.
+- [x] Create the Gitee Release `v4.7.10` with npm and Windows archive assets.
+- [x] Verify release download links redirect successfully.
+- [x] Replace local `:8787` service with v4.7.10 and verify `/health`.
+- [x] Record release handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `refs/tags/v4.7.10^{}` points to `7285cb5`.
+- Remote `origin/master` includes the release commit and macOS install docs commit `185e2d8`.
+- Versioned docs/package metadata reference v4.7.10.
+- Release assets exist: `ace-mcp-4.7.10.tgz` and `release/ace-mcp-v4.7.10-win-x64.zip`.
+- Gitee download URLs for both assets return a successful redirect chain.
+- Local `/health` reports version `4.7.10`.
+
+## Comments
+
+- 2026-06-29: Remote verification passed: `refs/tags/v4.7.10^{}` points to release commit `7285cb5`; `origin/master` advanced to macOS-doc commit `185e2d8`; v4.7.10 package/docs references are present, and regenerated release assets exist locally.
+- 2026-06-29: Created Gitee Release `v4.7.10` in browser, attached `ace-mcp-4.7.10.tgz` (`attach_id=2864341`) and `ace-mcp-v4.7.10-win-x64.zip` (`attach_id=2864342`), confirmed release detail page shows commit `7285cb5`, and confirmed the edit page saved release notes.
+- 2026-06-29: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `342172` bytes, Windows zip `551745` bytes.
+- 2026-06-29: Replaced local `:8787` service from v4.7.9 pid `13829`; `/health` now reports version `4.7.10` on pid `52159`.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
