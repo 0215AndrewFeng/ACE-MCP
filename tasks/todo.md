@@ -660,7 +660,7 @@ Improve Java business-project recall by indexing Spring-style annotation entry p
 - [x] Implement the smallest Java-only extraction/resolution changes without perturbing other languages.
 - [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
 - [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
 
 ## Validation Plan
 
@@ -678,6 +678,39 @@ Improve Java business-project recall by indexing Spring-style annotation entry p
 - 2026-06-29: GREEN confirmed Java mapping annotations emit class/method path usages, field-typed method calls resolve to interface methods, interface queries include implementation method definitions, and call graph lookup uses all matched definition candidates for interface/impl caller recall.
 - 2026-06-29: Verification passed: focused Java/package tests, `npm test` (88 tests), `npm run build`, `node dist/index.js --version` (`4.8.1`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 35ms, health p95 5ms, event-loop responsive 1/1.
 - 2026-06-29: Explicit package checks passed for `ace-mcp-4.8.1.tgz` and `release/ace-mcp-v4.8.1-win-x64.zip`; both include `dist/index.js`, `dist/adapters/java/index.js`, packaged start/install scripts, benchmark/smoke scripts, and Windows README. `git diff --check` passed.
+- 2026-06-29: Committed `bac1bc9`, tagged `v4.8.1`, pushed `master` and `v4.8.1`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.8.1.
+
+# v4.8.1 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.8.1 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.8.1, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm release commit and annotated tag were pushed.
+- [x] Create the Gitee Release `v4.8.1` with npm and Windows archive assets.
+- [x] Verify release notes are saved on the edit page.
+- [x] Verify both release download links return expected files.
+- [x] Replace local `:8787` service with v4.8.1 and verify served runtime.
+- [x] Record final handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.8.1^{}` point to release commit `bac1bc9`.
+- Release assets exist: `ace-mcp-4.8.1.tgz` and `release/ace-mcp-v4.8.1-win-x64.zip`.
+- Gitee download URLs for both assets return 200 with expected sizes.
+- Local `/health` reports version `4.8.1`.
+- Built Java adapter includes Spring mapping path extraction and field-type call resolution.
+
+## Comments
+
+- 2026-06-29: Remote release commit `bac1bc9` was pushed to `master`; annotated tag `v4.8.1` was pushed to Gitee.
+- 2026-06-29: Created Gitee Release `v4.8.1`, attached `ace-mcp-4.8.1.tgz` (`attach_id=2864901`) and `ace-mcp-v4.8.1-win-x64.zip` (`attach_id=2864899`), and confirmed the edit page saved release notes.
+- 2026-06-29: Verified release download links return 200 with expected sizes: tgz `348081` bytes, Windows zip `562019` bytes.
+- 2026-06-29: Replaced local `:8787` service from v4.7.12 pid `56471` by restarting LaunchAgent `com.ace-mcp.server`; `/health` now reports version `4.8.1` on pid `54763`. Built `dist/adapters/java/index.js` includes `MAPPING_ANNOTATIONS`, `joinMappingPath`, and `fieldTypes` resolution logic.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
