@@ -951,9 +951,10 @@ export class SearchService {
     }
 
     const normalizedFilters = normalizeSearchFilters(filters);
+    const graphSymbolIds = [...new Set(definitionResponse.results.map((definition) => definition.symbolId))];
     const graphResults = this.store.findCallGraph(
       project.project_id,
-      [primaryDefinition.symbolId],
+      graphSymbolIds,
       direction,
       normalizedDepth,
       Math.max(topK * 4, SEARCH_FANOUT_LIMIT),

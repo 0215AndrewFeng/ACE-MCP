@@ -47,10 +47,11 @@
 32. ✅ **Vue Options API 状态字段提取**：提取 `props` object/array 形式和 `data()` 返回对象字段为组件内 property 符号，模板 usage 可解析回 `Navbar.currentLang`、`Pagination.total`、`Pagination.hidden` 等定义，并保持 ownerless 不污染 caller（v4.7.10）
 33. ✅ **更大代码片段与高级选项最大值补齐**：`includeContextLines` 共享上限 200→500；Web 搜索结果数量、上下文行数、文件片段范围、QA 参考代码数量、上下文预算、LLM 最大输出、超时时间和失败重试次数都提供“最大”按钮（v4.7.11）
 34. ✅ **Web 运行状态与请求参数可见性**：Web 页头展示 `/health` 的版本/watch/项目/最近索引状态；bounded numeric 高级选项显示当前/最大值；QA 完成后回显后端实际 clamp 后的请求参数（v4.7.12）
-35. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-36. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-37. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-38. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+35. ✅ **Java 注解入口与接口实现召回**：提取 Spring mapping 注解 path，类级/方法级路径合并为完整接口入口；Java 字段类型参与方法调用解析，接口方法查询可带出实现类方法和上游 Controller 调用（v4.8.1）
+36. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+37. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+38. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+39. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

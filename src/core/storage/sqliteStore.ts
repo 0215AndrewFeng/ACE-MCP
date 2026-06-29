@@ -1128,46 +1128,83 @@ export class SQLiteStore {
     const partialPattern = `%${normalizedQuery}%`;
     const rows = this.db
       .prepare(
-        `SELECT
-           f.relative_path,
-           f.language,
-           s.symbol_id,
-            s.name,
-            s.full_name,
-            s.canonical_name,
-           s.module_path,
-            s.kind,
-            s.line,
-            s.signature,
-            COALESCE(c.start_line, s.line) AS start_line,
-            COALESCE(c.end_line, s.line) AS end_line,
-            COALESCE(c.content, s.signature) AS content,
-            CASE
-             WHEN LOWER(s.canonical_name) = ? THEN 1.05
-              WHEN LOWER(s.full_name) = ? THEN 1.0
-              WHEN LOWER(s.name) = ? THEN 0.95
-              WHEN LOWER(s.canonical_name) LIKE ? THEN 0.9
-              WHEN LOWER(s.full_name) LIKE ? THEN 0.88
-              WHEN LOWER(s.full_name) LIKE ? THEN 0.8
-              WHEN LOWER(s.name) LIKE ? THEN 0.72
-              ELSE 0.55
-            END AS score
-         FROM symbol s
-         JOIN file f ON f.file_id = s.file_id
-         LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
-          WHERE f.project_id = ?
-            AND (
-             LOWER(COALESCE(s.canonical_name, '')) = ?
-               OR
-               LOWER(s.full_name) = ?
+        `WITH direct_matches AS (
+           SELECT
+             f.relative_path,
+             f.language,
+             s.symbol_id,
+             s.name,
+             s.full_name,
+             s.canonical_name,
+             s.module_path,
+             s.kind,
+             s.line,
+             s.signature,
+             COALESCE(c.start_line, s.line) AS start_line,
+             COALESCE(c.end_line, s.line) AS end_line,
+             COALESCE(c.content, s.signature) AS content,
+             CASE
+               WHEN LOWER(s.canonical_name) = ? THEN 1.05
+               WHEN LOWER(s.full_name) = ? THEN 1.0
+               WHEN LOWER(s.name) = ? THEN 0.95
+               WHEN LOWER(s.canonical_name) LIKE ? THEN 0.9
+               WHEN LOWER(s.full_name) LIKE ? THEN 0.88
+               WHEN LOWER(s.full_name) LIKE ? THEN 0.8
+               WHEN LOWER(s.name) LIKE ? THEN 0.72
+               ELSE 0.55
+             END AS score
+           FROM symbol s
+           JOIN file f ON f.file_id = s.file_id
+           LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
+           WHERE f.project_id = ?
+             AND (
+               LOWER(COALESCE(s.canonical_name, '')) = ?
+               OR LOWER(s.full_name) = ?
                OR LOWER(s.name) = ?
-              OR LOWER(COALESCE(s.canonical_name, '')) LIKE ?
-              OR LOWER(s.full_name) LIKE ?
-              OR LOWER(s.full_name) LIKE ?
-              OR LOWER(s.name) LIKE ?
-            )
-            ${filterClause.sql}
-         ORDER BY score DESC, LENGTH(s.full_name) ASC, s.line ASC
+               OR LOWER(COALESCE(s.canonical_name, '')) LIKE ?
+               OR LOWER(s.full_name) LIKE ?
+               OR LOWER(s.full_name) LIKE ?
+               OR LOWER(s.name) LIKE ?
+             )
+             ${filterClause.sql}
+         ),
+         java_implementation_matches AS (
+           SELECT
+             f.relative_path,
+             f.language,
+             owner.symbol_id,
+             owner.name,
+             owner.full_name,
+             owner.canonical_name,
+             owner.module_path,
+             owner.kind,
+             owner.line,
+             owner.signature,
+             COALESCE(c.start_line, owner.line) AS start_line,
+             COALESCE(c.end_line, owner.line) AS end_line,
+             COALESCE(c.content, owner.signature) AS content,
+             0.93 AS score
+           FROM symbol_usage su
+           JOIN symbol owner ON owner.symbol_id = su.owner_symbol_id
+           JOIN file f ON f.file_id = owner.file_id
+           LEFT JOIN chunk c ON c.file_id = f.file_id AND c.start_line <= owner.line AND c.end_line >= owner.line
+           WHERE f.project_id = ?
+             AND f.language = 'java'
+             AND su.usage_kind = 'usage'
+             AND su.owner_symbol_id IS NOT NULL
+             AND (
+               LOWER(su.raw_name) = ?
+               OR LOWER(su.candidate_names) LIKE ?
+             )
+             ${filterClause.sql}
+         )
+         SELECT *
+         FROM (
+           SELECT * FROM direct_matches
+           UNION ALL
+           SELECT * FROM java_implementation_matches
+         )
+         ORDER BY score DESC, LENGTH(full_name) ASC, line ASC
          LIMIT ?`,
       )
       .all(
@@ -1187,6 +1224,10 @@ export class SQLiteStore {
         partialPattern,
         partialPattern,
         ...filterClause.parameters,
+        projectId,
+        normalizedQuery,
+        `%${normalizedQuery}%`,
+        ...filterClause.parameters,
         limit,
       ) as Array<{
       canonical_name: string | null;
@@ -1205,7 +1246,9 @@ export class SQLiteStore {
       symbol_id: string;
     }>;
 
-    return rows.map((row) => ({
+    const dedupedRows = [...new Map(rows.map((row) => [row.symbol_id, row])).values()].slice(0, limit);
+
+    return dedupedRows.map((row) => ({
       canonicalName: row.canonical_name ?? undefined,
       endLine: row.end_line,
       filePath: row.relative_path,

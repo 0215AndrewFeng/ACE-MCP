@@ -10,6 +10,8 @@ const TYPE_PATTERN =
 const EXTENDS_IMPLEMENTS_PATTERN =
   /\b(?:extends|implements)\s+([\w.,<>\s?&]+)/g;
 const ANNOTATION_LINE_PATTERN = /^\s*@([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:\(|$|\s)/;
+const MAPPING_ANNOTATIONS = new Set(["RequestMapping", "GetMapping", "PostMapping", "PutMapping", "DeleteMapping", "PatchMapping"]);
+const MAPPING_PATH_PATTERN = /(?:value\s*=\s*)?["']([^"']+)["']/;
 const FIELD_PATTERN =
   /^\s*(?:(?:public|private|protected|static|final|volatile|transient)\s+)*([A-Z][\w<>\[\]?,\s]*?)\s+([a-z_]\w*)\s*(?:=|;)/;
 const CONSTRUCTOR_PATTERN =
@@ -27,6 +29,9 @@ const KEYWORDS = new Set(["if", "for", "while", "switch", "catch", "return", "ne
 
 interface JavaTypeScope {
   depth: number;
+  fieldTypes: Map<string, string>;
+  implementsTypes: string[];
+  mappingPath?: string;
   fullName: string;
   name: string;
 }
@@ -72,6 +77,30 @@ function isInCommentOrString(line: string): boolean {
   return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
 }
 
+function simpleName(name: string): string {
+  return name.split(".").pop() ?? name;
+}
+
+function normalizeMappingPath(path: string): string {
+  const normalized = path.trim();
+  if (!normalized) return "";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function joinMappingPath(prefix: string | undefined, suffix: string | undefined): string | undefined {
+  const left = normalizeMappingPath(prefix ?? "");
+  const right = normalizeMappingPath(suffix ?? "");
+  if (!left && !right) return undefined;
+  if (!left) return right;
+  if (!right || right === "/") return left;
+  return `${left.replace(/\/+$/, "")}/${right.replace(/^\/+/, "")}`;
+}
+
+function extractMappingPath(line: string): string | undefined {
+  const match = line.match(MAPPING_PATH_PATTERN);
+  return match?.[1] ? normalizeMappingPath(match[1]) : undefined;
+}
+
 /* ── Main analyser ────────────────────────────────────────────────── */
 
 function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
@@ -84,6 +113,8 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
   let braceDepth = 0;
   let packageName = "";
   let pendingTypeName: string | null = null;
+  let pendingMappingPath: string | undefined;
+  let pendingImplementsTypes: string[] = [];
   /** Map imported simple name → full qualified name */
   const importMap = new Map<string, string>();
 
@@ -158,6 +189,7 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
     if (annoMatch?.[1]) {
       const annoName = annoMatch[1];
       const resolvedAnno = importMap.get(annoName) ?? annoName;
+      const annoSimpleName = simpleName(annoName);
       const owner = currentMethod?.fullName ?? typeStack[typeStack.length - 1]?.fullName;
       pushUsage(usages, {
         candidateNames: [resolvedAnno, annoName],
@@ -166,6 +198,9 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
         ownerSymbol: owner,
         rawName: `@${annoName}`,
       });
+      if (MAPPING_ANNOTATIONS.has(annoSimpleName)) {
+        pendingMappingPath = extractMappingPath(trimmed);
+      }
     }
 
     const nextBraceDepth = Math.max(0, braceDepth + countBraces(line));
@@ -174,10 +209,15 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
     if (pendingTypeName && nextBraceDepth > braceDepth) {
       typeStack.push({
         depth: nextBraceDepth,
+        fieldTypes: new Map(),
+        implementsTypes: pendingImplementsTypes,
+        mappingPath: pendingMappingPath,
         fullName: buildQualifiedName([packageName, ...typeStack.map((s) => s.name), pendingTypeName]),
         name: pendingTypeName,
       });
       pendingTypeName = null;
+      pendingImplementsTypes = [];
+      pendingMappingPath = undefined;
     }
 
     /* ── type declaration ──────────────────────────────────── */
@@ -189,6 +229,7 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
         const kind = rawKind === "record" ? "record" : (rawKind as "class" | "enum" | "interface");
         const containerName = typeStack[typeStack.length - 1]?.name;
         const fullName = buildQualifiedName([packageName, ...typeStack.map((s) => s.name), name]);
+        const typeMappingPath = pendingMappingPath;
         symbols.push(
           createSymbolInfo({
             canonicalName: fullName,
@@ -203,8 +244,18 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
             signature: trimmed,
           }),
         );
+        if (typeMappingPath) {
+          pushUsage(usages, {
+            candidateNames: [typeMappingPath],
+            kind: "usage",
+            line: index + 1,
+            ownerSymbol: fullName,
+            rawName: typeMappingPath,
+          });
+        }
 
         // extends / implements → type usages
+        const implementsTypes: string[] = [];
         for (const eiMatch of trimmed.matchAll(EXTENDS_IMPLEMENTS_PATTERN)) {
           const clause = eiMatch[1];
           if (!clause) continue;
@@ -212,6 +263,9 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
             const simple = stripGenerics(typeName);
             if (!simple) continue;
             const resolved = importMap.get(simple) ?? simple;
+            if (trimmed.includes("implements")) {
+              implementsTypes.push(resolved, simple);
+            }
             pushUsage(usages, {
               candidateNames: [resolved, simple],
               kind: "type",
@@ -223,9 +277,11 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
         }
 
         if (nextBraceDepth > braceDepth) {
-          typeStack.push({ depth: nextBraceDepth, fullName, name });
+          typeStack.push({ depth: nextBraceDepth, fieldTypes: new Map(), fullName, implementsTypes: [...new Set(implementsTypes)], mappingPath: typeMappingPath, name });
+          pendingMappingPath = undefined;
         } else if (!trimmed.includes("{")) {
           pendingTypeName = name;
+          pendingImplementsTypes = [...new Set(implementsTypes)];
         }
       }
     }
@@ -287,6 +343,29 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
             signature: trimmed,
           }),
         );
+        const currentType = typeStack[typeStack.length - 1]!;
+        const methodMappingPath = pendingMappingPath;
+        const fullMappingPath = joinMappingPath(currentType.mappingPath, methodMappingPath);
+        if (fullMappingPath) {
+          pushUsage(usages, {
+            candidateNames: [...new Set([fullMappingPath, methodMappingPath, currentType.mappingPath].filter((value): value is string => Boolean(value)))],
+            kind: "usage",
+            line: signatureStartLine > 0 ? signatureStartLine : index + 1,
+            ownerSymbol: fullName,
+            rawName: methodMappingPath ?? fullMappingPath,
+          });
+        }
+        pendingMappingPath = undefined;
+        for (const iface of currentType.implementsTypes) {
+          const ifaceSimple = simpleName(iface);
+          pushUsage(usages, {
+            candidateNames: [...new Set([`${iface}.${name}`, `${ifaceSimple}.${name}`, name])],
+            kind: "usage",
+            line: index + 1,
+            ownerSymbol: fullName,
+            rawName: `${ifaceSimple}.${name}`,
+          });
+        }
         currentMethod = {
           className,
           depth: nextBraceDepth > braceDepth ? nextBraceDepth : braceDepth + 1,
@@ -321,6 +400,7 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
         // field type → type usage
         const resolvedType = importMap.get(fieldType) ?? fieldType;
         if (/^[A-Z]/.test(fieldType)) {
+          typeStack[typeStack.length - 1]!.fieldTypes.set(fieldName, fieldType);
           pushUsage(usages, {
             candidateNames: [resolvedType, fieldType],
             kind: "type",
@@ -383,6 +463,11 @@ function analyzeJavaSource(fileId: string, content: string): SourceAnalysis {
           const recvType = currentMethod.variableTypes.get(receiver)!;
           candidateNames.unshift(`${recvType}.${methodName}`);
           // Also try with import-resolved type
+          const resolvedRecvType = importMap.get(recvType);
+          if (resolvedRecvType) candidateNames.unshift(`${resolvedRecvType}.${methodName}`);
+        } else if (typeStack[typeStack.length - 1]?.fieldTypes.has(receiver)) {
+          const recvType = typeStack[typeStack.length - 1]!.fieldTypes.get(receiver)!;
+          candidateNames.unshift(`${recvType}.${methodName}`);
           const resolvedRecvType = importMap.get(recvType);
           if (resolvedRecvType) candidateNames.unshift(`${resolvedRecvType}.${methodName}`);
         } else if (/^[A-Z]/.test(receiver)) {

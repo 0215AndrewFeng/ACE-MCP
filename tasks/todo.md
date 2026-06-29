@@ -644,6 +644,41 @@ Finish the v4.7.12 release after commit/tag/push by publishing release assets, v
 - 2026-06-29: Verified release download links return 200 with expected sizes: tgz `345844` bytes, Windows zip `558277` bytes.
 - 2026-06-29: Replaced local `:8787` service from v4.7.11 pid `7903` by restarting LaunchAgent `com.ace-mcp.server`; `/health` now reports version `4.7.12` on pid `56471`. Served `/static/index.html` includes `service-status-strip`, `qa-effective-params`, and `data-value-hint="qa-retries"`; served `/static/js/app.js` includes `renderServiceStatus`, `renderQaEffectiveParams`, and `finalData?.request`.
 
+# v4.8.1 Java Annotation and Interface Entry Recall
+
+Author: feng.ling
+
+## Goal
+
+Improve Java business-project recall by indexing Spring-style annotation entry points and making interface method queries surface implementation methods more reliably, especially for Controller/Service projects such as `tc-flight-tgq-core`.
+
+## Plan
+
+- [x] Review lessons and record the implementation plan before code changes.
+- [x] Locate Java symbol/usage extraction and definition/reference resolution paths.
+- [x] Write failing Java adapter/workflow tests for annotation/path indexing and interface-to-implementation lookup.
+- [x] Implement the smallest Java-only extraction/resolution changes without perturbing other languages.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+
+## Validation Plan
+
+- Focused Java adapter tests prove annotations and HTTP paths are extracted from classes/methods.
+- Focused search workflow tests prove `/path` and Spring annotation queries find Controller methods.
+- Focused call/reference test proves interface method lookup surfaces implementation methods.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-29: Started after user selected the Java annotation/interface entry recall work and set version to `v4.8.1`. Scope is Java-only extraction/resolution plus release metadata.
+- 2026-06-29: RED confirmed Java adapter did not extract mapping paths, `/api/refund/apply` could not reliably find Controller entry context, and interface method lookup did not include implementation methods/callers.
+- 2026-06-29: GREEN confirmed Java mapping annotations emit class/method path usages, field-typed method calls resolve to interface methods, interface queries include implementation method definitions, and call graph lookup uses all matched definition candidates for interface/impl caller recall.
+- 2026-06-29: Verification passed: focused Java/package tests, `npm test` (88 tests), `npm run build`, `node dist/index.js --version` (`4.8.1`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 35ms, health p95 5ms, event-loop responsive 1/1.
+- 2026-06-29: Explicit package checks passed for `ace-mcp-4.8.1.tgz` and `release/ace-mcp-v4.8.1-win-x64.zip`; both include `dist/index.js`, `dist/adapters/java/index.js`, packaged start/install scripts, benchmark/smoke scripts, and Windows README. `git diff --check` passed.
+
 # v4.7.8 Snippet/Context Maximum Controls
 
 Author: feng.ling

@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.7.12
+## v4.8.1
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -39,16 +39,16 @@ npm run release:benchmark
 6. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.7.12.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs)"
-unzip -l release/ace-mcp-v4.7.12-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs"
+tar -tf ace-mcp-4.8.1.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs)"
+unzip -l release/ace-mcp-v4.8.1-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs"
 ```
 
 7. 提交并打 tag：
 
 ```bash
 git add .
-git commit -m "chore: release v4.7.12 web runtime visibility"
-git tag -a v4.7.12 -m "v4.7.12"
+git commit -m "chore: release v4.8.1 java entry recall"
+git tag -a v4.8.1 -m "v4.8.1"
 git push origin master
-git push origin v4.7.12
+git push origin v4.8.1
 ```

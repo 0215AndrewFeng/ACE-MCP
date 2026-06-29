@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.12`
+当前版本：`v4.8.1`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.12.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.1.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.12.tgz
+npm install -g ./ace-mcp-4.8.1.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.12.tgz
+npm install -g .\ace-mcp-4.8.1.tgz
 ace-mcp-web
 ```
 
@@ -109,8 +109,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.7.12/ace-mcp-4.7.12.tgz
-npm install -g ./ace-mcp-4.7.12.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.1/ace-mcp-4.8.1.tgz
+npm install -g ./ace-mcp-4.8.1.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +134,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.12-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.1-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.12.tgz
+npm install -g ./ace-mcp-4.8.1.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -504,7 +504,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.12（当前版本）
+### v4.8.1（当前版本）
+
+- **Java Spring 入口更好搜**：提取 `@RequestMapping` / `@PostMapping` 等 mapping 注解路径，类级和方法级路径会合并成完整入口
+- **接口方法能带出实现**：查询 `RefundService.submitRefund` 这类接口方法时，definition/callers 会同时覆盖实现类方法和上游 Controller 调用
+- **字段注入调用可解析**：Java 字段类型参与调用解析，`refundService.submitRefund()` 能解析到接口方法，适合 Spring Service/Controller 项目
+
+### v4.7.12
 
 - **服务状态一眼可见**：Web 页头显示当前服务版本、watch 状态、项目就绪数量和最近索引时间，少一次手动健康检查
 - **高级选项显示当前/最大**：搜索上下文、文件片段和 QA 数值选项都会显示当前值与最大值，点击“最大”或手动输入后同步更新

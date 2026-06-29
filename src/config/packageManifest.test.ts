@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.7.12");
+  assert.equal(pkg.version, "4.8.1");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -37,6 +37,7 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke");
   assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark");
   assert.equal(pkg.scripts["benchmark:search"], "node scripts/benchmark-search.mjs");
+  assert.match(pkg.scripts.test, /src\/adapters\/java\/index\.test\.ts/);
 });
 
 test("CLI bin entrypoint is directly executable after global npm install", () => {
@@ -118,7 +119,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.7\.12-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.1-win-x64\.zip/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -126,10 +127,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.7.12 verification gates", () => {
+test("release checklist records the v4.8.1 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.7\.12/);
+  assert.match(checklist, /v4\.8\.1/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -137,7 +138,7 @@ test("release checklist records the v4.7.12 verification gates", () => {
   assert.match(checklist, /npm run release:smoke/);
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
-  assert.match(checklist, /git tag -a v4\.7\.12/);
+  assert.match(checklist, /git tag -a v4\.8\.1/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {

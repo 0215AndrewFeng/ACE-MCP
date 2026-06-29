@@ -109,6 +109,76 @@ test("python call graph behavior remains scoped to existing variable type infere
   }
 });
 
+test("java Spring annotations and interface methods surface controller entries and implementations", async () => {
+  const env = await createTestProjectEnvironment({
+    "pom.xml": "<project></project>",
+    "src/main/java/com/acme/RefundController.java": [
+      "package com.acme;",
+      "",
+      "import org.springframework.web.bind.annotation.PostMapping;",
+      "import org.springframework.web.bind.annotation.RequestMapping;",
+      "import org.springframework.web.bind.annotation.RestController;",
+      "",
+      "@RestController",
+      "@RequestMapping(\"/api/refund\")",
+      "public class RefundController {",
+      "  private final RefundService refundService;",
+      "",
+      "  public RefundController(RefundService refundService) {",
+      "    this.refundService = refundService;",
+      "  }",
+      "",
+      "  @PostMapping(\"/apply\")",
+      "  public String applyRefund() {",
+      "    return refundService.submitRefund();",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+    "src/main/java/com/acme/RefundService.java": [
+      "package com.acme;",
+      "",
+      "public interface RefundService {",
+      "  String submitRefund();",
+      "}",
+      "",
+    ].join("\n"),
+    "src/main/java/com/acme/RefundServiceImpl.java": [
+      "package com.acme;",
+      "",
+      "import org.springframework.stereotype.Service;",
+      "",
+      "@Service",
+      "public class RefundServiceImpl implements RefundService {",
+      "  @Override",
+      "  public String submitRefund() {",
+      "    return \"ok\";",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const pathSearch = await env.searchService.search(env.projectRootPath, "/api/refund/apply", "auto", 5, 0, undefined, "metadata");
+    assert.ok(pathSearch.results.some((result) => result.filePath === "src/main/java/com/acme/RefundController.java"));
+
+    const implementationDefinitions = await env.searchService.findDefinitions(env.projectRootPath, "RefundService.submitRefund", 10, 0, undefined, "metadata");
+    assert.ok(
+      implementationDefinitions.results.some(
+        (result) => result.filePath === "src/main/java/com/acme/RefundServiceImpl.java" && result.fullName === "com.acme.RefundServiceImpl.submitRefund",
+      ),
+    );
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "RefundService.submitRefund", 10, 0, undefined, "metadata");
+    assert.ok(callers.results.some((result) => result.ownerSymbol === "com.acme.RefundController.applyRefund"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("markdown headings are searchable section definitions and fenced code identifiers resolve as references", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",

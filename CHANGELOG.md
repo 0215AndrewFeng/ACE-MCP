@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.1] - 2026-06-29
+
+### Java annotation and interface entry recall
+
+- Java adapter 新增 Spring mapping 注解路径提取：`@RequestMapping`、`@GetMapping`、`@PostMapping`、`@PutMapping`、`@DeleteMapping`、`@PatchMapping` 中的 path 会作为可搜索 usage 写入索引。
+- Controller 类级路径与方法级路径会合并为完整入口，例如 `/api/refund` + `/apply` 可通过 `/api/refund/apply` 搜到对应 Controller 方法。
+- Java 字段类型现在参与方法调用解析，`refundService.submitRefund()` 可解析到 `RefundService.submitRefund` 这类字段接口调用。
+- Java 实现类方法会记录接口方法候选，`find_definition` / `find_callers` 查询接口方法时能同时带出实现方法和上游调用。
+- 新增 Java adapter 与端到端搜索工作流测试，覆盖 Spring 注解路径、接口方法实现定位和 Controller 调用链召回。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.1。
+
 ## [4.7.12] - 2026-06-29
 
 ### Web runtime visibility and request parameter echo
