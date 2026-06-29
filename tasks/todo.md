@@ -383,7 +383,7 @@ Close the real Vue 2 gap exposed by `~/work/code/tc-flight-endorse-mng`: templat
 - [x] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue` and `src/views/endorse-lookup/index.vue`.
 - [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
 
 ## Validation Plan
 
@@ -401,6 +401,40 @@ Close the real Vue 2 gap exposed by `~/work/code/tc-flight-endorse-mng`: templat
 - 2026-06-29: RED confirmed: JavaScript adapter did not emit `EndorseLookup.displayName/search/changeLanguage` symbols from `export default { computed/watch/methods }`, and workflow definition lookup for `EndorseLookup.search` failed.
 - 2026-06-29: GREEN confirmed: `.vue` Options API default export now sets a component context from `name` or filename, emits `methods/computed/watch/lifecycle` members as method symbols, preserves original SFC lines, and leaves template usages ownerless.
 - 2026-06-29: Validation passed before release packaging: focused JavaScript adapter test, focused search workflow test, `npm test` (78 tests), `npm run build`, and real Vue project smoke. Real smoke indexed 315 files / 541 chunks / 0 failures in `tc-flight-endorse-mng`; `EndorseLookup.search` line 263 and `Navbar.changeLanguage` line 128 resolve as definitions, template references resolve, and `mounted -> search` caller resolves without template caller pollution.
+- 2026-06-29: Full release validation passed: `npm run release:check` ran `npm test` (78 tests), build, tgz pack, Windows zip, release smoke, and benchmark smoke. Benchmark smoke returned resultCount 1, search p95 37ms, health p95 5ms, and event-loop responsive 1/1.
+- 2026-06-29: Committed `a302cc0`, tagged `v4.7.9`, pushed `master` and `v4.7.9`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.7.9.
+
+# v4.7.9 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.9 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.9, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm `origin/master` and annotated tag `v4.7.9` point at the v4.7.9 release commit.
+- [x] Verify v4.7.9 docs/package metadata and release assets are present.
+- [x] Create the Gitee Release `v4.7.9` with npm and Windows archive assets.
+- [x] Verify release download links redirect successfully.
+- [x] Replace local `:8787` service with v4.7.9 and verify `/health`.
+- [x] Record release handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.9^{}` point to `a302cc0`.
+- Versioned docs/package metadata reference v4.7.9.
+- Release assets exist: `ace-mcp-4.7.9.tgz` and `release/ace-mcp-v4.7.9-win-x64.zip`.
+- Gitee download URLs for both assets return a successful redirect chain.
+- Local `/health` reports version `4.7.9`.
+
+## Comments
+
+- 2026-06-29: Remote verification passed: `origin/master` and `refs/tags/v4.7.9^{}` point to `a302cc0`, local annotated tag object exists, v4.7.9 package/docs references are present, and release assets exist locally.
+- 2026-06-29: Created Gitee Release `v4.7.9` in browser, attached `ace-mcp-4.7.9.tgz` (`attach_id=2864042`) and `ace-mcp-v4.7.9-win-x64.zip` (`attach_id=2864043`), confirmed release detail page shows commit `a302cc0`, and confirmed the edit page saved release notes.
+- 2026-06-29: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `340338` bytes, Windows zip `548962` bytes.
+- 2026-06-29: Replaced local `:8787` service from v4.7.8 pid `80870`; `/health` now reports version `4.7.9` on pid `13829`.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
