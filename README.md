@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.8`
+当前版本：`v4.7.9`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -18,7 +18,7 @@
 - 语义召回（本地语义词扩展 + 远程 Embedding API 支持）
 - 懒加载向量索引与项目级向量缓存
 - 结构化查询语言：`AND` / `OR` / `NOT` + `symbol:` / `path:` / `content:`
-- JavaScript/TypeScript AST 级分析，支持 `.vue` / `.svelte` 单文件组件 `<script>` 脚本块索引与模板/markup usage 抽取，Java / Python / .NET 增强轻量符号、import、usage 抽取
+- JavaScript/TypeScript AST 级分析，支持 `.vue` / `.svelte` 单文件组件 `<script>` 脚本块索引、Vue Options API 成员符号提取与模板/markup usage 抽取，Java / Python / .NET 增强轻量符号、import、usage 抽取
 - Markdown 标题作为 `section` 符号索引，fenced code 示例中的标识符作为 usage 索引，提升文档/RAG 召回
 - 语言级 definition/reference 解析、跨文件引用精度提升与多跳调用关系图
 - 搜索质量指标：`passRate` / `top1Recall` / `top5Recall` / `meanReciprocalRank`
@@ -82,23 +82,23 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.8.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.9.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.8.tgz
+npm install -g ./ace-mcp-4.7.9.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.8.tgz
+npm install -g .\ace-mcp-4.7.9.tgz
 ace-mcp-web
 ```
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.8-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.9-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -159,7 +159,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.8.tgz
+npm install -g ./ace-mcp-4.7.9.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -468,7 +468,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.8（当前版本）
+### v4.7.9（当前版本）
+
+- **Vue Options API 符号提取**：`.vue` 的 `export default { methods/computed/watch }` 成员和常见生命周期函数会作为组件内 `method` 符号索引，例如 `EndorseLookup.search`、`Navbar.changeLanguage`
+- **模板引用闭环**：模板中的 `@click="search"`、`@change="changeLanguage"` 等 ownerless usage 现在能稳定解析回 Options API 方法定义，同时仍不会把模板行注入 `find_callers`
+- **真实 Vue 2 项目验证**：`tc-flight-endorse-mng` 315 个文件索引成功，`src/views/endorse-lookup/index.vue` 的 `search` 和 `src/layout/components/Navbar.vue` 的 `changeLanguage` 均可查定义与模板引用
+
+### v4.7.8
 
 - **搜索上下文上限提升**：`includeContextLines` 共享上限从 50 提升到 200，MCP schema 和 Web 请求钳制保持一致，搜索结果可一次展开更大的命中邻近代码窗口
 - **Web 最大快捷按钮**：搜索上下文行数、文件片段结束行、智能问答参考代码数量和上下文 token 预算都新增“最大”按钮，减少手动输入

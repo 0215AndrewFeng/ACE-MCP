@@ -1,2 +1,2 @@
 export const APP_NAME = "ace-mcp";
-export const APP_VERSION = "4.7.8";
+export const APP_VERSION = "4.7.9";

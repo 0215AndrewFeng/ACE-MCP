@@ -365,7 +365,7 @@ Finish the v4.7.7 release after commit/tag/push by publishing release assets, ve
 - 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `337577` bytes, Windows zip `544395` bytes.
 - 2026-06-26: Replaced local `:8787` service from v4.7.6 pid `7727`; `/health` now reports version `4.7.7` on pid `34664`.
 
-# v4.7.9 Planned Vue Options API Symbol Extraction
+# v4.7.9 Vue Options API Symbol Extraction
 
 Author: feng.ling
 
@@ -373,16 +373,34 @@ Author: feng.ling
 
 Close the real Vue 2 gap exposed by `~/work/code/tc-flight-endorse-mng`: template usages are now indexed, but Options API methods/computed/watch handlers may not be indexed as symbols, so references such as `@change="changeLanguage"` and `@click="search"` cannot always resolve back to component method definitions.
 
-## Planned Scope
+## Plan
 
-- [ ] Extract `export default { methods: { ... } }` object methods as component method symbols with original `.vue` line numbers.
-- [ ] Extract common `computed`, `watch`, and lifecycle function entries as component symbols where they behave like callable component members.
-- [ ] Keep template/markup usages ownerless so `find_references` improves without adding template caller edges.
-- [ ] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue` and `src/views/endorse-lookup/index.vue`.
+- [x] Review current JavaScript/SFC adapter and workflow tests.
+- [x] Write failing adapter tests for Vue Options API `methods`, `computed`, `watch`, and lifecycle symbols with original `.vue` line numbers.
+- [x] Write a failing workflow test proving template references resolve to Options API component method definitions without creating template caller edges.
+- [x] Implement minimal Vue-only Options API symbol extraction on top of the existing SFC script masking path.
+- [x] Keep template/markup usages ownerless so `find_references` improves without adding template caller edges.
+- [x] Validate against `tc-flight-endorse-mng` files such as `src/layout/components/Navbar.vue` and `src/views/endorse-lookup/index.vue`.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+
+## Validation Plan
+
+- Focused JavaScript adapter regression for Vue Options API symbols and original SFC line numbers.
+- Workflow regression proving template usages resolve as references to Options API methods while `find_callers` remains clean.
+- Real Vue project smoke against `~/work/code/tc-flight-endorse-mng`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
 
 ## Comments
 
 - 2026-06-26: Recorded for v4.7.9 at user request after v4.7.7 real-project validation showed `toggleSideBar` could be found as a template reference, while Options API entries like `changeLanguage` and `search` were not always available as definitions.
+- 2026-06-29: Started implementation after user approved completing Vue Options API support. Reviewed relevant lessons: keep SFC parsing scoped, preserve original line numbers, leave template usages ownerless, and include release handoff before final response.
+- 2026-06-29: RED confirmed: JavaScript adapter did not emit `EndorseLookup.displayName/search/changeLanguage` symbols from `export default { computed/watch/methods }`, and workflow definition lookup for `EndorseLookup.search` failed.
+- 2026-06-29: GREEN confirmed: `.vue` Options API default export now sets a component context from `name` or filename, emits `methods/computed/watch/lifecycle` members as method symbols, preserves original SFC lines, and leaves template usages ownerless.
+- 2026-06-29: Validation passed before release packaging: focused JavaScript adapter test, focused search workflow test, `npm test` (78 tests), `npm run build`, and real Vue project smoke. Real smoke indexed 315 files / 541 chunks / 0 failures in `tc-flight-endorse-mng`; `EndorseLookup.search` line 263 and `Navbar.changeLanguage` line 128 resolve as definitions, template references resolve, and `mounted -> search` caller resolves without template caller pollution.
 
 # v4.7.8 Snippet/Context Maximum Controls
 

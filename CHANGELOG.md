@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.9] - 2026-06-29
+
+### Vue Options API symbol extraction
+
+- JavaScript adapter 在 `.vue` 的 `export default {}` 中提取 `methods`、`computed`、`watch` 和常见生命周期函数为组件内 `method` 符号，保留原始 SFC 行号。
+- 组件名优先使用 Options API 的 `name` 字段，缺失时回退到 `.vue` 文件名；符号名形如 `EndorseLookup.search`、`Navbar.changeLanguage`。
+- 模板/markup usage 继续保持 ownerless，因此 `find_references` 能把 `@click="search"`、`@change="changeLanguage"` 解析回 Options API 方法定义，同时不把模板行注入 `find_callers`。
+- 新增 JavaScript adapter 与 workflow 回归测试，覆盖 Options API `methods/computed/watch/lifecycle`、模板引用解析和 caller 噪音控制。
+- 使用真实 Vue 2 项目 `~/work/code/tc-flight-endorse-mng` 验证：315 个文件索引成功，`src/views/endorse-lookup/index.vue` 的 `search` 和 `src/layout/components/Navbar.vue` 的 `changeLanguage` 均可查定义与模板引用，`mounted -> search` caller 可解析。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.9。
+
 ## [4.7.8] - 2026-06-26
 
 ### Snippet/context maximum controls

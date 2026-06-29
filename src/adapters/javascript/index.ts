@@ -244,6 +244,7 @@ interface JSImportBinding extends ImportInfo {
 interface VisitState {
   classStack: string[];
   currentSymbol?: string;
+  vueOptionsComponentName?: string;
   variableTypes: Map<string, string>;
 }
 
@@ -471,8 +472,58 @@ function isExportedVariableDeclaration(node: ts.VariableDeclaration): boolean {
   return ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
+const VUE_OPTIONS_MEMBER_GROUPS = new Set(["computed", "methods", "watch"]);
+const VUE_OPTIONS_LIFECYCLE_HOOKS = new Set([
+  "beforeCreate",
+  "created",
+  "beforeMount",
+  "mounted",
+  "beforeUpdate",
+  "updated",
+  "activated",
+  "deactivated",
+  "beforeUnmount",
+  "unmounted",
+  "beforeDestroy",
+  "destroyed",
+  "errorCaptured",
+]);
+
+function getObjectLiteralProperty(sourceFile: ts.SourceFile, objectLiteral: ts.ObjectLiteralExpression, propertyName: string): ts.Expression | undefined {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      continue;
+    }
+
+    const name = getDeclarationName(sourceFile, property.name);
+    if (name === propertyName) {
+      return property.initializer;
+    }
+  }
+
+  return undefined;
+}
+
+function getVueOptionsComponentName(sourceFile: ts.SourceFile, objectLiteral: ts.ObjectLiteralExpression, relativePath: string): string {
+  const nameExpression = getObjectLiteralProperty(sourceFile, objectLiteral, "name");
+  if (nameExpression && ts.isStringLiteralLike(nameExpression) && nameExpression.text.trim().length > 0) {
+    return nameExpression.text.trim();
+  }
+
+  return path.posix.basename(relativePath.replace(/\\/g, "/")).replace(/\.[^.]+$/, "");
+}
+
+function isFunctionLikeExpression(expression: ts.Expression): expression is ts.ArrowFunction | ts.FunctionExpression {
+  return ts.isArrowFunction(expression) || ts.isFunctionExpression(expression);
+}
+
+function isVueOptionsExportDefaultObject(node: ts.Node): node is ts.ExportAssignment & { expression: ts.ObjectLiteralExpression } {
+  return ts.isExportAssignment(node) && !node.isExportEquals && ts.isObjectLiteralExpression(node.expression);
+}
+
 function analyzeSourceWithAst(fileId: string, relativePath: string, content: string): SourceAnalysis {
   const sourceContent = isSingleFileComponentPath(relativePath) ? extractScriptOnlyContent(content) : content;
+  const isVueSingleFileComponent = /\.vue$/i.test(relativePath);
   const scriptKind = relativePath.endsWith(".tsx")
     ? ts.ScriptKind.TSX
     : relativePath.endsWith(".jsx")
@@ -515,6 +566,19 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
   };
 
   const visit = (node: ts.Node, state: VisitState): void => {
+    if (isVueSingleFileComponent && isVueOptionsExportDefaultObject(node)) {
+      const componentName = getVueOptionsComponentName(sourceFile, node.expression, relativePath);
+      for (const property of node.expression.properties) {
+        visit(property, {
+          classStack: [componentName],
+          currentSymbol: state.currentSymbol,
+          variableTypes: new Map(state.variableTypes),
+          vueOptionsComponentName: componentName,
+        });
+      }
+      return;
+    }
+
     if (ts.isImportDeclaration(node) && node.importClause && ts.isStringLiteral(node.moduleSpecifier)) {
       const sourceModule = buildImportModulePath(relativePath, node.moduleSpecifier.text);
       if (node.importClause.name) {
@@ -740,12 +804,36 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
     if (ts.isPropertyAssignment(node)) {
       const propertyName = getDeclarationName(sourceFile, node.name);
       if (propertyName && state.classStack.length > 0) {
+        if (state.vueOptionsComponentName && VUE_OPTIONS_MEMBER_GROUPS.has(propertyName) && ts.isObjectLiteralExpression(node.initializer)) {
+          for (const member of node.initializer.properties) {
+            visit(member, {
+              ...state,
+              classStack: [state.vueOptionsComponentName],
+              variableTypes: new Map(state.variableTypes),
+            });
+          }
+          return;
+        }
+
+        if (state.vueOptionsComponentName && VUE_OPTIONS_LIFECYCLE_HOOKS.has(propertyName) && isFunctionLikeExpression(node.initializer)) {
+          const fullName = addSymbol("method", propertyName, [state.vueOptionsComponentName], node);
+          const nextState: VisitState = {
+            classStack: [state.vueOptionsComponentName],
+            currentSymbol: fullName,
+            variableTypes: new Map(state.variableTypes),
+            vueOptionsComponentName: state.vueOptionsComponentName,
+          };
+          ts.forEachChild(node.initializer, (child) => visit(child, nextState));
+          return;
+        }
+
         if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
           const fullName = addSymbol("method", propertyName, state.classStack, node);
           const nextState: VisitState = {
             classStack: state.classStack,
             currentSymbol: fullName,
             variableTypes: new Map(state.variableTypes),
+            vueOptionsComponentName: state.vueOptionsComponentName,
           };
           ts.forEachChild(node.initializer, (child) => visit(child, nextState));
           return;
@@ -851,6 +939,7 @@ function analyzeSourceWithAst(fileId: string, relativePath: string, content: str
   visit(sourceFile, {
     classStack: [],
     currentSymbol: undefined,
+    vueOptionsComponentName: undefined,
     variableTypes: new Map<string, string>(),
   });
 

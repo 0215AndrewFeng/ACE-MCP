@@ -222,6 +222,56 @@ test("vue template usages resolve as references without call graph owners", asyn
   }
 });
 
+test("vue Options API methods resolve template references without template caller edges", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/views/EndorseLookup.vue": [
+      "<template>",
+      "  <button @click=\"search\">Search</button>",
+      "  <select @change=\"changeLanguage\"></select>",
+      "</template>",
+      "",
+      "<script>",
+      "export default {",
+      "  name: 'EndorseLookup',",
+      "  mounted() {",
+      "    this.search();",
+      "  },",
+      "  methods: {",
+      "    search() {",
+      "      return this.changeLanguage();",
+      "    },",
+      "    changeLanguage() {",
+      "      return 'zh-CN';",
+      "    }",
+      "  }",
+      "};",
+      "</script>",
+      "",
+    ].join("\n"),
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const definitions = await env.searchService.findDefinitions(env.projectRootPath, "EndorseLookup.search", 10);
+    assert.ok(
+      definitions.results.some((result) => result.filePath === "src/views/EndorseLookup.vue" && result.line === 13),
+    );
+
+    const references = await env.searchService.findReferences(env.projectRootPath, "EndorseLookup.search", 10);
+    assert.ok(
+      references.results.some((result) => result.filePath === "src/views/EndorseLookup.vue" && result.startLine === 2),
+    );
+
+    const callers = await env.searchService.findCallers(env.projectRootPath, "EndorseLookup.search", 10);
+    assert.ok(callers.results.some((result) => result.ownerSymbol === "EndorseLookup.mounted"));
+    assert.ok(!callers.results.some((result) => result.filePath === "src/views/EndorseLookup.vue" && result.startLine === 2));
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("svelte single-file component script participates in javascript call graph resolution", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",

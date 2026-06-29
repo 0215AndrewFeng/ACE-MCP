@@ -119,6 +119,81 @@ test("javascript adapter extracts Vue template identifiers as usages without own
   );
 });
 
+test("javascript adapter extracts Vue Options API members as component symbols", () => {
+  const analysis = javascriptAdapter.analyzeSource!(
+    "file-options-vue",
+    "src/views/EndorseLookup.vue",
+    [
+      "<template>",
+      "  <button @click=\"search\">Search</button>",
+      "  <select @change=\"changeLanguage\"></select>",
+      "  <span>{{ displayName }}</span>",
+      "</template>",
+      "",
+      "<script>",
+      "export default {",
+      "  name: 'EndorseLookup',",
+      "  computed: {",
+      "    displayName() {",
+      "      return this.language;",
+      "    }",
+      "  },",
+      "  watch: {",
+      "    language(value) {",
+      "      this.search();",
+      "    }",
+      "  },",
+      "  mounted() {",
+      "    this.search();",
+      "  },",
+      "  methods: {",
+      "    search() {",
+      "      return this.changeLanguage();",
+      "    },",
+      "    changeLanguage() {",
+      "      return this.displayName;",
+      "    }",
+      "  }",
+      "};",
+      "</script>",
+      "",
+    ].join("\n"),
+  );
+
+  const symbols = new Map(analysis.symbols.map((symbol) => [symbol.name, symbol]));
+  assert.equal(symbols.get("displayName")?.kind, "method");
+  assert.equal(symbols.get("displayName")?.fullName, "EndorseLookup.displayName");
+  assert.equal(symbols.get("displayName")?.line, 11);
+  assert.equal(symbols.get("language")?.fullName, "EndorseLookup.language");
+  assert.equal(symbols.get("language")?.line, 16);
+  assert.equal(symbols.get("mounted")?.fullName, "EndorseLookup.mounted");
+  assert.equal(symbols.get("mounted")?.line, 20);
+  assert.equal(symbols.get("search")?.fullName, "EndorseLookup.search");
+  assert.equal(symbols.get("search")?.line, 24);
+  assert.equal(symbols.get("changeLanguage")?.fullName, "EndorseLookup.changeLanguage");
+  assert.equal(symbols.get("changeLanguage")?.line, 27);
+
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "search" &&
+        usage.kind === "call" &&
+        usage.line === 17 &&
+        usage.ownerSymbol === "EndorseLookup.language" &&
+        usage.candidateNames.includes("EndorseLookup.search"),
+    ),
+  );
+  assert.ok(
+    analysis.usages.some(
+      (usage) =>
+        usage.rawName === "search" &&
+        usage.kind === "usage" &&
+        usage.line === 2 &&
+        usage.ownerSymbol === undefined,
+    ),
+  );
+});
+
 test("javascript adapter extracts Svelte script symbols and maps lines to the original SFC", () => {
   const analysis = javascriptAdapter.analyzeSource!(
     "file-ledger-svelte",
