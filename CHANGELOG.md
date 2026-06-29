@@ -2,6 +2,18 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.7.11] - 2026-06-29
+
+### Larger snippet/context limits and complete max shortcuts
+
+- `includeContextLines` 共享上限从 200 提升到 500，MCP schema、Web 请求解析和前端输入限制继续使用同一常量。
+- Web 搜索高级选项新增“结果数量”最大按钮，原“上下文行数”最大按钮切到 500。
+- Web 智能问答高级选项为 `LLM 最大输出`、`超时时间`、`失败重试次数` 补齐“最大”按钮；参考代码数量和上下文预算的最大按钮保持不变。
+- Web 智能问答会把 `失败重试次数` 发送到后端，非流式和流式 LLM 调用都会在开始输出前按该值重试可恢复错误。
+- 文件片段范围继续提供“最大”按钮（起始行 1、结束行 999999，由后端按实际 EOF 钳制）。
+- 新增请求校验和 Web 静态契约测试，覆盖更大的上下文窗口和所有 bounded numeric 最大快捷按钮。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.7.11。
+
 ## [4.7.10] - 2026-06-29
 
 ### Vue Options API data/props property extraction

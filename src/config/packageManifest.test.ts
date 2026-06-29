@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.7.10");
+  assert.equal(pkg.version, "4.7.11");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -118,7 +118,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.7\.10-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.7\.11-win-x64\.zip/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -126,10 +126,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.7.10 verification gates", () => {
+test("release checklist records the v4.7.11 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.7\.10/);
+  assert.match(checklist, /v4\.7\.11/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -137,27 +137,41 @@ test("release checklist records the v4.7.10 verification gates", () => {
   assert.match(checklist, /npm run release:smoke/);
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
-  assert.match(checklist, /git tag -a v4\.7\.10/);
+  assert.match(checklist, /git tag -a v4\.7\.11/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
   const html = readFileSync(path.join(rootDir, "src/web/static/index.html"), "utf8");
   const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
 
-  assert.match(html, /id="include-context-lines"[^>]*max="200"/);
+  assert.match(html, /id="top-k-max"[^>]*>最大<\/button>/);
+  assert.match(html, /id="include-context-lines"[^>]*max="500"/);
   assert.match(html, /id="include-context-lines-max"[^>]*>最大<\/button>/);
   assert.match(html, /id="snippet-range-max"[^>]*>最大<\/button>/);
   assert.match(html, /id="qa-max-sources-max"[^>]*>最大<\/button>/);
   assert.match(html, /id="qa-max-context-tokens"[^>]*max="200000"/);
   assert.match(html, /id="qa-max-context-tokens-max"[^>]*>最大<\/button>/);
+  assert.match(html, /id="qa-max-tokens-max"[^>]*>最大<\/button>/);
+  assert.match(html, /id="qa-timeout-max"[^>]*>最大<\/button>/);
+  assert.match(html, /id="qa-retries-max"[^>]*>最大<\/button>/);
 
-  assert.match(appJs, /const MAX_INCLUDE_CONTEXT_LINES = 200;/);
+  assert.match(appJs, /const TOP_K_MAX = 50;/);
+  assert.match(appJs, /const MAX_INCLUDE_CONTEXT_LINES = 500;/);
   assert.match(appJs, /const FILE_SNIPPET_MAX_END_LINE = 999999;/);
   assert.match(appJs, /const QA_MAX_SOURCES = 100;/);
   assert.match(appJs, /const QA_MAX_CONTEXT_TOKENS = 200000;/);
+  assert.match(appJs, /const QA_MAX_TOKENS = 32768;/);
+  assert.match(appJs, /const QA_TIMEOUT_SECONDS_MAX = 600;/);
+  assert.match(appJs, /const QA_RETRIES_MAX = 5;/);
+  assert.match(appJs, /top-k-max[\s\S]*topKInput\.value = String\(TOP_K_MAX\)/);
   assert.match(appJs, /include-context-lines-max[\s\S]*includeContextLinesInput\.value = String\(MAX_INCLUDE_CONTEXT_LINES\)/);
   assert.match(appJs, /snippet-range-max[\s\S]*snippetStartInput\.value = "1"[\s\S]*snippetEndInput\.value = String\(FILE_SNIPPET_MAX_END_LINE\)/);
   assert.match(appJs, /qa-max-sources-max[\s\S]*qaMaxSourcesInput\.value = String\(QA_MAX_SOURCES\)/);
   assert.match(appJs, /qa-max-context-tokens-max[\s\S]*qaMaxContextTokensInput\.value = String\(QA_MAX_CONTEXT_TOKENS\)/);
+  assert.match(appJs, /qa-max-tokens-max[\s\S]*qaMaxTokensInput\.value = String\(QA_MAX_TOKENS\)/);
+  assert.match(appJs, /qa-timeout-max[\s\S]*qaTimeoutInput\.value = String\(QA_TIMEOUT_SECONDS_MAX\)/);
+  assert.match(appJs, /qa-retries-max[\s\S]*qaRetriesInput\.value = String\(QA_RETRIES_MAX\)/);
+  assert.match(appJs, /const retries = Number\(qaRetriesInput\?\.value \|\| 2\)/);
+  assert.match(appJs, /timeoutSeconds: timeoutSec,[\s\S]*retries,/);
   assert.match(appJs, /maxContextTokens,/);
 });

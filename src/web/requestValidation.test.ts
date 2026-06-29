@@ -35,7 +35,7 @@ test("parseSearchContextRequest keeps web parsing lenient but clamps unsafe valu
   if (!parsed.ok) return;
   assert.equal(parsed.value.mode, "auto");
   assert.equal(parsed.value.topK, 50);
-  assert.equal(parsed.value.includeContextLines, 200);
+  assert.equal(parsed.value.includeContextLines, 500);
   assert.deepEqual(parsed.value.filters.languages, ["javascript", "markdown"]);
   assert.equal(parsed.value.filters.pathPrefix, "src");
   assert.equal(parsed.value.enableReranker, true);
@@ -43,14 +43,14 @@ test("parseSearchContextRequest keeps web parsing lenient but clamps unsafe valu
 
 test("parseSearchContextRequest accepts larger context windows before clamping", () => {
   const parsed = parseSearchContextRequest({
-    includeContextLines: 150,
+    includeContextLines: 450,
     projectRootPath: "/tmp/project",
     query: "refund",
   }, settings);
 
   assert.equal(parsed.ok, true);
   if (!parsed.ok) return;
-  assert.equal(parsed.value.includeContextLines, 150);
+  assert.equal(parsed.value.includeContextLines, 450);
 });
 
 test("web parsers reject only missing required fields", () => {
@@ -70,6 +70,7 @@ test("parseCallGraphRequest and parseAskRequest clamp request-specific fields", 
     maxSources: 999,
     projectRootPath: "/tmp/project",
     question: "how does refund work?",
+    retries: 999,
     timeoutSeconds: 999,
   }, settings);
   assert.equal(ask.ok, true);
@@ -77,5 +78,6 @@ test("parseCallGraphRequest and parseAskRequest clamp request-specific fields", 
   assert.equal(ask.value.maxSources, 50);
   assert.equal(ask.value.maxContextTokens, 200000);
   assert.equal(ask.value.callChainDepth, 3);
+  assert.equal(ask.value.retries, 5);
   assert.equal(ask.value.timeoutSeconds, 600);
 });

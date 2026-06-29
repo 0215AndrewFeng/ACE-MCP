@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.7.10`
+当前版本：`v4.7.11`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.7.10.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.7.11.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.7.10.tgz
+npm install -g ./ace-mcp-4.7.11.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.7.10.tgz
+npm install -g .\ace-mcp-4.7.11.tgz
 ace-mcp-web
 ```
 
@@ -109,8 +109,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.7.10/ace-mcp-4.7.10.tgz
-npm install -g ./ace-mcp-4.7.10.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.7.11/ace-mcp-4.7.11.tgz
+npm install -g ./ace-mcp-4.7.11.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +134,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.7.10-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.7.11-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.7.10.tgz
+npm install -g ./ace-mcp-4.7.11.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -465,14 +465,14 @@ Web 面板提供完整的可视化调试体验：
 - **多轮对话**：自动保留上下文，支持追问
 - **代码引用**：`[N]` 引用可点击跳转
 - **会话统计**：显示 token 用量和请求次数
-- **最大上下文**：高级选项可一键使用最大参考代码数量和最大上下文 token 预算
+- **最大上下文**：高级选项可一键使用最大参考代码数量、最大上下文 token 预算、最大输出、最大超时和最大重试次数
 
 ### 代码搜索
 
 - **交互式搜索**：支持所有搜索模式和过滤条件
 - **语法高亮**：搜索词和代码语法高亮显示
 - **搜索历史**：点击历史记录快速填充
-- **上下文扩展**：搜索结果上下文行数上限提升到 200，并提供最大值快捷按钮
+- **上下文扩展**：搜索结果上下文行数上限提升到 500，并提供最大值快捷按钮
 
 ### 项目管理
 
@@ -504,7 +504,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.7.10（当前版本）
+### v4.7.11（当前版本）
+
+- **代码片段上下文更大**：`includeContextLines` 共享上限从 200 提升到 500，Web 搜索上下文和 MCP/Web 请求校验保持一致，适合大文件定位时一次展开更多邻近代码
+- **高级选项全部有最大值快捷按钮**：搜索结果数量、上下文行数、文件片段范围、QA 参考代码数量、上下文预算、LLM 最大输出、超时时间和失败重试次数都提供“最大”按钮
+- **QA 重试实际生效**：Web 智能问答会把失败重试次数传给后端，非流式和流式 LLM 调用都会在开始输出前重试可恢复错误
+- **静态契约覆盖**：新增 Web 静态契约断言，防止后续新增/调整 bounded numeric 控件时漏掉最大值快捷入口
+
+### v4.7.10
 
 - **Vue Options API 状态字段符号**：`.vue` 的 `props` object/array 形式和 `data()` 返回对象字段会作为组件内 `property` 符号索引，例如 `Navbar.currentLang`、`Pagination.total`
 - **模板状态引用闭环**：模板中的 `v-model="currentLang"`、`:total="total"`、`{{ hidden }}` 等 ownerless usage 可解析回 `props/data` 定义，同时不会出现在 `find_callers`

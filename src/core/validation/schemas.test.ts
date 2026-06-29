@@ -20,7 +20,7 @@ const settings = {
 } as Settings;
 
 test("searchContextShape applies shared defaults and bounds", () => {
-  assert.equal(MAX_INCLUDE_CONTEXT_LINES, 200);
+  assert.equal(MAX_INCLUDE_CONTEXT_LINES, 500);
 
   const schema = z.object(searchContextShape(settings));
   const parsed = schema.parse({

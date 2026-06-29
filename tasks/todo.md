@@ -508,6 +508,41 @@ Finish the v4.7.10 release after commit/tag/push by publishing release assets, v
 - 2026-06-29: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `342172` bytes, Windows zip `551745` bytes.
 - 2026-06-29: Replaced local `:8787` service from v4.7.9 pid `13829`; `/health` now reports version `4.7.10` on pid `52159`.
 
+# v4.7.11 Larger Snippet Limits and Max Shortcuts
+
+Author: feng.ling
+
+## Goal
+
+Improve Web page ergonomics for large files and advanced options: raise the safe maximum for code snippet/search context expansion and add "最大" shortcuts for every numeric advanced option that has a bounded backend maximum.
+
+## Plan
+
+- [x] Review current request validation constants and Web static controls for search, snippet, call graph, and QA advanced options.
+- [x] Write failing tests for the larger snippet/search context limit.
+- [x] Write failing Web static contract tests requiring max buttons for all bounded advanced numeric options.
+- [x] Implement shared limit changes and UI max buttons without changing indexing/search semantics.
+- [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
+- [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
+- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+
+## Validation Plan
+
+- Request/schema tests prove the new larger context limit is accepted and unsafe values still clamp.
+- Web static contract test proves all bounded advanced numeric controls have max shortcut buttons.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+
+## Comments
+
+- 2026-06-29: Started after user asked whether code snippet maximum can be increased further and whether every advanced option can provide a "最大" shortcut. Scope is limited to bounded request options and Web controls.
+- 2026-06-29: RED confirmed the old `includeContextLines` cap was still 200 and Web static contracts lacked max shortcuts for all bounded advanced numeric options.
+- 2026-06-29: GREEN confirmed `includeContextLines` now accepts/clamps at 500 and Web controls include max shortcuts for search result count, context lines, file snippet range, QA source count, QA context budget, max output tokens, timeout, and retries.
+- 2026-06-29: While validating the advanced options, found the existing QA retries input was not sent to the backend. Added request parsing, frontend request wiring, route/pipeline propagation, and LLM client retry coverage so the option is functional rather than cosmetic.
+- 2026-06-29: Focused verification passed: `node --import tsx --test src/core/llm/llmClient.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/config/packageManifest.test.ts`; `npm run build`.
+- 2026-06-29: Full verification passed after adding non-streaming and streaming LLM retry coverage to `npm test`: `npm test` (83 tests), `npm run build`, `node dist/index.js --version` (`4.7.11`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 38ms, health p95 5ms, event-loop responsive 1/1.
+
 # v4.7.8 Snippet/Context Maximum Controls
 
 Author: feng.ling

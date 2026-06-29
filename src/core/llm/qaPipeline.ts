@@ -37,6 +37,7 @@ export interface QaPipelineOptions {
   enableCache?: boolean;
   history?: QaConversationTurn[];
   timeoutMs?: number;
+  retries?: number;
   maxContextTokens?: number;
 }
 
@@ -384,6 +385,7 @@ export async function runQaPipeline(
     messages,
     maxTokens: options.maxTokens || undefined,
     timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
+    retries: options.retries,
     fallbackOnTimeout: true,
   });
   const llmMs = Date.now() - llmStart;

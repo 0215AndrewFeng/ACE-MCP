@@ -98,6 +98,7 @@ export interface AskRequest {
   contextMode: (typeof QA_CONTEXT_MODES)[number];
   callChainDepth: number;
   timeoutSeconds: number;
+  retries: number;
 }
 
 // ── Parsers ──────────────────────────────────────────────────────────────────
@@ -204,6 +205,7 @@ export function parseAskRequest(body: any, settings: Settings): ParseResult<AskR
       contextMode: enumOrDefault(body.contextMode, QA_CONTEXT_MODES, "merged-file"),
       callChainDepth: clampInteger(body.callChainDepth, 1, 3, 1),
       timeoutSeconds: clampInteger(body.timeoutSeconds, 10, 600, 120),
+      retries: clampInteger(body.retries, 0, 5, 2),
     },
   };
 }

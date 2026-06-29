@@ -62,17 +62,26 @@
               </div>
               <div>
                 <label for="qa-max-tokens">LLM 最大输出</label>
-                <input id="qa-max-tokens" type="number" min="512" max="32768" value="8192" />
+                <div class="field-with-action">
+                  <input id="qa-max-tokens" type="number" min="512" max="32768" value="8192" />
+                  <button id="qa-max-tokens-max" type="button" class="btn-secondary btn-small" title="使用最大输出 token 数">最大</button>
+                </div>
                 <span class="hint">LLM 回答的最大 token 数（512~32768），越大回答越完整但越慢</span>
               </div>
               <div>
                 <label for="qa-timeout">超时时间（秒）</label>
-                <input id="qa-timeout" type="number" min="10" max="600" value="120" />
+                <div class="field-with-action">
+                  <input id="qa-timeout" type="number" min="10" max="600" value="120" />
+                  <button id="qa-timeout-max" type="button" class="btn-secondary btn-small" title="使用最大超时时间">最大</button>
+                </div>
                 <span class="hint">LLM 响应的最大等待时间（10~600）</span>
               </div>
               <div>
                 <label for="qa-retries">失败重试次数</label>
-                <input id="qa-retries" type="number" min="0" max="5" value="2" />
+                <div class="field-with-action">
+                  <input id="qa-retries" type="number" min="0" max="5" value="2" />
+                  <button id="qa-retries-max" type="button" class="btn-secondary btn-small" title="使用最大重试次数">最大</button>
+                </div>
                 <span class="hint">LLM 超时后自动重试几次（0~5）</span>
               </div>
               <label class="checkbox-label">
@@ -150,7 +159,10 @@
               </div>
               <div>
                 <label for="top-k">结果数量</label>
-                <input id="top-k" type="number" min="1" max="50" value="8" />
+                <div class="field-with-action">
+                  <input id="top-k" type="number" min="1" max="50" value="8" />
+                  <button id="top-k-max" type="button" class="btn-secondary btn-small" title="使用最大结果数量">最大</button>
+                </div>
               </div>
               <div>
                 <label for="search-result-mode">结果详情</label>
@@ -162,10 +174,10 @@
               <div>
                 <label for="include-context-lines">上下文行数</label>
                 <div class="field-with-action">
-                  <input id="include-context-lines" type="number" min="0" max="200" value="0" />
+                  <input id="include-context-lines" type="number" min="0" max="500" value="0" />
                   <button id="include-context-lines-max" type="button" class="btn-secondary btn-small" title="使用最大上下文行数">最大</button>
                 </div>
-                <span class="hint">匹配行前后额外显示几行（0~200）</span>
+                <span class="hint">匹配行前后额外显示几行（0~500）</span>
               </div>
               <div>
                 <label for="search-languages">限定语言</label>

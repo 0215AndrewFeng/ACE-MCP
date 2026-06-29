@@ -26,7 +26,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
         return;
       }
-      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages, contextMode, callChainDepth, timeoutSeconds, retries } = parsed.value;
       const { maxTokens, history } = req.body ?? {};
       if (!dependencies.llmClient.isConfigured()) {
         res.status(400).json({ error: "LLM API not configured" });
@@ -56,6 +56,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
           callChainDepth,  // v4.4.2
           history: Array.isArray(history) ? history : [],
           timeoutMs: timeoutSeconds * 1000,
+          retries,
         },
       );
 
@@ -152,7 +153,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         res.end();
         return;
       }
-      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds } = parsed.value;
+      const { projectRootPath, question, maxSources, maxContextTokens, includeSummary, languages: parsedLanguages, contextMode, callChainDepth, timeoutSeconds, retries } = parsed.value;
       const maxTokens = Number(isPost ? req.body?.maxTokens : req.query.maxTokens) || 0;
       const historyData = isPost ? req.body?.history : req.query.history as string | undefined;
       // v4.5.12: per-request context token budget, clamped to the configured max.
@@ -490,6 +491,7 @@ export function registerQaRoutes(app: Express, dependencies: WebAppDependencies)
         messages,
         maxTokens: maxTokens || undefined,
         timeoutMs: Math.max(timeout - (Date.now() - startMs), 5000),
+        retries,
         signal: llmAbort.signal,
       })) {
         // Check if client disconnected
