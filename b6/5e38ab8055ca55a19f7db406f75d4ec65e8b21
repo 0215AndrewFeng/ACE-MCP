@@ -1,0 +1,58 @@
+package-lock.json
+  ai_agent 3,9
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_d573ac075b33de 5-15
+src/web/routes/qaRoutes.ts
+  s_3a219f3e07a2c0::t_65d2c1506c1821 29,31,70,89,159,161,440,537
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_ab3730b833852d 3,42-43,50-51,53
+src/web/app.test.ts
+  s_3a219f3e07a2c0::t_17ea73831d3446 121-185
+src/web/requestValidation.test.ts
+  s_3a219f3e07a2c0::t_fe73f85efaf5fd 84-107
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_008b348b3bbb3d 1289
+  s_3a219f3e07a2c0::t_955048c2c70b60 36-40,245-309,451,538-541,545,550,556,561,566,571,576,581
+  s_3a219f3e07a2c0::t_5571ab4f98366f 382-386,1154,1476
+src/web/static/index.html
+  s_3a219f3e07a2c0::t_481b281ad221d0 13-18,60,69,78,87,96,142,193,317
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_d87bbd0714fb69 24,129,132,140
+  s_3a219f3e07a2c0::t_3c7d56f3a7aa20 121
+  s_3a219f3e07a2c0::t_fe73f85efaf5fd 178-198
+src/web/requestValidation.ts
+  s_3a219f3e07a2c0::t_545f9693b4e6a5 102-110,203-211,217-219,221-233
+package.json
+  s_3a219f3e07a2c0::t_d87bbd0714fb69 3
+tasks/todo.md
+  s_3a219f3e07a2c0::t_3e1d80cd0807db 589-592,608-609
+  s_3a219f3e07a2c0::t_9a6cda15c69872 593-594,610-611
+  s_3a219f3e07a2c0::t_fe73f85efaf5fd 579-588,595-607,612
+README.md
+  s_3a219f3e07a2c0::t_d573ac075b33de 509-513
+  s_3a219f3e07a2c0::t_ab3730b833852d 5,85,88,95,112-113,137,198,507
+ROADMAP.md
+  s_3a219f3e07a2c0::t_d573ac075b33de 49-53
+src/version.ts
+  s_3a219f3e07a2c0::t_d87bbd0714fb69 2
+src/web/static/css/main.css
+  s_3a219f3e07a2c0::t_f9c8ca40a89867 16-18,42,168-170
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_ab3730b833852d 3,15,66,104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b65e38ab8055ca55a19f7db406f75d4ec65e8b21",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
