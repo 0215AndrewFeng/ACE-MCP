@@ -96,6 +96,42 @@ npm install -g .\ace-mcp-4.7.10.tgz
 ace-mcp-web
 ```
 
+### macOS 安装
+
+推荐先安装 Node.js LTS：
+
+```bash
+brew install node@22
+node --version
+npm --version
+```
+
+使用 Gitee Release 的 tgz 包：
+
+```bash
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.7.10/ace-mcp-4.7.10.tgz
+npm install -g ./ace-mcp-4.7.10.tgz
+ace-mcp --version
+ace-mcp-web
+```
+
+源码运行：
+
+```bash
+git clone https://gitee.com/AndrewFengCode/ace-mcp.git
+cd ace-mcp
+npm install
+npm run build
+npm start -- --web-port 8787
+```
+
+如果 `better-sqlite3` 安装触发本地编译失败，先安装 Xcode Command Line Tools 后重试：
+
+```bash
+xcode-select --install
+npm install
+```
+
 ### Windows zip 安装
 
 从 Gitee Release 下载 `ace-mcp-v4.7.10-win-x64.zip`，解压后在目录内执行：

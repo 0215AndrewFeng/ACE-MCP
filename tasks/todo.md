@@ -471,6 +471,7 @@ Complete the next small Vue 2 Options API gap after v4.7.9: template usages can 
 - 2026-06-29: RED confirmed: JavaScript adapter did not emit `Navbar.avatar/currentLang/theme` property symbols from `props` and `data()`, and workflow definition lookup for `Navbar.currentLang` failed.
 - 2026-06-29: GREEN confirmed: `.vue` Options API `props` object/array forms and `data()` returned object fields now emit component `property` symbols with original SFC lines, while template usages remain ownerless.
 - 2026-06-29: Validation passed before release packaging: focused JavaScript adapter test, focused search workflow test, `npm test` (80 tests), `npm run build`, and real Vue project smoke. Real smoke indexed 315 files / 544 chunks / 0 failures in `tc-flight-endorse-mng`; `Navbar.currentLang` line 62, `Pagination.total` line 23, and `Pagination.hidden` line 53 resolve as property definitions, template references resolve, and property queries have no template caller pollution.
+- 2026-06-29: After the release commit/tag push, user requested macOS installation docs. Added a README macOS installation section covering Node LTS via Homebrew, Gitee tgz install, source install, and Xcode Command Line Tools fallback for `better-sqlite3`.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
