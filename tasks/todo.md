@@ -524,7 +524,7 @@ Improve Web page ergonomics for large files and advanced options: raise the safe
 - [x] Implement shared limit changes and UI max buttons without changing indexing/search semantics.
 - [x] Run focused tests, `npm test`, `npm run build`, and `npm run release:check`.
 - [x] Update README, CHANGELOG, ROADMAP, version metadata, and lessons if needed.
-- [ ] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
+- [x] Commit, tag, push, create/verify Gitee Release assets, replace local `:8787`, and record handoff if release validation passes.
 
 ## Validation Plan
 
@@ -542,6 +542,39 @@ Improve Web page ergonomics for large files and advanced options: raise the safe
 - 2026-06-29: While validating the advanced options, found the existing QA retries input was not sent to the backend. Added request parsing, frontend request wiring, route/pipeline propagation, and LLM client retry coverage so the option is functional rather than cosmetic.
 - 2026-06-29: Focused verification passed: `node --import tsx --test src/core/llm/llmClient.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/config/packageManifest.test.ts`; `npm run build`.
 - 2026-06-29: Full verification passed after adding non-streaming and streaming LLM retry coverage to `npm test`: `npm test` (83 tests), `npm run build`, `node dist/index.js --version` (`4.7.11`), and full `npm run release:check`. Release benchmark smoke returned resultCount 1, search p95 38ms, health p95 5ms, event-loop responsive 1/1.
+- 2026-06-29: Committed `378044b`, tagged `v4.7.11`, pushed `master` and `v4.7.11`, created the Gitee Release, uploaded both assets, verified download links, and replaced local `:8787` with v4.7.11.
+
+# v4.7.11 Release Handoff
+
+Author: feng.ling
+
+## Goal
+
+Finish the v4.7.11 release after commit/tag/push by publishing release assets, verifying download links, replacing the local Web service with v4.7.11, and recording the handoff separately from the tagged release commit.
+
+## Plan
+
+- [x] Confirm release commit and annotated tag were pushed.
+- [x] Create the Gitee Release `v4.7.11` with npm and Windows archive assets.
+- [x] Verify release notes are saved on the edit page.
+- [x] Verify both release download links return expected files.
+- [x] Replace local `:8787` service with v4.7.11 and verify served assets.
+- [x] Record final handoff results and push the handoff docs.
+
+## Validation Plan
+
+- Remote `origin/master` and `refs/tags/v4.7.11^{}` point to release commit `378044b`.
+- Release assets exist: `ace-mcp-4.7.11.tgz` and `release/ace-mcp-v4.7.11-win-x64.zip`.
+- Gitee download URLs for both assets return 200 with expected sizes.
+- Local `/health` reports version `4.7.11`.
+- Local served `/static/index.html` and `/static/js/app.js` include the new max shortcut controls and `retries` request wiring.
+
+## Comments
+
+- 2026-06-29: Remote release commit `378044b` was pushed to `master`; annotated tag `v4.7.11` was pushed to Gitee.
+- 2026-06-29: Created Gitee Release `v4.7.11`, attached `ace-mcp-4.7.11.tgz` (`attach_id=2864446`) and `ace-mcp-v4.7.11-win-x64.zip` (`attach_id=2864445`), and confirmed the edit page saved release notes.
+- 2026-06-29: Verified release download links return 200 with expected sizes: tgz `343599` bytes, Windows zip `555095` bytes.
+- 2026-06-29: Replaced local `:8787` service from v4.7.10 pid `52159`; `/health` now reports version `4.7.11` on pid `7903`. Served `/static/index.html` includes `include-context-lines max="500"`, `top-k-max`, and `qa-retries-max`; served `/static/js/app.js` includes `MAX_INCLUDE_CONTEXT_LINES = 500`, `QA_RETRIES_MAX = 5`, and `retries` in the QA request body.
 
 # v4.7.8 Snippet/Context Maximum Controls
 
