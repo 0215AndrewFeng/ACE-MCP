@@ -1,0 +1,78 @@
+tasks/todo.md
+  s_3a219f3e07a2c0::t_0bd19bf21e35b6 824-828,842-843
+  s_3a219f3e07a2c0::t_7a4bae84df780a 812-823,830-841
+  s_3a219f3e07a2c0::t_4b38841a96e814 791-795,808-811
+  s_3a219f3e07a2c0::t_195da952ccc951 778-790,796-807
+  s_3a219f3e07a2c0::t_9a1191aa0f4907 829,844
+src/web/routes/indexRoutes.ts
+  s_3a219f3e07a2c0::t_107d98b887c62a 10-23,32-34,36-44
+  s_3a219f3e07a2c0::t_8b83644ac5f16f 35
+src/version.ts
+  s_3a219f3e07a2c0::t_15ae9352aed862 2
+src/core/tasks/longTaskTracker.ts
+  s_3a219f3e07a2c0::t_707bc46162307e 1-52
+src/index.ts
+  s_3a219f3e07a2c0::t_01ad56044b1b59 15,220,277
+package.json
+  s_3a219f3e07a2c0::t_6d28066714a85c 30
+  s_3a219f3e07a2c0::t_4f4ee0d7e34c27 3
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_84f0288444d5b6 5-14
+scripts/package-windows.mjs
+  s_3a219f3e07a2c0::t_f6510550c52414 68
+src/web/routes/metaRoutes.ts
+  s_3a219f3e07a2c0::t_53994603d0d7ae 42
+src/web/routes/summaryRoutes.ts
+  s_3a219f3e07a2c0::t_5f1345dc3ae649 14-25
+src/web/requestValidation.ts
+  s_3a219f3e07a2c0::t_c9f1db880fa10e 87,192
+src/web/static/index.html
+  s_3a219f3e07a2c0::t_079e8c02f52c32 18
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_15ae9352aed862 3,15,82,120
+  s_3a219f3e07a2c0::t_2a0d31353194bc 53-68
+ROADMAP.md
+  s_3a219f3e07a2c0::t_416c427697e067 51-55
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_cac694edba8b1a 29
+  s_3a219f3e07a2c0::t_5cad0f39be7b0f 28
+README.md
+  s_3a219f3e07a2c0::t_15ae9352aed862 5,85,88,95,112-113,137,198,516
+  s_3a219f3e07a2c0::t_d97a74165219b3 518-522
+  s_3a219f3e07a2c0::t_c604b6269b3643 245-253
+src/web/types.ts
+  s_3a219f3e07a2c0::t_c7130d4450381d 9,16
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_15ae9352aed862 3,51,53
+  s_3a219f3e07a2c0::t_68924d1612d3a9 42-43,50
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_940aa9d15b87ec 140
+  s_3a219f3e07a2c0::t_2b731464017eba 200,207,209-210
+  s_3a219f3e07a2c0::t_bf11b526ec76d8 24,40,70,77,84,95,116-119
+  s_3a219f3e07a2c0::t_52b9959bebf296 131-132,143,151-152
+src/web/app.test.ts
+  s_3a219f3e07a2c0::t_ee4d34c358ac15 212-218,234
+  s_3a219f3e07a2c0::t_cdb37fdb347f26 6,123-211,219-233,235-242
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_68e2409aed2833 230-233,495,498-511
+  s_3a219f3e07a2c0::t_cfd07b24308807 40,265-269
+scripts/reindex-projects.mjs
+  s_3a219f3e07a2c0::t_e39d862547c775 1-100,102-217
+  s_3a219f3e07a2c0::t_089a8fc27a6d16 101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f3c2d17199f2b9af019163408066d72c81a6f140",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
