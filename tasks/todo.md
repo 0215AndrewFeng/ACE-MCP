@@ -15,7 +15,7 @@ Move Web full/incremental indexing into the unified long-task API so clients get
 - [x] Add focused route tests for async index success/failure, missing project root, and parent-directory guard.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package contract tests to v4.8.4.
 - [x] Run full validation.
-- [ ] Commit/tag/push, replace local service, and record handoff.
+- [x] Commit/tag/push, replace local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Move Web full/incremental indexing into the unified long-task API so clients get
 - 2026-06-30: Started v4.8.4 after v4.8.3. Scope is Web/API index task async submission plus shared task polling; SSE index progress remains synchronous stream behavior for now.
 - 2026-06-30: Implemented index task async submission, Web/script task polling for index work, v4.8.4 docs/version updates, and focused Web route tests. Focused Web route run and `npm run build` passed before full release validation.
 - 2026-06-30: Verification passed: full `npm test` (95 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.4`, and doctor with only the expected Web port in-use warning.
+- 2026-06-30: Committed `9dbb69e`, tagged `v4.8.4`, pushed `master` and tag to Gitee, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.8.4` on pid `35753`.
 
 # v4.8.3 Async Long Tasks
 
