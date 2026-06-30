@@ -2,6 +2,18 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.4] - 2026-06-30
+
+### Async index tasks and unified task center
+
+- `POST /api/index-project` 改为后台异步任务：通过 Web/API 触发 full/incremental index 时快速返回 `202`、`taskId` 和 `taskUrl`。
+- `/api/tasks` 现在统一承载 `index` 与 `summary` 任务历史，成功任务保留索引/摘要结果，失败任务保留错误信息。
+- Web 索引按钮、添加项目、项目选择后的预加载和启动预加载都改为提交 index task 后轮询完成，再更新项目列表与文件数。
+- `scripts/reindex-projects.mjs` 的 full index 阶段也改为提交 index task 并轮询完成，后续 summary 阶段复用同一个 task polling。
+- Web full index 的聚合父目录确认保护仍在任务创建前执行，拒绝时不会污染任务列表。
+- 新增 Web 路由测试覆盖 index task 快速返回、成功结果、失败状态和父目录 guard。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.4。
+
 ## [4.8.3] - 2026-06-30
 
 ### Async long tasks

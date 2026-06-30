@@ -136,11 +136,17 @@ async function loadProjects(baseUrl, timeoutMs) {
 }
 
 async function indexProject(baseUrl, projectRootPath, timeoutMs, confirmParentDirectory) {
-  return fetchJson(`${baseUrl}/api/index-project`, {
+  const body = await fetchJson(`${baseUrl}/api/index-project`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ confirmParentDirectory, mode: "full", projectRootPath }),
   }, timeoutMs);
+  const taskId = body.data?.taskId;
+  if (!taskId) {
+    return body;
+  }
+
+  return pollTask(baseUrl, taskId, timeoutMs);
 }
 
 async function generateSummary(baseUrl, projectRootPath, timeoutMs) {
@@ -166,11 +172,11 @@ async function pollTask(baseUrl, taskId, timeoutMs) {
       return { ...body, data: task.result, task };
     }
     if (task?.status === "failed") {
-      throw new Error(`summary task ${taskId} failed: ${task.error?.message ?? "unknown error"}`);
+      throw new Error(`task ${taskId} failed: ${task.error?.message ?? "unknown error"}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
-  throw new Error(`summary task ${taskId} did not finish within ${timeoutMs}ms`);
+  throw new Error(`task ${taskId} did not finish within ${timeoutMs}ms`);
 }
 
 async function main() {
@@ -201,7 +207,7 @@ async function main() {
     try {
       console.log(`index:start\t${item.projectRootPath}`);
       const indexResult = await indexProject(options.baseUrl, item.projectRootPath, options.timeoutMs, item.isParent);
-      const indexStats = indexResult.stats?.indexSync ?? {};
+      const indexStats = indexResult.data ?? indexResult.stats?.indexSync ?? {};
       console.log(`index:ok\t${item.projectRootPath}\tindexed=${indexStats.indexedFiles ?? "?"}\tchunks=${indexStats.chunkCount ?? "?"}\tfailed=${indexStats.failedFileCount ?? "?"}`);
 
       let summaryResult;

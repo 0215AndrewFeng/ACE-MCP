@@ -42,6 +42,43 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
           return;
         }
       }
+      const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
+      if (dependencies.longTaskTracker) {
+        const task = dependencies.longTaskTracker.run("index", normalizedProjectRootPath, async () => {
+          const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
+          return {
+            changedFiles: result.changedFiles,
+            chunkCount: result.chunkCount,
+            deletedFiles: result.deletedFiles,
+            failedFileCount: result.failedFileCount,
+            failedFiles: result.failedFiles,
+            indexedFiles: result.indexedFiles,
+            mode,
+            project: result.project,
+            projectId: result.projectId,
+            projectRootPath: result.projectRootPath,
+            scannedFiles: result.scannedFiles,
+            timings: result.timings,
+            vectorIndex: result.vectorIndex,
+          };
+        });
+
+        res.status(202).json(
+          buildEnvelope(
+            { mode, projectRootPath: normalizedProjectRootPath },
+            {
+              mode,
+              projectRootPath: normalizedProjectRootPath,
+              status: task.status,
+              taskId: task.taskId,
+              taskUrl: `/api/tasks/${encodeURIComponent(task.taskId)}`,
+            },
+            { elapsedMs: task.elapsedMs },
+            ["Indexing is running in the background. Poll the task URL for completion."],
+          ),
+        );
+        return;
+      }
       const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
       res.json(
         buildEnvelope(

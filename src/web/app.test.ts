@@ -362,7 +362,142 @@ test("summary generation rejects missing project root without starting a task", 
   }
 });
 
+test("index project starts a background task and exposes the result", async () => {
+  let releaseIndex: ((value: unknown) => void) | undefined;
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      indexProject: async (projectRootPath: string, mode: string) => {
+        await new Promise((resolve) => {
+          releaseIndex = resolve;
+        });
+        return {
+          changedFiles: 3,
+          chunkCount: 5,
+          deletedFiles: 0,
+          failedFileCount: 0,
+          failedFiles: [],
+          indexedFiles: 2,
+          project: { languages: ["typescript"], markers: [], projectType: "node", rootPath: projectRootPath },
+          projectId: "project-1",
+          projectRootPath,
+          scannedFiles: 2,
+          timings: { collectMs: 1, detectMs: 1, indexMs: 1, totalMs: 3, vectorMs: 0 },
+          vectorIndex: { enabled: true, hydratedChunkCount: 0, mode },
+        };
+      },
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const startedAt = Date.now();
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "full", projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(response.status, 202);
+    assert.equal(body.data.status, "running");
+    assert.match(body.data.taskId, /^index-/);
+    assert.ok(elapsedMs < 100, `index request took ${elapsedMs}ms`);
+
+    releaseIndex?.(undefined);
+    await assertTaskStatus(app.port, body.data.taskId, "succeeded");
+
+    const taskResponse = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}`);
+    const taskBody = await taskResponse.json();
+
+    assert.equal(taskResponse.status, 200);
+    assert.equal(taskBody.task.status, "succeeded");
+    assert.equal(taskBody.task.result.indexedFiles, 2);
+    assert.equal(taskBody.task.result.chunkCount, 5);
+    assert.equal(taskBody.task.result.mode, "full");
+  } finally {
+    releaseIndex?.(undefined);
+    await app.close();
+  }
+});
+
+test("index background task retains failure state", async () => {
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      indexProject: async () => {
+        throw new Error("index failed");
+      },
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "incremental", projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 202);
+    await assertTaskStatus(app.port, body.data.taskId, "failed");
+
+    const taskResponse = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}`);
+    const taskBody = await taskResponse.json();
+
+    assert.equal(taskBody.task.status, "failed");
+    assert.equal(taskBody.task.error.message, "index failed");
+  } finally {
+    await app.close();
+  }
+});
+
 test("full index rejects registered parent directory unless confirmed", async () => {
+  const tracker = new LongTaskTracker();
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,
     indexCoordinator: {
@@ -385,6 +520,7 @@ test("full index rejects registered parent directory unless confirmed", async ()
     } as never,
     llmClient: {} as never,
     logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
     runtime: {
       nodeVersion: process.version,
       pid: process.pid,
@@ -429,6 +565,7 @@ test("full index rejects registered parent directory unless confirmed", async ()
     assert.equal(blocked.status, 409);
     assert.equal(blockedBody.code, "PARENT_DIRECTORY_REQUIRES_CONFIRMATION");
     assert.deepEqual(blockedBody.childProjects, ["/work/code/service-a", "/work/code/service-b"]);
+    assert.deepEqual(tracker.list(), []);
 
     const confirmed = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
       body: JSON.stringify({ confirmParentDirectory: true, mode: "full", projectRootPath: "/work/code" }),
@@ -436,7 +573,9 @@ test("full index rejects registered parent directory unless confirmed", async ()
       method: "POST",
     });
 
-    assert.equal(confirmed.status, 200);
+    assert.equal(confirmed.status, 202);
+    const confirmedBody = await confirmed.json();
+    assert.match(confirmedBody.data.taskId, /^index-/);
   } finally {
     await app.close();
   }

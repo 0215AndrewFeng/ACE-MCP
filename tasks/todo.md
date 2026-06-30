@@ -1,3 +1,37 @@
+# v4.8.4 Async Index Tasks
+
+Author: feng.ling
+
+## Goal
+
+Move Web full/incremental indexing into the unified long-task API so clients get a task id quickly, can poll index state/results, and summary/index maintenance flows share one task center.
+
+## Plan
+
+- [x] Review v4.8.3 task, index route, Web UI, and maintenance script behavior.
+- [x] Extend task types and task listing filters for `index` and `summary`.
+- [x] Make `POST /api/index-project` submit background index work and return `202 + taskId` while preserving parent-directory confirmation.
+- [x] Update Web indexing button and maintenance script to poll `/api/tasks/:taskId`.
+- [x] Add focused route tests for async index success/failure, missing project root, and parent-directory guard.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package contract tests to v4.8.4.
+- [x] Run full validation.
+- [ ] Commit/tag/push, replace local service, and record handoff.
+
+## Validation Plan
+
+- Focused Web route tests: index submission returns quickly with task id, task result exposes index stats, failures are retained, and parent guard still returns 409 before task creation.
+- Static/package contract tests proving Web and maintenance script poll `/api/tasks` for both summary and index work.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Local service handoff: `/health` reports version `4.8.4` after LaunchAgent restart.
+
+## Comments
+
+- 2026-06-30: Started v4.8.4 after v4.8.3. Scope is Web/API index task async submission plus shared task polling; SSE index progress remains synchronous stream behavior for now.
+- 2026-06-30: Implemented index task async submission, Web/script task polling for index work, v4.8.4 docs/version updates, and focused Web route tests. Focused Web route run and `npm run build` passed before full release validation.
+- 2026-06-30: Verification passed: full `npm test` (95 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.4`, and doctor with only the expected Web port in-use warning.
+
 # v4.8.3 Async Long Tasks
 
 Author: feng.ling

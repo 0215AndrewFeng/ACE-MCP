@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.8.3`
+当前版本：`v4.8.4`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.8.3.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.4.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.8.3.tgz
+npm install -g ./ace-mcp-4.8.4.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.3.tgz
+npm install -g .\ace-mcp-4.8.4.tgz
 ace-mcp-web
 ```
 
@@ -109,8 +109,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.3/ace-mcp-4.8.3.tgz
-npm install -g ./ace-mcp-4.8.3.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.4/ace-mcp-4.8.4.tgz
+npm install -g ./ace-mcp-4.8.4.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +134,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.8.3-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.4-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.8.3.tgz
+npm install -g ./ace-mcp-4.8.4.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -497,7 +497,7 @@ Web 面板提供完整的可视化调试体验：
 - `GET /api/tools` - 工具列表
 - `GET /api/projects` - 已索引项目
 - `GET /api/project-stats` - 项目统计
-- `POST /api/index-project` - 触发索引
+- `POST /api/index-project` - 提交后台索引任务
 - `POST /api/search-context` - 代码搜索
 - `POST /api/find-definition` - 定义查找
 - `POST /api/find-references` - 引用查找
@@ -514,7 +514,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.8.3（当前版本）
+### v4.8.4（当前版本）
+
+- **索引任务异步化**：`POST /api/index-project` 快速返回 `202 + taskId`，full/incremental index 在后台执行
+- **统一任务中心**：`/api/tasks` 同时展示 `index` 和 `summary` 任务的运行、成功、失败状态与结果
+- **页面和维护脚本统一轮询**：Web 索引、添加项目、预加载和 `maintenance:reindex` 都改为提交任务后轮询完成
+
+### v4.8.3
 
 - **摘要生成异步化**：`POST /api/summary/generate` 快速返回 `202 + taskId`，索引刷新和 LLM 摘要生成都在后台执行
 - **长任务 API**：新增 `/api/tasks` 和 `/api/tasks/:taskId`，可查询任务状态、耗时、成功结果或失败错误

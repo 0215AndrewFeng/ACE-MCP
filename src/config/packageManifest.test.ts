@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.3");
+  assert.equal(pkg.version, "4.8.4");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -117,6 +117,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(reindexScript, /--summary/);
   assert.match(reindexScript, /--include-parent/);
   assert.match(reindexScript, /confirmParentDirectory/);
+  assert.match(reindexScript, /const taskId = body\.data\?\.taskId/);
   assert.match(reindexScript, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}/);
   assert.match(cmdInstall, /npm install --omit=dev/);
   assert.match(cmdInstall, /better-sqlite3/);
@@ -129,7 +130,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.3-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.4-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -138,10 +139,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.3 verification gates", () => {
+test("release checklist records the v4.8.4 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.3/);
+  assert.match(checklist, /v4\.8\.4/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -150,7 +151,7 @@ test("release checklist records the v4.8.3 verification gates", () => {
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.3/);
+  assert.match(checklist, /git tag -a v4\.8\.4/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
@@ -207,6 +208,7 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(appJs, /function renderServiceStatus\(/);
   assert.match(appJs, /serviceActiveTasksEl/);
   assert.match(appJs, /function pollTask\(/);
+  assert.match(appJs, /function submitIndexTask\(/);
   assert.match(appJs, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}/);
   assert.match(appJs, /request\("GET", "\/health"\)[\s\S]*renderServiceStatus/);
   assert.match(appJs, /PARENT_DIRECTORY_REQUIRES_CONFIRMATION/);

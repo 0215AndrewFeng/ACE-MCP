@@ -1,4 +1,4 @@
-export type LongTaskType = "summary";
+export type LongTaskType = "index" | "summary";
 export type LongTaskStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface LongTaskInfo<TResult = unknown> {

@@ -256,6 +256,13 @@ async function pollTask(taskId, timeoutMs = 600000) {
   throw new Error(`Task ${taskId} timed out after ${Math.round(timeoutMs / 1000)}s`);
 }
 
+async function submitIndexTask(payload) {
+  const accepted = await request("POST", "/api/index-project", payload);
+  const taskId = accepted?.data?.taskId;
+  if (!taskId) return accepted;
+  return pollTask(taskId);
+}
+
 function parseSearchLanguages(value) {
   const allowed = new Set(["java", "javascript", "dotnet", "python", "markdown"]);
   return [...new Set(value.split(",").map(item => item.trim().toLowerCase()).filter(item => allowed.has(item)))];
@@ -439,13 +446,13 @@ projectRootSelect?.addEventListener("change", async () => {
     }
 
     try {
-      const result = await request("POST", "/api/index-project", {
+      const result = await submitIndexTask({
         mode: "incremental",
         projectRootPath: projectPath
       });
 
       // Update file count if available
-      const fileCount = result?.stats?.project?.indexedFileCount || result?.data?.indexedFiles;
+      const fileCount = result?.task?.result?.indexedFiles || result?.stats?.project?.indexedFileCount || result?.data?.indexedFiles;
       if (fileCount) {
         addStoredProject(projectPath, fileCount);
         renderProjectSelect();
@@ -495,7 +502,7 @@ refreshServiceStatus();
   if (selectedProject && projectRootInput) {
     console.log('Auto-preloading index for:', selectedProject);
     try {
-      await request("POST", "/api/index-project", {
+      await submitIndexTask({
         mode: "incremental",
         projectRootPath: selectedProject
       });
@@ -513,13 +520,13 @@ document.getElementById("run-index")?.addEventListener("click", () => run(async 
   };
   let result;
   try {
-    result = await request("POST", "/api/index-project", payload);
+    result = await submitIndexTask(payload);
   } catch (error) {
     if (error?.status === 409 && error?.data?.code === "PARENT_DIRECTORY_REQUIRES_CONFIRMATION") {
       const childCount = Array.isArray(error.data.childProjects) ? error.data.childProjects.length : 0;
       const confirmed = window.confirm(`该目录包含 ${childCount} 个已登记子项目，全量索引可能非常耗时。确认继续？`);
       if (!confirmed) throw error;
-      result = await request("POST", "/api/index-project", { ...payload, confirmParentDirectory: true });
+      result = await submitIndexTask({ ...payload, confirmParentDirectory: true });
     } else {
       throw error;
     }
@@ -527,7 +534,7 @@ document.getElementById("run-index")?.addEventListener("click", () => run(async 
   // Sync project to list after indexing
   const projectPath = projectRootInput.value?.trim();
   if (projectPath) {
-    const fileCount = result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
+    const fileCount = result?.task?.result?.indexedFiles ?? result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
     addStoredProject(projectPath, fileCount);
     renderProjectSelect();
   }
@@ -712,14 +719,15 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
 
   try {
     // Index the project with full mode for new projects
-    const result = await request("POST", "/api/index-project", {
+    const result = await submitIndexTask({
       projectRootPath: projectPath,
       mode: "full"
     });
 
     // Show success message
-    const fileCount = result?.data?.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
-    const chunkCount = result?.data?.chunkCount ?? result?.stats?.indexSync?.chunkCount ?? 0;
+    const indexResult = result?.task?.result ?? result?.data ?? {};
+    const fileCount = indexResult.indexedFiles ?? result?.stats?.indexSync?.indexedFiles ?? 0;
+    const chunkCount = indexResult.chunkCount ?? result?.stats?.indexSync?.chunkCount ?? 0;
     alert(`✅ 项目索引成功！\n\n文件数: ${fileCount}\n代码块: ${chunkCount}\n\n现在可以搜索和提问了。`);
 
     // v4.2.6: Save to LocalStorage and update select
