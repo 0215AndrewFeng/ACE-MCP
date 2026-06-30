@@ -144,11 +144,33 @@ async function indexProject(baseUrl, projectRootPath, timeoutMs, confirmParentDi
 }
 
 async function generateSummary(baseUrl, projectRootPath, timeoutMs) {
-  return fetchJson(`${baseUrl}/api/summary/generate`, {
+  const body = await fetchJson(`${baseUrl}/api/summary/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ projectRootPath }),
   }, timeoutMs);
+  const taskId = body.data?.taskId;
+  if (!taskId) {
+    return body;
+  }
+
+  return pollTask(baseUrl, taskId, timeoutMs);
+}
+
+async function pollTask(baseUrl, taskId, timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const body = await fetchJson(`${baseUrl}/api/tasks/${encodeURIComponent(taskId)}`, {}, timeoutMs);
+    const task = body.task;
+    if (task?.status === "succeeded") {
+      return { ...body, data: task.result, task };
+    }
+    if (task?.status === "failed") {
+      throw new Error(`summary task ${taskId} failed: ${task.error?.message ?? "unknown error"}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error(`summary task ${taskId} did not finish within ${timeoutMs}ms`);
 }
 
 async function main() {

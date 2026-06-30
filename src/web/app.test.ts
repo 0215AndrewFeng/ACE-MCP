@@ -13,6 +13,19 @@ function blockFor(ms: number): void {
   }
 }
 
+async function assertTaskStatus(port: number, taskId: string, expectedStatus: string): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  let lastStatus = "";
+  while (Date.now() < deadline) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/tasks/${encodeURIComponent(taskId)}`);
+    const body = await response.json();
+    lastStatus = body.task?.status ?? "";
+    if (lastStatus === expectedStatus) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail(`task ${taskId} status was ${lastStatus}, expected ${expectedStatus}`);
+}
+
 test("startWebApp serves health and validation responses", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",
@@ -160,6 +173,190 @@ test("health exposes active summary long tasks", async () => {
     assert.equal(body.tasks[0].projectRootPath, "/repo");
     assert.equal(body.tasks[0].status, "running");
     assert.equal(typeof body.tasks[0].elapsedMs, "number");
+  } finally {
+    await app.close();
+  }
+});
+
+test("summary generation starts a background task and exposes the result", async () => {
+  let releaseSummary: ((value: unknown) => void) | undefined;
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      ensureFreshIndex: async (projectRootPath: string) => ({
+        projectId: "project-1",
+        projectRootPath,
+      }),
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {
+      generateProjectSummary: async () => {
+        await new Promise((resolve) => {
+          releaseSummary = resolve;
+        });
+        return {
+          durationMs: 42,
+          filesWritten: ["project-summary.json"],
+          moduleCount: 2,
+          outputDir: "/repo/.ace-mcp/summaries",
+          tokensUsed: { completion: 3, prompt: 5, total: 8 },
+        };
+      },
+    } as never,
+  });
+
+  try {
+    const startedAt = Date.now();
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
+      body: JSON.stringify({ projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.equal(response.status, 202);
+    assert.equal(body.data.status, "running");
+    assert.match(body.data.taskId, /^summary-/);
+    assert.ok(elapsedMs < 100, `summary request took ${elapsedMs}ms`);
+
+    releaseSummary?.(undefined);
+    await assertTaskStatus(app.port, body.data.taskId, "succeeded");
+
+    const taskResponse = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}`);
+    const taskBody = await taskResponse.json();
+
+    assert.equal(taskResponse.status, 200);
+    assert.equal(taskBody.task.status, "succeeded");
+    assert.equal(taskBody.task.result.moduleCount, 2);
+    assert.equal(taskBody.task.result.tokensUsed.total, 8);
+  } finally {
+    releaseSummary?.(undefined);
+    await app.close();
+  }
+});
+
+test("summary background task retains failure state", async () => {
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      ensureFreshIndex: async (projectRootPath: string) => ({
+        projectId: "project-1",
+        projectRootPath,
+      }),
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {
+      generateProjectSummary: async () => {
+        throw new Error("summary failed");
+      },
+    } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
+      body: JSON.stringify({ projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 202);
+    await assertTaskStatus(app.port, body.data.taskId, "failed");
+
+    const taskResponse = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}`);
+    const taskBody = await taskResponse.json();
+
+    assert.equal(taskBody.task.status, "failed");
+    assert.equal(taskBody.task.error.message, "summary failed");
+  } finally {
+    await app.close();
+  }
+});
+
+test("summary generation rejects missing project root without starting a task", async () => {
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      ensureFreshIndex: async () => {
+        throw new Error("should not index without projectRootPath");
+      },
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
+      body: JSON.stringify({}),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "INVALID_PROJECT_ROOT");
+    assert.deepEqual(tracker.list(), []);
   } finally {
     await app.close();
   }

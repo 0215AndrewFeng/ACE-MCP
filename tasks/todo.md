@@ -1,3 +1,37 @@
+# v4.8.3 Async Long Tasks
+
+Author: feng.ling
+
+## Goal
+
+Move long summary generation off the request lifecycle so Web/API clients get a task id quickly, can poll task state, and do not hold minute-long HTTP requests while summaries run.
+
+## Plan
+
+- [x] Review existing v4.8.2 summary/task implementation and tests.
+- [x] Extend long task tracking to retain queued/running/succeeded/failed task state, result, error, and duration with a bounded in-memory history.
+- [x] Add task query endpoints and make `POST /api/summary/generate` start a background summary task returning `202` with `taskId`.
+- [x] Update maintenance script and Web UI to poll task state instead of waiting on the summary request.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons for v4.8.3.
+- [x] Add focused tests for async summary success/failure and task lookup behavior.
+- [x] Run focused tests, full `npm test`, `npm run build`, and `npm run release:check`.
+- [ ] Commit/tag/push and replace the local service.
+
+## Validation Plan
+
+- Focused Web route tests: summary generation returns quickly with a task id, `/api/tasks/:taskId` exposes succeeded state/result, and failures are retained as failed tasks.
+- Maintenance script package/contract checks where applicable.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Local service handoff: `/health` reports version `4.8.3` after restart.
+
+## Comments
+
+- 2026-06-30: Started v4.8.3 from v4.8.2. Scope is intentionally in-memory async task orchestration for summary generation; durable task persistence is deferred unless tests expose a hard need.
+- 2026-06-30: Implemented async summary task submission, `/api/tasks` polling, Web/script polling, and v4.8.3 docs/version updates. Focused Web route run and `npm run build` passed before full release validation.
+- 2026-06-30: Verification passed: focused Web route run, full `npm test` (92 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.3`, and `node dist/index.js --doctor` with only the expected Web port in-use warning.
+
 # v4.7.0 better-sqlite3 Blocking Fix
 
 Author: feng.ling

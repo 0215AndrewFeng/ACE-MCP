@@ -2,6 +2,18 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.3] - 2026-06-30
+
+### Async long tasks
+
+- `POST /api/summary/generate` 改为后台异步任务：请求会快速返回 `202`、`taskId` 和 `taskUrl`，索引刷新与摘要生成都在后台执行。
+- 新增 `GET /api/tasks` 与 `GET /api/tasks/:taskId`，可查询 summary task 的 `running/succeeded/failed` 状态、耗时、结果或错误信息。
+- 长任务 tracker 从仅展示 active task 升级为保留有界内存历史，成功任务保留摘要输出信息，失败任务保留错误 message/code。
+- Web 生成摘要按钮会先显示 accepted task，再自动轮询到最终成功/失败；状态条继续通过 `/health.tasks` 展示运行中的索引/摘要数量。
+- `scripts/reindex-projects.mjs` 的 `--summary` 改为提交异步摘要任务并轮询完成，避免客户端持有分钟级 HTTP 请求。
+- 新增 Web 路由测试覆盖异步摘要快速返回、成功结果轮询和失败状态保留。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.3。
+
 ## [4.8.2] - 2026-06-30
 
 ### Long task visibility and safe maintenance

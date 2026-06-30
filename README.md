@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.8.2`
+当前版本：`v4.8.3`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.8.2.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.3.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.8.2.tgz
+npm install -g ./ace-mcp-4.8.3.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.2.tgz
+npm install -g .\ace-mcp-4.8.3.tgz
 ace-mcp-web
 ```
 
@@ -109,8 +109,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.2/ace-mcp-4.8.2.tgz
-npm install -g ./ace-mcp-4.8.2.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.3/ace-mcp-4.8.3.tgz
+npm install -g ./ace-mcp-4.8.3.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +134,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.8.2-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.3-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.8.2.tgz
+npm install -g ./ace-mcp-4.8.3.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -506,14 +506,21 @@ Web 面板提供完整的可视化调试体验：
 - `POST /api/qa/ask` - 代码问答
 - `POST /api/qa/cache/clear` - 清除 QA 缓存
 - `GET /api/qa/ask/stream` - 流式问答 (SSE)
-- `POST /api/summary/generate` - 生成摘要
+- `POST /api/summary/generate` - 提交后台摘要生成任务
 - `GET /api/summary` - 获取摘要
+- `GET /api/tasks` / `GET /api/tasks/:taskId` - 查询后台长任务状态
 - `POST /api/index/warm` - 向量预热
 - `GET/POST /api/llm/config` - LLM 配置
 
 ## 版本历史
 
-### v4.8.2（当前版本）
+### v4.8.3（当前版本）
+
+- **摘要生成异步化**：`POST /api/summary/generate` 快速返回 `202 + taskId`，索引刷新和 LLM 摘要生成都在后台执行
+- **长任务 API**：新增 `/api/tasks` 和 `/api/tasks/:taskId`，可查询任务状态、耗时、成功结果或失败错误
+- **脚本和页面轮询任务**：Web 生成摘要按钮与 `maintenance:reindex -- --summary` 都改为提交任务后轮询完成，不再持有分钟级 HTTP 请求
+
+### v4.8.2
 
 - **长任务状态可见**：`/health` 新增 `tasks`，摘要生成时展示项目路径、开始时间和已耗时，Web 状态条显示当前索引/摘要任务数
 - **全量索引防误扫**：Web full index 对包含多个已登记子项目的父目录增加确认保护，避免误把 `/Users/.../code` 这类聚合目录当单项目重建

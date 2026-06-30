@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.8.2
+## v4.8.3
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -39,16 +39,16 @@ npm run release:benchmark
 6. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.8.2.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
-unzip -l release/ace-mcp-v4.8.2-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|reindex-projects.mjs"
+tar -tf ace-mcp-4.8.3.tgz | rg "package/(dist/index.js|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
+unzip -l release/ace-mcp-v4.8.3-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|reindex-projects.mjs"
 ```
 
 7. 提交并打 tag：
 
 ```bash
 git add .
-git commit -m "chore: release v4.8.2 long task maintenance"
-git tag -a v4.8.2 -m "v4.8.2"
+git commit -m "chore: release v4.8.3 async long tasks"
+git tag -a v4.8.3 -m "v4.8.3"
 git push origin master
-git push origin v4.8.2
+git push origin v4.8.3
 ```

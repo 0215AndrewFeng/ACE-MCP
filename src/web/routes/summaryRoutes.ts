@@ -10,9 +10,13 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
   app.post("/api/summary/generate", async (req: Request, res: Response) => {
     try {
       const { projectRootPath } = req.body;
-      const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
-      const taskId = dependencies.longTaskTracker?.start("summary", indexResult.projectRootPath);
-      try {
+      const requestedProjectRootPath = String(projectRootPath ?? "");
+      if (!requestedProjectRootPath.trim()) {
+        throw new AppError("INVALID_PROJECT_ROOT", "projectRootPath is required", { statusCode: 400 });
+      }
+      const normalizedProjectRootPath = normalizeAbsolutePath(requestedProjectRootPath);
+      if (!dependencies.longTaskTracker) {
+        const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(requestedProjectRootPath);
         const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
         res.json(buildEnvelope(
           { projectRootPath: indexResult.projectRootPath },
@@ -20,9 +24,32 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
           { tokensUsed: result.tokensUsed, durationMs: result.durationMs },
           [],
         ));
-      } finally {
-        if (taskId) dependencies.longTaskTracker?.finish(taskId);
+        return;
       }
+
+      const task = dependencies.longTaskTracker.run("summary", normalizedProjectRootPath, async () => {
+        const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(requestedProjectRootPath);
+        const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
+        return {
+          filesWritten: result.filesWritten,
+          moduleCount: result.moduleCount,
+          outputDir: result.outputDir,
+          tokensUsed: result.tokensUsed,
+          durationMs: result.durationMs,
+        };
+      });
+
+      res.status(202).json(buildEnvelope(
+        { projectRootPath: normalizedProjectRootPath },
+        {
+          projectRootPath: normalizedProjectRootPath,
+          status: task.status,
+          taskId: task.taskId,
+          taskUrl: `/api/tasks/${encodeURIComponent(task.taskId)}`,
+        },
+        { elapsedMs: task.elapsedMs },
+        ["Summary generation is running in the background. Poll the task URL for completion."],
+      ));
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
       const status = error instanceof AppError ? error.statusCode : 500;

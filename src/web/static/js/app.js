@@ -241,6 +241,21 @@ async function request(method, url, body, timeoutMs = 600000) {
   }
 }
 
+async function pollTask(taskId, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const body = await request("GET", `/api/tasks/${encodeURIComponent(taskId)}`, undefined, 30000);
+    const task = body.task;
+    if (task?.status === "succeeded") return body;
+    if (task?.status === "failed") {
+      throw new Error(task.error?.message || `Task ${taskId} failed`);
+    }
+    await refreshServiceStatus();
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  throw new Error(`Task ${taskId} timed out after ${Math.round(timeoutMs / 1000)}s`);
+}
+
 function parseSearchLanguages(value) {
   const allowed = new Set(["java", "javascript", "dotnet", "python", "markdown"]);
   return [...new Set(value.split(",").map(item => item.trim().toLowerCase()).filter(item => allowed.has(item)))];
@@ -617,9 +632,15 @@ document.getElementById("update-llm-config")?.addEventListener("click", () => ru
 }));
 
 // Summary
-document.getElementById("run-generate-summary")?.addEventListener("click", () => run(() => request("POST", "/api/summary/generate", {
-  projectRootPath: projectRootInput.value
-})));
+document.getElementById("run-generate-summary")?.addEventListener("click", () => run(async () => {
+  const accepted = await request("POST", "/api/summary/generate", {
+    projectRootPath: projectRootInput.value
+  });
+  render(accepted);
+  const taskId = accepted?.data?.taskId;
+  if (!taskId) return accepted;
+  return pollTask(taskId);
+}));
 document.getElementById("load-summary")?.addEventListener("click", () => run(() => request(
   "GET",
   "/api/summary?projectRootPath=" + encodeURIComponent(projectRootInput.value)
