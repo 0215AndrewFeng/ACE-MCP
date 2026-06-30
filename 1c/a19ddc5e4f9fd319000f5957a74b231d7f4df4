@@ -1,0 +1,71 @@
+src/web/routes/metaRoutes.ts
+  s_3a219f3e07a2c0::t_00104ef9e3d2f7 42
+src/web/routes/summaryRoutes.ts
+  s_3a219f3e07a2c0::t_9c2ee23dbffb80 13,17,19,30-31,43,45
+  s_3a219f3e07a2c0::t_865867fe636306 14-16
+  s_3a219f3e07a2c0::t_7f016950058511 18,27,29,32-42,44,46-52
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_242aafa6af16de 244-258,635-643
+src/version.ts
+  s_3a219f3e07a2c0::t_189877914544a6 2
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_c6cffb6f953d52 5-16
+src/web/app.ts
+  s_3a219f3e07a2c0::t_4f6e1dc11f53c2 11,36
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_97f906f87f7a17 30
+tasks/todo.md
+  s_3a219f3e07a2c0::t_cf74ce9bf303ca 33
+  s_3a219f3e07a2c0::t_79dd5c025055a8 11-16,32
+  s_3a219f3e07a2c0::t_875416fa8507ad 1-10,19-31,34
+  s_3a219f3e07a2c0::t_9e00ec05c1ccb7 17-18
+src/web/app.test.ts
+  s_3a219f3e07a2c0::t_187b08943f4549 16-28
+  s_3a219f3e07a2c0::t_caf1d46ed1ceaa 181-316
+  s_3a219f3e07a2c0::t_4e729f08babf4a 317-364
+src/core/tasks/longTaskTracker.ts
+  s_3a219f3e07a2c0::t_ef0ed95d601816 2,4-6,8-11,14,17,20-27,31,34,38,41-42,50,57-76,80-132,134-138,140,142,145
+scripts/reindex-projects.mjs
+  s_3a219f3e07a2c0::t_1196f699283252 147,152-173
+package.json
+  s_fc21e4effd9723::t_a8d7e90c5b4941 3
+src/web/routes/taskRoutes.ts
+  s_3a219f3e07a2c0::t_3d01c488aa80c9 11
+  s_3a219f3e07a2c0::t_48ea633fe842af 1-10,12-18
+README.md
+  s_3a219f3e07a2c0::t_34ec9b4a1368d9 509,511,517-523
+  s_3a219f3e07a2c0::t_11f36fe5a29189 198
+  s_3a219f3e07a2c0::t_685727875f2a2d 5,85,88,95,112-113,137
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_e28040bf32d735 3,15,82,120
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_2c61e62975e603 3,42-43,50-51,53
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_25ba50efd66c87 24,120,132,141,144,153,209-210
+ROADMAP.md
+  s_3a219f3e07a2c0::t_cd1237b595c35c 52-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1ca19ddc5e4f9fd319000f5957a74b231d7f4df4",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_fc21e4effd9723": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
