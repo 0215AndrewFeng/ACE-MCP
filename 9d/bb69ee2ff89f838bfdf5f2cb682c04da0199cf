@@ -1,0 +1,60 @@
+src/core/tasks/longTaskTracker.ts
+  s_3a219f3e07a2c0::t_d13fc1deb815c2 1
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_3a971f01f176c1 3,42-43,50-51,53
+package.json
+  s_fc21e4effd9723::t_7d62068fc423c3 3
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_3b37d5b8f25058 24,120,133,142,145,154,211
+src/version.ts
+  s_3a219f3e07a2c0::t_8017448da997b2 2
+ROADMAP.md
+  s_3a219f3e07a2c0::t_b07d6c50b7fb36 53-57
+tasks/todo.md
+  s_3a219f3e07a2c0::t_5abd9d41ce09ee 11-16,32
+  s_3a219f3e07a2c0::t_eb2764ab2bf3cb 17-18,33
+  s_3a219f3e07a2c0::t_5e6f060607582c 1-10,19-31,34
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_e84a126b645839 31
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_291326a9d523c0 3,15,82,120
+scripts/reindex-projects.mjs
+  s_3a219f3e07a2c0::t_ac9c450d76197d 139,144-149,175,179,210
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_4d040ef59ccbd2 5-16
+src/web/routes/indexRoutes.ts
+  s_3a219f3e07a2c0::t_01117330e44fe6 45-81
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_2ef56800f33da7 722,728-730
+  s_3a219f3e07a2c0::t_25fc21eb0fcf99 259-265
+  s_3a219f3e07a2c0::t_ba4d4d5d9010ae 449,455,505,523,529,537
+README.md
+  s_3a219f3e07a2c0::t_967635c93ffe31 5,85,88,95,112-113,137,198,500,517-523
+src/web/app.test.ts
+  s_3a219f3e07a2c0::t_826762ccd12b19 365-498
+  s_3a219f3e07a2c0::t_a420611b2c7e5f 500,523,568,576-578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "9dbb69ee2ff89f838bfdf5f2cb682c04da0199cf",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_fc21e4effd9723": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
