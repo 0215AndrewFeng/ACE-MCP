@@ -37,6 +37,7 @@ const serviceVersionEl = document.getElementById("service-version");
 const serviceWatchStatusEl = document.getElementById("service-watch-status");
 const serviceProjectsEl = document.getElementById("service-projects");
 const serviceLatestIndexEl = document.getElementById("service-latest-index");
+const serviceActiveTasksEl = document.getElementById("service-active-tasks");
 const qaEffectiveParamsEl = document.getElementById("qa-effective-params");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
@@ -226,7 +227,10 @@ async function request(method, url, body, timeoutMs = 600000) {
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(JSON.stringify(data, null, 2));
+      const error = new Error(JSON.stringify(data, null, 2));
+      error.status = response.status;
+      error.data = data;
+      throw error;
     }
     return data;
   } catch (err) {
@@ -258,6 +262,11 @@ function renderServiceStatus(health) {
     serviceProjectsEl.textContent = `${ready}/${total}`;
   }
   if (serviceLatestIndexEl) serviceLatestIndexEl.textContent = formatStatusTime(health?.index?.latestIndexAt);
+  if (serviceActiveTasksEl) {
+    const indexingCount = Array.isArray(health?.indexing) ? health.indexing.length : 0;
+    const taskCount = Array.isArray(health?.tasks) ? health.tasks.length : 0;
+    serviceActiveTasksEl.textContent = indexingCount + taskCount > 0 ? `${indexingCount} 索引 / ${taskCount} 摘要` : "空闲";
+  }
 }
 
 async function refreshServiceStatus() {
@@ -483,10 +492,23 @@ refreshServiceStatus();
 })();
 
 document.getElementById("run-index")?.addEventListener("click", () => run(async () => {
-  const result = await request("POST", "/api/index-project", {
+  const payload = {
     mode: indexModeInput.value,
     projectRootPath: projectRootInput.value
-  });
+  };
+  let result;
+  try {
+    result = await request("POST", "/api/index-project", payload);
+  } catch (error) {
+    if (error?.status === 409 && error?.data?.code === "PARENT_DIRECTORY_REQUIRES_CONFIRMATION") {
+      const childCount = Array.isArray(error.data.childProjects) ? error.data.childProjects.length : 0;
+      const confirmed = window.confirm(`该目录包含 ${childCount} 个已登记子项目，全量索引可能非常耗时。确认继续？`);
+      if (!confirmed) throw error;
+      result = await request("POST", "/api/index-project", { ...payload, confirmParentDirectory: true });
+    } else {
+      throw error;
+    }
+  }
   // Sync project to list after indexing
   const projectPath = projectRootInput.value?.trim();
   if (projectPath) {

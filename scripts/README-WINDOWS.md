@@ -1,6 +1,6 @@
 # ace-mcp Windows 安装说明
 
-适用包名：`ace-mcp-v4.8.1-win-x64.zip`。
+适用包名：`ace-mcp-v4.8.2-win-x64.zip`。
 
 ## 环境要求
 
@@ -12,7 +12,7 @@
 
 ## Zip 安装
 
-1. 解压 `ace-mcp-v4.8.1-win-x64.zip`。
+1. 解压 `ace-mcp-v4.8.2-win-x64.zip`。
 2. 在解压目录打开 PowerShell。
 3. 执行：
 
@@ -50,6 +50,22 @@ powershell -ExecutionPolicy Bypass -File .\start-web.ps1 9000
 
 启动后访问 `http://127.0.0.1:8787/`。
 
+## 全库维护重索引
+
+Zip 包内包含 `scripts\reindex-projects.mjs`。Web 服务启动后，可先预览计划：
+
+```powershell
+node scripts\reindex-projects.mjs --dry-run
+```
+
+确认后逐项目 full index，并可附带生成摘要：
+
+```powershell
+node scripts\reindex-projects.mjs --summary
+```
+
+脚本默认跳过不存在路径和包含多个已登记子项目的聚合父目录，避免误扫大目录。
+
 ## npm/tgz 全局安装
 
 如果使用 npm 或 tgz 全局安装：
@@ -63,7 +79,7 @@ ace-mcp-web
 本地 tgz：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.1.tgz
+npm install -g .\ace-mcp-4.8.2.tgz
 ace-mcp-web
 ```
 
@@ -101,7 +117,7 @@ Zip 解压运行时：
     "ace-mcp": {
       "command": "node",
       "args": [
-        "C:\\path\\to\\ace-mcp-v4.8.1-win-x64\\dist\\index.js"
+        "C:\\path\\to\\ace-mcp-v4.8.2-win-x64\\dist\\index.js"
       ]
     }
   }

@@ -6,12 +6,14 @@ import type { LlmClient } from "../core/llm/llmClient.js";
 import type { SearchService } from "../core/search/searchService.js";
 import type { SQLiteStore } from "../core/storage/sqliteStore.js";
 import type { SummaryGenerator } from "../core/summary/summaryGenerator.js";
+import type { LongTaskTracker } from "../core/tasks/longTaskTracker.js";
 
 export interface WebAppDependencies {
   embeddingProvider: EmbeddingProvider;
   indexCoordinator: IndexCoordinator;
   llmClient: LlmClient;
   logger: Logger;
+  longTaskTracker?: LongTaskTracker;
   runtime: AppRuntimeInfo;
   searchService: SearchService;
   settings: Settings;

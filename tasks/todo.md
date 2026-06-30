@@ -775,3 +775,70 @@ Finish the v4.7.8 release after commit/tag/push by publishing release assets, ve
 - 2026-06-26: Created Gitee Release `v4.7.8` in browser, attached `ace-mcp-4.7.8.tgz` (`attach_id=2858465`) and `ace-mcp-v4.7.8-win-x64.zip` (`attach_id=2858466`), confirmed release detail page shows commit `5a86ed1`, and confirmed the edit page saved release notes.
 - 2026-06-26: Verified both release download links redirect to Gitee attach files and return 200 with expected sizes: tgz `338657` bytes, Windows zip `546330` bytes.
 - 2026-06-26: Replaced local `:8787` service from v4.7.7 pid `34664`; `/health` now reports version `4.7.8` on pid `57607`, and served `/static/index.html` contains the search/snippet/QA max shortcut buttons.
+
+# v4.8.1 Local Project Full Reindex And Summaries
+
+Author: feng.ling
+
+## Goal
+
+Full reindex all concrete registered local ace-mcp projects after the v4.8.1 Java analysis release, then generate project summaries for the same projects where the summary endpoint succeeds.
+
+## Plan
+
+- [x] Review ace-mcp usage guidance and existing operational lessons.
+- [x] Confirm the local v4.8.1 LaunchAgent service state before sending more work.
+- [x] Let any already queued full-index work finish or recover the service only if it is stuck.
+- [x] Reconcile registered projects with index logs/stats and skip missing paths plus the parent `/Users/fengandrew/work/code` aggregate directory unless explicitly requested.
+- [x] Full-index remaining concrete projects sequentially.
+- [x] Generate summaries sequentially for every successfully indexed concrete project.
+- [x] Verify final project stats and record indexed/summary/skipped results.
+
+## Validation Plan
+
+- `/health` responds on local `:8787` with version `4.8.1` after heavy work drains.
+- `project indexed` logs or project stats confirm full indexing for each processed project.
+- `Project summary generated` logs or summary endpoint responses confirm summary generation.
+- Missing paths and intentionally deferred aggregate parent path are reported explicitly.
+
+## Comments
+
+- 2026-06-29: Started from an earlier batch full-index request that timed out client-side while the LaunchAgent continued processing queued index jobs. Avoiding concurrent index/summary requests until `/health` becomes responsive.
+- 2026-06-29: Confirmed service is LaunchAgent-managed at `com.ace-mcp.server`, pid `54763`, version `4.8.1`; logs show full indexes continuing through at least `/Users/fengandrew/work/code/tc-flight-mail-itinerary-core_backup`.
+- 2026-06-29: The queued full-index batch continued through many concrete projects, then stalled with `/health` timing out and no new index completion logs for more than 20 minutes. Recovered by restarting LaunchAgent; `/health` returned version `4.8.1` on pid `57957`.
+- 2026-06-29: Reconciled project logs/stats and skipped the aggregate parent `/Users/fengandrew/work/code` plus missing paths `/Users/fengandrew/work/code/tc-flight-endorse-postcore-backup` and `/Users/fengandrew/.copilot/session-state/edb31bf5-3e71-440d-91b3-e1301ca37a26/files/index-resilience-smoke`.
+- 2026-06-29: Filled the two missing concrete full indexes manually: `/Users/fengandrew/work/code/tc-flight-flightchange-admin` indexed 3129 files / 6433 chunks / 0 failed, and `/Users/fengandrew/work/code/tc-flight-internationcore` indexed 362 files / 749 chunks / 0 failed.
+- 2026-06-29: Generated summaries for all 26 concrete existing projects. Final file check found `SUMMARY_MISSING=0`; service health remained ok on v4.8.1 with no active indexing. Some summaries reused cached module summaries where content hashes matched existing summaries.
+
+# v4.8.2 Long Task Visibility And Maintenance Script
+
+Author: feng.ling
+
+## Goal
+
+Make long-running index/summary maintenance safer and easier to observe after the v4.8.1 full-library maintenance exposed client timeout ambiguity, parent-directory mis-scan risk, and missing summary task visibility.
+
+## Plan
+
+- [x] Review existing index coordinator, summary route, health route, and release script patterns.
+- [x] Add lightweight long-task tracking so `/health` exposes active summary generation alongside indexing state.
+- [x] Add parent-directory risk detection to Web full-index requests so aggregate roots require explicit confirmation.
+- [x] Add a sequential `scripts/reindex-projects.mjs` maintenance script for full index + optional summary generation with missing/parent skips and a final report.
+- [x] Add focused tests for health task visibility, parent-root guard, and package/script contracts.
+- [x] Update version metadata, README, CHANGELOG, ROADMAP, release checklist, and lessons.
+- [x] Run focused tests, full `npm test`, build, and release validation.
+
+## Validation Plan
+
+- Web `/health` includes active summary task details without reading deep project stats.
+- `POST /api/index-project` rejects risky full indexes on registered parent directories unless `confirmParentDirectory: true` is supplied.
+- `scripts/reindex-projects.mjs --dry-run` reports concrete/missing/parent projects without triggering work.
+- Package manifest and Windows zip staging include the new maintenance script.
+- Full test/build/release checks pass before handoff.
+
+## Comments
+
+- 2026-06-30: Started after local full-library maintenance required manual log watching, LaunchAgent recovery, and summary file reconciliation. Scope is intentionally operational: visibility, guardrails, and repeatable maintenance, not search ranking changes.
+- 2026-06-30: Implemented `LongTaskTracker`, exposed `/health.tasks`, tracked summary generation, guarded Web full-index requests for aggregate parent directories, and added `scripts/reindex-projects.mjs` with dry-run/summary/include-parent options.
+- 2026-06-30: Focused validation passed for Web health task visibility, parent-directory confirmation, package script contracts, and local maintenance dry-run against the running v4.8.1 service.
+- 2026-06-30: Final validation passed: `npm test` (90 tests), `npm run build`, full `npm run release:check`, explicit tgz/Windows zip content checks for `reindex-projects.mjs`, `node dist/index.js --version` returning `4.8.2`, and `node dist/index.js --doctor` in the real user environment with 9 ok / 1 expected web-port warning / 0 errors.

@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.1");
+  assert.equal(pkg.version, "4.8.2");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -37,6 +37,7 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke");
   assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark");
   assert.equal(pkg.scripts["benchmark:search"], "node scripts/benchmark-search.mjs");
+  assert.equal(pkg.scripts["maintenance:reindex"], "node scripts/reindex-projects.mjs");
   assert.match(pkg.scripts.test, /src\/adapters\/java\/index\.test\.ts/);
 });
 
@@ -66,18 +67,21 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   const packageScriptPath = path.join(rootDir, "scripts/package-windows.mjs");
   const smokeScriptPath = path.join(rootDir, "scripts/smoke-release.mjs");
   const benchmarkScriptPath = path.join(rootDir, "scripts/benchmark-search.mjs");
+  const reindexScriptPath = path.join(rootDir, "scripts/reindex-projects.mjs");
   const cmdInstallPath = path.join(rootDir, "scripts/install-windows.cmd");
   const psInstallPath = path.join(rootDir, "scripts/install-windows.ps1");
 
   assert.equal(existsSync(packageScriptPath), true);
   assert.equal(existsSync(smokeScriptPath), true);
   assert.equal(existsSync(benchmarkScriptPath), true);
+  assert.equal(existsSync(reindexScriptPath), true);
   assert.equal(existsSync(cmdInstallPath), true);
   assert.equal(existsSync(psInstallPath), true);
 
   const packageScript = readFileSync(packageScriptPath, "utf8");
   const smokeScript = readFileSync(smokeScriptPath, "utf8");
   const benchmarkScript = readFileSync(benchmarkScriptPath, "utf8");
+  const reindexScript = readFileSync(reindexScriptPath, "utf8");
   const cmdInstall = readFileSync(cmdInstallPath, "utf8");
   const psInstall = readFileSync(psInstallPath, "utf8");
 
@@ -88,6 +92,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(packageScript, /start-web\.cmd/);
   assert.match(packageScript, /scripts\/smoke-release\.mjs/);
   assert.match(packageScript, /scripts\/benchmark-search\.mjs/);
+  assert.match(packageScript, /scripts\/reindex-projects\.mjs/);
   assert.match(smokeScript, /npm install/);
   assert.match(smokeScript, /ace-mcp --version/);
   assert.match(smokeScript, /ace-mcp-web/);
@@ -108,6 +113,10 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(benchmarkScript, /ACE_MCP_AUTO_WATCH/);
   assert.match(benchmarkScript, /extractResultCount/);
   assert.match(benchmarkScript, /smoke benchmark did not return search results/);
+  assert.match(reindexScript, /--dry-run/);
+  assert.match(reindexScript, /--summary/);
+  assert.match(reindexScript, /--include-parent/);
+  assert.match(reindexScript, /confirmParentDirectory/);
   assert.match(cmdInstall, /npm install --omit=dev/);
   assert.match(cmdInstall, /better-sqlite3/);
   assert.match(cmdInstall, /--doctor/);
@@ -119,7 +128,8 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.1-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.2-win-x64\.zip/);
+  assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -127,10 +137,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.1 verification gates", () => {
+test("release checklist records the v4.8.2 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.1/);
+  assert.match(checklist, /v4\.8\.2/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -138,7 +148,8 @@ test("release checklist records the v4.8.1 verification gates", () => {
   assert.match(checklist, /npm run release:smoke/);
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.1/);
+  assert.match(checklist, /scripts\/reindex-projects\.mjs/);
+  assert.match(checklist, /git tag -a v4\.8\.2/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
@@ -186,13 +197,17 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(html, /id="service-watch-status"/);
   assert.match(html, /id="service-projects"/);
   assert.match(html, /id="service-latest-index"/);
+  assert.match(html, /id="service-active-tasks"/);
   assert.match(html, /id="qa-effective-params"/);
   assert.match(html, /data-value-hint="qa-max-sources"/);
   assert.match(html, /data-value-hint="include-context-lines"/);
   assert.match(html, /data-value-hint="qa-retries"/);
 
   assert.match(appJs, /function renderServiceStatus\(/);
+  assert.match(appJs, /serviceActiveTasksEl/);
   assert.match(appJs, /request\("GET", "\/health"\)[\s\S]*renderServiceStatus/);
+  assert.match(appJs, /PARENT_DIRECTORY_REQUIRES_CONFIRMATION/);
+  assert.match(appJs, /confirmParentDirectory/);
   assert.match(appJs, /function updateBoundedValueHints\(/);
   assert.match(appJs, /function renderQaEffectiveParams\(/);
   assert.match(appJs, /finalData\?\.request[\s\S]*renderQaEffectiveParams/);

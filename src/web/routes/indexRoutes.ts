@@ -7,6 +7,20 @@ import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
 import { parseIndexProjectRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
+function isPathInside(parentPath: string, candidatePath: string): boolean {
+  const parent = normalizeAbsolutePath(parentPath);
+  const candidate = normalizeAbsolutePath(candidatePath);
+  return candidate !== parent && candidate.startsWith(parent.endsWith("/") ? parent : `${parent}/`);
+}
+
+function findRegisteredChildProjects(projectRootPath: string, dependencies: WebAppDependencies): string[] {
+  return dependencies.store
+    .listProjects()
+    .map((project) => project.projectRootPath)
+    .filter((registeredPath) => isPathInside(projectRootPath, registeredPath))
+    .slice(0, 20);
+}
+
 export function registerIndexRoutes(app: Express, dependencies: WebAppDependencies): void {
   app.post("/api/index-project", async (req: Request, res: Response) => {
     try {
@@ -15,7 +29,19 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
         res.status(400).json({ error: parsed.error, code: "VALIDATION_ERROR" });
         return;
       }
-      const { projectRootPath, mode } = parsed.value;
+      const { confirmParentDirectory, projectRootPath, mode } = parsed.value;
+      if (mode === "full" && !confirmParentDirectory) {
+        const childProjects = findRegisteredChildProjects(projectRootPath, dependencies);
+        if (childProjects.length > 1) {
+          res.status(409).json({
+            error: "Full indexing this path would include registered child projects. Pass confirmParentDirectory=true to proceed.",
+            code: "PARENT_DIRECTORY_REQUIRES_CONFIRMATION",
+            childProjects,
+            projectRootPath: normalizeAbsolutePath(projectRootPath),
+          });
+          return;
+        }
+      }
       const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
       res.json(
         buildEnvelope(

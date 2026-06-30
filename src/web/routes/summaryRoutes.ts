@@ -11,13 +11,18 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
     try {
       const { projectRootPath } = req.body;
       const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(String(projectRootPath ?? ""));
-      const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
-      res.json(buildEnvelope(
-        { projectRootPath: indexResult.projectRootPath },
-        { outputDir: result.outputDir, filesWritten: result.filesWritten, moduleCount: result.moduleCount },
-        { tokensUsed: result.tokensUsed, durationMs: result.durationMs },
-        [],
-      ));
+      const taskId = dependencies.longTaskTracker?.start("summary", indexResult.projectRootPath);
+      try {
+        const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
+        res.json(buildEnvelope(
+          { projectRootPath: indexResult.projectRootPath },
+          { outputDir: result.outputDir, filesWritten: result.filesWritten, moduleCount: result.moduleCount },
+          { tokensUsed: result.tokensUsed, durationMs: result.durationMs },
+          [],
+        ));
+      } finally {
+        if (taskId) dependencies.longTaskTracker?.finish(taskId);
+      }
     } catch (error: unknown) {
       const message = error instanceof AppError ? error.message : String(error);
       const status = error instanceof AppError ? error.statusCode : 500;

@@ -12,6 +12,7 @@ import { createEmbeddingProvider } from "./core/search/embedding.js";
 import { loadEvalConfig, runEval } from "./core/search/evalRunner.js";
 import { LlmClient } from "./core/llm/llmClient.js";
 import { SummaryGenerator } from "./core/summary/summaryGenerator.js";
+import { LongTaskTracker } from "./core/tasks/longTaskTracker.js";
 import { SearchService } from "./core/search/searchService.js";
 import { SQLiteStore } from "./core/storage/sqliteStore.js";
 import { createMcpServer } from "./server/mcpServer.js";
@@ -216,6 +217,7 @@ async function main(): Promise<void> {
 
   const llmClient = new LlmClient(settings.llmApiUrl, settings.llmApiKey, settings.llmModel, settings.llmMaxTokens, settings.llmTemperature);
   const summaryGenerator = new SummaryGenerator(store, llmClient, logger);
+  const longTaskTracker = new LongTaskTracker();
 
   const server = createMcpServer({
     embeddingProvider,
@@ -272,6 +274,7 @@ async function main(): Promise<void> {
       indexCoordinator,
       llmClient,
       logger,
+      longTaskTracker,
       runtime,
       searchService,
       settings,

@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.2] - 2026-06-30
+
+### Long task visibility and safe maintenance
+
+- `/health` 新增 `tasks` 字段，摘要生成期间会显示 active summary task 的项目路径、开始时间和已耗时，排查长任务时不再只能 tail 日志。
+- Web 全量索引对包含多个已登记子项目的父目录增加确认保护，直接 full index 聚合目录会返回 `PARENT_DIRECTORY_REQUIRES_CONFIRMATION`，页面二次确认后才继续。
+- 新增 `scripts/reindex-projects.mjs` 和 `npm run maintenance:reindex`，支持逐项目 full index、可选 `--summary`、`--dry-run`、跳过 missing/聚合父目录并输出最终报告。
+- Windows zip 发布包包含新的维护脚本，发布契约测试覆盖脚本参数、父目录确认字段和 Web 状态栏任务显示。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.2。
+
 ## [4.8.1] - 2026-06-29
 
 ### Java annotation and interface entry recall

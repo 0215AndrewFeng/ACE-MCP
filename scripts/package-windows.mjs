@@ -65,6 +65,7 @@ mkdirSync(stageDir, { recursive: true });
   "scripts/install-windows.ps1",
   "scripts/smoke-release.mjs",
   "scripts/benchmark-search.mjs",
+  "scripts/reindex-projects.mjs",
   "package.json",
   "package-lock.json",
   "README.md",

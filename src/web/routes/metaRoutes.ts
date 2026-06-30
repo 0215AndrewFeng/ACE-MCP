@@ -39,6 +39,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
           latestIndexAt,
         },
         indexing: dependencies.indexCoordinator.getInFlightIndexInfo(),
+        tasks: dependencies.longTaskTracker?.list() ?? [],
         vector: {
           enabled: dependencies.settings.enableVectorSearch,
           mode: dependencies.settings.vectorIndexingMode,

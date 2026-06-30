@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { Settings } from "../core/common/types.js";
 import { createTestProjectEnvironment } from "../test/helpers.js";
+import { LongTaskTracker } from "../core/tasks/longTaskTracker.js";
 import { startWebApp } from "./app.js";
 
 function blockFor(ms: number): void {
@@ -114,6 +115,131 @@ test("health does not wait for per-project SQLite stats", async () => {
     assert.equal(body.indexing[0].queuedRequests, 1);
     assert.equal(body.indexing[0].status, "running");
     assert.ok(elapsedMs < 100, `health took ${elapsedMs}ms`);
+  } finally {
+    await app.close();
+  }
+});
+
+test("health exposes active summary long tasks", async () => {
+  const tracker = new LongTaskTracker();
+  tracker.start("summary", "/repo");
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/health`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.tasks.length, 1);
+    assert.equal(body.tasks[0].type, "summary");
+    assert.equal(body.tasks[0].projectRootPath, "/repo");
+    assert.equal(body.tasks[0].status, "running");
+    assert.equal(typeof body.tasks[0].elapsedMs, "number");
+  } finally {
+    await app.close();
+  }
+});
+
+test("full index rejects registered parent directory unless confirmed", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      indexProject: async (projectRootPath: string, mode: string) => ({
+        changedFiles: 0,
+        chunkCount: 0,
+        deletedFiles: 0,
+        failedFileCount: 0,
+        failedFiles: [],
+        indexedFiles: 0,
+        project: { languages: [], markers: [], projectType: "unknown", rootPath: projectRootPath },
+        projectId: "project",
+        projectRootPath,
+        scannedFiles: 0,
+        timings: { collectMs: 0, detectMs: 0, indexMs: 0, totalMs: 0, vectorMs: 0 },
+        vectorIndex: { enabled: true, hydratedChunkCount: 0, mode },
+      }),
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [
+        {
+          languages: [],
+          lastIndexAt: null,
+          lastScanAt: null,
+          projectRootPath: "/work/code/service-a",
+          status: "ready",
+        },
+        {
+          languages: [],
+          lastIndexAt: null,
+          lastScanAt: null,
+          projectRootPath: "/work/code/service-b",
+          status: "ready",
+        },
+      ],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const blocked = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "full", projectRootPath: "/work/code" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const blockedBody = await blocked.json();
+
+    assert.equal(blocked.status, 409);
+    assert.equal(blockedBody.code, "PARENT_DIRECTORY_REQUIRES_CONFIRMATION");
+    assert.deepEqual(blockedBody.childProjects, ["/work/code/service-a", "/work/code/service-b"]);
+
+    const confirmed = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ confirmParentDirectory: true, mode: "full", projectRootPath: "/work/code" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+
+    assert.equal(confirmed.status, 200);
   } finally {
     await app.close();
   }

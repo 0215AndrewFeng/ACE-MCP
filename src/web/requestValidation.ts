@@ -84,6 +84,7 @@ export interface FileSnippetRequest {
 }
 
 export interface IndexProjectRequest {
+  confirmParentDirectory: boolean;
   projectRootPath: string;
   mode: (typeof INDEX_MODES)[number];
 }
@@ -188,6 +189,7 @@ export function parseIndexProjectRequest(body: any): ParseResult<IndexProjectReq
   return {
     ok: true,
     value: {
+      confirmParentDirectory: body.confirmParentDirectory === true,
       projectRootPath,
       mode: enumOrDefault(body.mode, INDEX_MODES, "incremental"),
     },
