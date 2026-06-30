@@ -15,7 +15,7 @@ Move long summary generation off the request lifecycle so Web/API clients get a 
 - [x] Update version strings, README, CHANGELOG, ROADMAP, release checklist, and lessons for v4.8.3.
 - [x] Add focused tests for async summary success/failure and task lookup behavior.
 - [x] Run focused tests, full `npm test`, `npm run build`, and `npm run release:check`.
-- [ ] Commit/tag/push and replace the local service.
+- [x] Commit/tag/push and replace the local service.
 
 ## Validation Plan
 
@@ -31,6 +31,8 @@ Move long summary generation off the request lifecycle so Web/API clients get a 
 - 2026-06-30: Started v4.8.3 from v4.8.2. Scope is intentionally in-memory async task orchestration for summary generation; durable task persistence is deferred unless tests expose a hard need.
 - 2026-06-30: Implemented async summary task submission, `/api/tasks` polling, Web/script polling, and v4.8.3 docs/version updates. Focused Web route run and `npm run build` passed before full release validation.
 - 2026-06-30: Verification passed: focused Web route run, full `npm test` (92 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.3`, and `node dist/index.js --doctor` with only the expected Web port in-use warning.
+- 2026-06-30: After adding missing `projectRootPath` validation, final verification passed: full `npm test` (93 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.3`, and doctor with only the expected Web port in-use warning.
+- 2026-06-30: Committed `1ca19dd`, tagged `v4.8.3`, pushed `master` and tag to Gitee, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.8.3` on pid `71568`.
 
 # v4.7.0 better-sqlite3 Blocking Fix
 
