@@ -1,0 +1,71 @@
+README.md
+  s_3a219f3e07a2c0::t_f74f1b48e320f7 253-258,564-569
+  s_fc21e4effd9723::t_7f7b628a930edf 5,85,88,95,104,110,140-141,165,226,262,268,563
+package-lock.json
+  ai_agent 3,9
+src/version.ts
+  s_3a219f3e07a2c0::t_f8c823458f204a 2
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_f74f1b48e320f7 5-14
+scripts/package-windows.mjs
+  s_3a219f3e07a2c0::t_f8c823458f204a 69
+scripts/install-macos.sh
+  s_3a219f3e07a2c0::t_f8c823458f204a 4
+scripts/check-secrets.mjs
+  s_3a219f3e07a2c0::t_d707516c48b970 4,240
+  s_3a219f3e07a2c0::t_8793d65e3fba9b 15-16,161
+  s_3a219f3e07a2c0::t_fef402e8e1c45c 1-3,5-14,17-160,162-239,241-257
+package.json
+  s_3a219f3e07a2c0::t_f8c823458f204a 3,30-31
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_76a8fbf97cf6c0 24,40,81,91,101,115,140-146,186,193,216-217,220-222,244,248,255,264,267,269,279-298,300-303
+  s_3a219f3e07a2c0::t_7f8e7d11b0e1fd 147,299
+  s_3a219f3e07a2c0::t_40af1cbf38c9ad 41
+ROADMAP.md
+  s_3a219f3e07a2c0::t_f74f1b48e320f7 59-63
+docs/release-checklist.md
+  s_fc21e4effd9723::t_7f7b628a930edf 3,58,60,66,72
+  s_3a219f3e07a2c0::t_f74f1b48e320f7 30-36,46,49-50,53,57,63
+scripts/README-WINDOWS.md
+  s_fc21e4effd9723::t_7f7b628a930edf 3,15,82,120
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_c74ded0a107f67 37
+  s_11a0447ece6499::t_61e117f71172bf 35
+  s_3a219f3e07a2c0::t_89e8fe18000333 36
+tasks/todo.md
+  s_3a219f3e07a2c0::t_3f0f714ac22b36 1-10,16-29,32
+  s_3a219f3e07a2c0::t_f704d8f998e45b 15,31
+  s_3a219f3e07a2c0::t_a48a178887e9c3 11-14,30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3684698ee92ec6effd1795fe37e7042946c1df4b",
+  "prompts": {},
+  "sessions": {
+    "s_11a0447ece6499": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1127-6722-7951-83b5-8931cb40549a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    },
+    "s_fc21e4effd9723": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
