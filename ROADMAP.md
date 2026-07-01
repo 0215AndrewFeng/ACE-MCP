@@ -54,10 +54,11 @@
 39. ✅ **Web 任务中心**：右侧任务中心展示最近 index/summary 任务，支持按类型、状态和当前项目过滤，成功/失败任务可展开查看结果或错误（v4.8.5）
 40. ✅ **任务去重与取消**：active task 支持按 key 复用，新增 `canceled` 状态和 `POST /api/tasks/:id/cancel`，任务中心可取消 running task（v4.8.6）
 41. ✅ **macOS 一键安装**：新增 `scripts/install-macos.sh` 和 README 依赖需求清单，一条命令完成 Release tgz 下载、全局安装和 doctor 自检（v4.8.7）
-42. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-43. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-44. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-45. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+42. ✅ **安装发布闭环**：README macOS installer 使用 tag 固定来源，新增 `release:verify-assets` 校验 Gitee tag、tgz、Windows zip 和 installer 下载链路（v4.8.8）
+43. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+44. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+45. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+46. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

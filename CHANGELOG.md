@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.8] - 2026-07-01
+
+### Install release closure
+
+- README 的 macOS 一键安装命令改为固定 tag 来源：`raw/v4.8.8/scripts/install-macos.sh`，避免 `master` 后续变化影响历史版本安装。
+- 新增 `scripts/verify-release-assets.mjs` 和 `npm run release:verify-assets`，可验证 Gitee Release tag、tgz、Windows zip 与 tag 下 macOS installer URL 是否可访问。
+- release checklist 补充发布后下载链路验证步骤，并在包内容检查中覆盖 release asset verifier 脚本。
+- 发布契约测试新增固定 tag 安装命令和 release asset verifier 断言，防止后续版本遗漏安装闭环。
+- README、Windows README、release checklist 与版本号更新到 v4.8.8。
+
 ## [4.8.7] - 2026-07-01
 
 ### macOS quick install

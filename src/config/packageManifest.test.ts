@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.7");
+  assert.equal(pkg.version, "4.8.8");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -35,6 +35,7 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.equal(pkg.scripts["release:win"], "npm run build && node scripts/package-windows.mjs");
   assert.equal(pkg.scripts["release:smoke"], "node scripts/smoke-release.mjs");
   assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke");
+  assert.equal(pkg.scripts["release:verify-assets"], "node scripts/verify-release-assets.mjs");
   assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark");
   assert.equal(pkg.scripts["benchmark:search"], "node scripts/benchmark-search.mjs");
   assert.equal(pkg.scripts["maintenance:reindex"], "node scripts/reindex-projects.mjs");
@@ -74,6 +75,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   const packageScriptPath = path.join(rootDir, "scripts/package-windows.mjs");
   const smokeScriptPath = path.join(rootDir, "scripts/smoke-release.mjs");
   const benchmarkScriptPath = path.join(rootDir, "scripts/benchmark-search.mjs");
+  const verifyAssetsScriptPath = path.join(rootDir, "scripts/verify-release-assets.mjs");
   const reindexScriptPath = path.join(rootDir, "scripts/reindex-projects.mjs");
   const cmdInstallPath = path.join(rootDir, "scripts/install-windows.cmd");
   const psInstallPath = path.join(rootDir, "scripts/install-windows.ps1");
@@ -81,6 +83,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.equal(existsSync(packageScriptPath), true);
   assert.equal(existsSync(smokeScriptPath), true);
   assert.equal(existsSync(benchmarkScriptPath), true);
+  assert.equal(existsSync(verifyAssetsScriptPath), true);
   assert.equal(existsSync(reindexScriptPath), true);
   assert.equal(existsSync(cmdInstallPath), true);
   assert.equal(existsSync(psInstallPath), true);
@@ -88,6 +91,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   const packageScript = readFileSync(packageScriptPath, "utf8");
   const smokeScript = readFileSync(smokeScriptPath, "utf8");
   const benchmarkScript = readFileSync(benchmarkScriptPath, "utf8");
+  const verifyAssetsScript = readFileSync(verifyAssetsScriptPath, "utf8");
   const reindexScript = readFileSync(reindexScriptPath, "utf8");
   const cmdInstall = readFileSync(cmdInstallPath, "utf8");
   const psInstall = readFileSync(psInstallPath, "utf8");
@@ -99,6 +103,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(packageScript, /start-web\.cmd/);
   assert.match(packageScript, /scripts\/smoke-release\.mjs/);
   assert.match(packageScript, /scripts\/benchmark-search\.mjs/);
+  assert.match(packageScript, /scripts\/verify-release-assets\.mjs/);
   assert.match(packageScript, /scripts\/reindex-projects\.mjs/);
   assert.match(smokeScript, /npm install/);
   assert.match(smokeScript, /ace-mcp --version/);
@@ -120,6 +125,8 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(benchmarkScript, /ACE_MCP_AUTO_WATCH/);
   assert.match(benchmarkScript, /extractResultCount/);
   assert.match(benchmarkScript, /smoke benchmark did not return search results/);
+  assert.match(verifyAssetsScript, /verify-release-assets ok/);
+  assert.match(verifyAssetsScript, /ace-mcp-v\$\{version\}-win-x64\.zip/);
   assert.match(reindexScript, /--dry-run/);
   assert.match(reindexScript, /--summary/);
   assert.match(reindexScript, /--include-parent/);
@@ -152,23 +159,49 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/master\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.8\.8\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.8\.7/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.8\.8/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
 });
 
+test("release asset verifier documents Gitee tag and downloadable artifacts", () => {
+  const verifierPath = path.join(rootDir, "scripts/verify-release-assets.mjs");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
+
+  assert.equal(existsSync(verifierPath), true);
+
+  const verifier = readFileSync(verifierPath, "utf8");
+  assert.match(verifier, /--version/);
+  assert.match(verifier, /--base-url/);
+  assert.match(verifier, /--timeout-ms/);
+  assert.match(verifier, /releases\/tag\/v\$\{version\}/);
+  assert.match(verifier, /releases\/download\/v\$\{version\}\/ace-mcp-\$\{version\}\.tgz/);
+  assert.match(verifier, /releases\/download\/v\$\{version\}\/ace-mcp-v\$\{version\}-win-x64\.zip/);
+  assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
+  assert.match(verifier, /verify-release-assets ok/);
+
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.8\.8/);
+  assert.match(readme, /raw\/v4\.8\.8\/scripts\/install-macos\.sh/);
+  assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
+
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.8\.8/);
+  assert.match(checklist, /ace-mcp-4\.8\.8\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.8\.8-win-x64\.zip/);
+});
+
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.7-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.8-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -177,19 +210,20 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.7 verification gates", () => {
+test("release checklist records the v4.8.8 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.7/);
+  assert.match(checklist, /v4\.8\.8/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
   assert.match(checklist, /npm run release:win/);
   assert.match(checklist, /npm run release:smoke/);
   assert.match(checklist, /npm run release:benchmark/);
+  assert.match(checklist, /npm run release:verify-assets/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.7/);
+  assert.match(checklist, /git tag -a v4\.8\.8/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {

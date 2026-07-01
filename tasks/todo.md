@@ -1,3 +1,37 @@
+# v4.8.8 Install Release Closure
+
+Author: feng.ling
+
+## Goal
+
+Close the one-command install release loop by pinning macOS installer docs to version tags and adding a repeatable release asset verifier for Gitee tgz/Windows downloads.
+
+## Plan
+
+- [x] Review v4.8.7 macOS installer, release smoke, release checklist, and prior release lessons.
+- [x] Write failing package/README contract tests for tag-pinned installer docs and release asset URL verification tooling.
+- [x] Add `scripts/verify-release-assets.mjs` to check tag, tgz, Windows zip, and optional installer script URLs with configurable base URL and timeouts.
+- [x] Update README install commands to tag-pinned script URLs and document release asset verification.
+- [x] Update package scripts, CHANGELOG, ROADMAP, release checklist, Windows README references, version files, and task lessons if needed to v4.8.8.
+- [x] Run focused RED/GREEN tests and full local validation.
+- [ ] Run network asset verification after tag push, replace local service, and record handoff.
+
+## Validation Plan
+
+- Focused contract test: `npm test -- src/config/packageManifest.test.ts`.
+- Script syntax/static execution: `node scripts/verify-release-assets.mjs --help`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Post-tag network verification: `npm run release:verify-assets -- --version 4.8.8`.
+- Local service handoff: `/health` reports version `4.8.8` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-01: Started v4.8.8 after user approved install release closure. Scope is release/install robustness, not runtime MCP behavior.
+- 2026-07-01: RED confirmed release/install contract gaps: README still used `raw/master`, `release:verify-assets` and verifier script were missing, and release docs still referenced v4.8.7. GREEN added the verifier, tag-pinned installer docs, package/Windows packaging coverage, and v4.8.8 version docs.
+- 2026-07-01: Local verification passed: focused package contract RED/GREEN, `node scripts/verify-release-assets.mjs --help`, `bash -n scripts/install-macos.sh`, full `npm test` (101 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.8`, doctor with only the expected Web port in-use warning, tgz containing installer/verifier scripts, and Windows zip containing verifier script.
+
 # v4.8.7 macOS Quick Install
 
 Author: feng.ling
