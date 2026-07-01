@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.7] - 2026-07-01
+
+### macOS quick install
+
+- 新增 `scripts/install-macos.sh`，支持 macOS 用户通过一条 `curl` 命令安装 Gitee Release tgz 包。
+- 安装脚本会检查 macOS、`curl`、Node.js/npm 版本，Node 缺失或版本过低时优先尝试 `brew install node@22`。
+- 安装完成后自动运行 `ace-mcp --version` 与 `ace-mcp --doctor`，帮助新用户确认环境是否可用。
+- README 新增 macOS 一键安装段和依赖需求清单，说明 Node.js、npm、curl、Homebrew、Xcode Command Line Tools 的用途和获取方式。
+- release checklist 和发布契约测试新增 macOS 安装脚本静态校验，避免后续发布漏带脚本或文档命令。
+
 ## [4.8.6] - 2026-07-01
 
 ### Task dedupe and cancel

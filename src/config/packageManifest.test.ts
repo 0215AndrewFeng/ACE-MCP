@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.6");
+  assert.equal(pkg.version, "4.8.7");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -134,10 +134,41 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(psInstall, /--doctor/);
 });
 
+test("macOS quick install script and docs are packaged for one-command setup", () => {
+  const installScriptPath = path.join(rootDir, "scripts/install-macos.sh");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
+
+  assert.equal(existsSync(installScriptPath), true);
+
+  const installScript = readFileSync(installScriptPath, "utf8");
+  assert.equal(installScript.startsWith("#!/usr/bin/env bash\n"), true);
+  assert.match(installScript, /set -euo pipefail/);
+  assert.match(installScript, /ACE_MCP_VERSION/);
+  assert.match(installScript, /curl -fL/);
+  assert.match(installScript, /gitee\.com\/AndrewFengCode\/ace-mcp\/releases\/download\/v/);
+  assert.match(installScript, /npm install -g/);
+  assert.match(installScript, /ace-mcp --doctor/);
+  assert.match(installScript, /brew install node@22/);
+
+  assert.match(readme, /### macOS 一键安装/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/master\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /依赖需求清单/);
+  assert.match(readme, /Node\.js >=18\.18\.0/);
+  assert.match(readme, /npm/);
+  assert.match(readme, /curl/);
+  assert.match(readme, /Xcode Command Line Tools/);
+  assert.match(readme, /Homebrew/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.8\.7/);
+
+  assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
+  assert.match(checklist, /scripts\/install-macos\.sh/);
+});
+
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.6-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.7-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -146,10 +177,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.6 verification gates", () => {
+test("release checklist records the v4.8.7 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.6/);
+  assert.match(checklist, /v4\.8\.7/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -158,7 +189,7 @@ test("release checklist records the v4.8.6 verification gates", () => {
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.6/);
+  assert.match(checklist, /git tag -a v4\.8\.7/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {

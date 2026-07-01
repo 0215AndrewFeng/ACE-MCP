@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.8.6`
+当前版本：`v4.8.7`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,26 +82,54 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.8.6.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.7.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.8.6.tgz
+npm install -g ./ace-mcp-4.8.7.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.6.tgz
+npm install -g .\ace-mcp-4.8.7.tgz
 ace-mcp-web
 ```
 
-### macOS 安装
+### macOS 一键安装
 
-推荐先安装 Node.js LTS：
+适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-brew install node@22
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/master/scripts/install-macos.sh)"
+```
+
+安装指定版本：
+
+```bash
+ACE_MCP_VERSION=4.8.7 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/master/scripts/install-macos.sh)"
+```
+
+安装完成后启动 Web 面板：
+
+```bash
+ace-mcp-web
+```
+
+#### 依赖需求清单
+
+| 依赖 | 要求 | 用途 | 获取方式 |
+| --- | --- | --- | --- |
+| macOS | 12 或更新版本推荐 | 运行本地服务和安装脚本 | 系统自带 |
+| curl | 系统自带即可 | 下载安装脚本和 tgz 包 | 如缺失，运行 `xcode-select --install` |
+| Node.js | Node.js >=18.18.0，推荐 22 LTS | 运行 ace-mcp 与 npm 全局安装 | 脚本会尝试 `brew install node@22` |
+| npm | 随 Node.js 安装 | 安装 tgz 包和依赖 | 随 Node.js 安装 |
+| Homebrew | 可选但推荐 | Node 缺失时自动安装 `node@22` | <https://brew.sh> |
+| Xcode Command Line Tools | 仅当原生依赖需要本地编译时需要 | 编译 `better-sqlite3` fallback | `xcode-select --install` |
+
+如果已经装好 Node.js，也可以手动确认：
+
+```bash
 node --version
 npm --version
 ```
@@ -109,8 +137,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.6/ace-mcp-4.8.6.tgz
-npm install -g ./ace-mcp-4.8.6.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.7/ace-mcp-4.8.7.tgz
+npm install -g ./ace-mcp-4.8.7.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +162,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.8.6-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.7-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +223,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.8.6.tgz
+npm install -g ./ace-mcp-4.8.7.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -514,7 +542,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.8.6（当前版本）
+### v4.8.7（当前版本）
+
+- **macOS 一键安装**：新增 `scripts/install-macos.sh`，支持一条 `curl` 命令下载 Gitee Release tgz 并全局安装
+- **小白依赖清单**：README 补充 macOS 安装所需 Node.js、npm、curl、Homebrew、Xcode Command Line Tools 说明
+- **安装后自检**：macOS 脚本安装完成后自动运行 `ace-mcp --doctor`，方便定位环境问题
+
+### v4.8.6
 
 - **重复任务复用**：同一项目、同一类型、同一索引 mode 的运行中任务会直接复用已有 `taskId`
 - **任务取消**：新增 `POST /api/tasks/:taskId/cancel` 和 `canceled` 状态，任务中心可取消 running task

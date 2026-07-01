@@ -1,3 +1,35 @@
+# v4.8.7 macOS Quick Install
+
+Author: feng.ling
+
+## Goal
+
+Add a beginner-friendly macOS command-line installer and README dependency checklist so users can install ace-mcp from Gitee Release with one copy-paste command.
+
+## Plan
+
+- [x] Review existing tgz/global install docs, packaging scripts, and package contract tests.
+- [x] Write failing package/README contract tests for the macOS installer script and dependency checklist.
+- [x] Implement `scripts/install-macos.sh` with Node/npm checks, optional Homebrew Node install, tgz download, global install, and doctor verification.
+- [x] Update README, CHANGELOG, ROADMAP, release checklist, Windows README version references, and version strings to v4.8.7.
+- [x] Run focused RED/GREEN tests and full validation.
+- [ ] Commit/tag/push, replace local service, and record handoff.
+
+## Validation Plan
+
+- Focused contract test: `npm test -- src/config/packageManifest.test.ts`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- macOS installer static shell validation: `bash -n scripts/install-macos.sh`.
+- Local service handoff: `/health` reports version `4.8.7` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-01: Started v4.8.7 after user requested a macOS command-line quick install and beginner dependency checklist. Scope is installer/docs/package contract; no runtime MCP behavior change expected.
+- 2026-07-01: RED confirmed the package/README contract failed because `scripts/install-macos.sh` was missing. GREEN added the macOS installer, README one-command install and dependency checklist, release checklist script validation, and v4.8.7 docs/version updates.
+- 2026-07-01: Verification passed: focused package contract RED/GREEN, `bash -n scripts/install-macos.sh`, full `npm test` (100 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.7`, doctor with only the expected Web port in-use warning, tgz containing `package/scripts/install-macos.sh`, and Windows zip smoke content check.
+
 # v4.8.6 Task Dedupe and Cancel
 
 Author: feng.ling
