@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.9] - 2026-07-01
+
+### Gitee release publish automation
+
+- 新增 `scripts/publish-gitee-release.mjs` 和 `npm run release:publish`，使用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建或更新版本 Release。
+- 发布脚本会校验 `v${version}` git tag、`ace-mcp-${version}.tgz` 与 `ace-mcp-v${version}-win-x64.zip`，降低错包上传风险。
+- 重复发布时会删除同名旧附件后重新上传 tgz 与 Windows zip，避免 Gitee Release 残留旧产物。
+- 上传完成后默认调用 `scripts/verify-release-assets.mjs`，确认 tag、tgz、Windows zip 与 macOS installer 下载链路可访问。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.8.9。
+
 ## [4.8.8] - 2026-07-01
 
 ### Install release closure

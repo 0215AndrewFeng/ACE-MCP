@@ -1,3 +1,35 @@
+# v4.8.9 Gitee Release Publish Automation
+
+Author: feng.ling
+
+## Goal
+
+Automate Gitee Release creation/update and artifact upload so release handoff can run from a single script after tag push, followed by asset verification.
+
+## Plan
+
+- [x] Review v4.8.8 release verifier, release checklist, Gitee Release page workflow, and Gitee OpenAPI release/attach file endpoints.
+- [x] Write failing package/README contract tests for `scripts/publish-gitee-release.mjs` and `npm run release:publish`.
+- [x] Implement `scripts/publish-gitee-release.mjs` using Gitee OpenAPI: version/tag/commit/artifact checks, create or update Release, replace/upload tgz and Windows zip attachments, then run asset verification.
+- [x] Update README release docs, CHANGELOG, ROADMAP, release checklist, Windows README references, version files, and package scripts to v4.8.9.
+- [ ] Run focused RED/GREEN tests, full validation, publish via `npm run release:publish -- --version 4.8.9`, replace local service, and record handoff.
+
+## Validation Plan
+
+- Focused contract test: `npm test -- src/config/packageManifest.test.ts`.
+- Publish script static execution: `node scripts/publish-gitee-release.mjs --help`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Post-tag publish: `npm run release:publish -- --version 4.8.9`.
+- Local service handoff: `/health` reports version `4.8.9` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-01: Started v4.8.9 after user approved Gitee Release automation. Gitee Swagger confirms release endpoints: create/update releases and upload/delete attach files are available under `/api/v5/repos/{owner}/{repo}/releases`.
+- 2026-07-01: RED confirmed missing publish automation: package version/script, publish script, README/checklist commands, and v4.8.9 asset references failed before implementation. GREEN added token-based Gitee OpenAPI publish script, Windows package inclusion, v4.8.9 docs/version updates, and focused contract test passed with 102 tests.
+- 2026-07-01: Local validation passed: `node scripts/publish-gitee-release.mjs --help`, `bash -n scripts/install-macos.sh`, focused package contract test, full `npm test` (102 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.9`, doctor with only the expected Web port in-use warning, tgz containing publish/verifier/installer scripts, and Windows zip containing `publish-gitee-release.mjs`.
+
 # v4.8.8 Install Release Closure
 
 Author: feng.ling

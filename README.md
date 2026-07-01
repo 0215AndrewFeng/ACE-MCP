@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.8.8`
+当前版本：`v4.8.9`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.8.8.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.9.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.8.8.tgz
+npm install -g ./ace-mcp-4.8.9.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.8.tgz
+npm install -g .\ace-mcp-4.8.9.tgz
 ace-mcp-web
 ```
 
@@ -101,13 +101,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.8.8/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.8.9/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.8.8 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.8.8/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.8.9 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.8.9/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -137,8 +137,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.8/ace-mcp-4.8.8.tgz
-npm install -g ./ace-mcp-4.8.8.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.9/ace-mcp-4.8.9.tgz
+npm install -g ./ace-mcp-4.8.9.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -162,7 +162,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.8.8-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.9-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -223,7 +223,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.8.8.tgz
+npm install -g ./ace-mcp-4.8.9.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -250,10 +250,16 @@ npm run release:benchmark
 
 `release:benchmark` 会启动隔离的临时 Web 服务，索引一个小项目并输出 search/health p95 与事件循环响应性。
 
-发布 Gitee Release 后验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
+发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-npm run release:verify-assets -- --version 4.8.8
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.8.9
+```
+
+如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
+
+```bash
+npm run release:verify-assets -- --version 4.8.9
 ```
 
 ## 本地运行
@@ -548,7 +554,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.8.8（当前版本）
+### v4.8.9（当前版本）
+
+- **Gitee Release 自动发布**：新增 `npm run release:publish`，通过 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release
+- **附件幂等上传**：发布脚本会校验 git tag 与 tgz/Windows zip 产物，删除同名旧附件后重新上传，避免重复发版残留旧包
+- **发布后自动验证**：上传完成后默认调用 `release:verify-assets`，确认 tag、tgz、Windows zip 与 macOS installer 下载链路可访问
+
+### v4.8.8
 
 - **安装发布闭环**：新增 `npm run release:verify-assets`，发布后校验 Gitee tag、tgz、Windows zip 与 macOS installer URL 可访问
 - **固定 tag 安装脚本**：README 的 macOS 一键安装命令指向 `raw/v4.8.8/scripts/install-macos.sh`，避免 master 漂移影响历史版本安装

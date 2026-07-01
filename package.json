@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "4.8.8",
+  "version": "4.8.9",
   "private": false,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
@@ -26,6 +26,7 @@
     "release:smoke": "node scripts/smoke-release.mjs",
     "release:benchmark": "node scripts/benchmark-search.mjs --smoke",
     "release:verify-assets": "node scripts/verify-release-assets.mjs",
+    "release:publish": "node scripts/publish-gitee-release.mjs",
     "release:check": "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark",
     "benchmark:search": "node scripts/benchmark-search.mjs",
     "maintenance:reindex": "node scripts/reindex-projects.mjs",

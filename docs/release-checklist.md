@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.8.8
+## v4.8.9
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -40,22 +40,28 @@ npm run release:benchmark
 6. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.8.8.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
-unzip -l release/ace-mcp-v4.8.8-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|reindex-projects.mjs"
+tar -tf ace-mcp-4.8.9.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/publish-gitee-release.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
+unzip -l release/ace-mcp-v4.8.9-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|publish-gitee-release.mjs|reindex-projects.mjs"
 ```
 
 7. 提交、打 tag 并推送：
 
 ```bash
 git add .
-git commit -m "chore: release v4.8.8 install release closure"
-git tag -a v4.8.8 -m "v4.8.8"
+git commit -m "chore: release v4.8.9 gitee release publish"
+git tag -a v4.8.9 -m "v4.8.9"
 git push origin master
-git push origin v4.8.8
+git push origin v4.8.9
 ```
 
-8. Gitee Release 页面创建/更新完成并上传 tgz、Windows zip 后，验证真实下载链路：
+8. 使用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并自动验证真实下载链路：
 
 ```bash
-npm run release:verify-assets -- --version 4.8.8
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.8.9
+```
+
+`release:publish` 默认会在上传后运行 `release:verify-assets`。如需单独复验：
+
+```bash
+npm run release:verify-assets -- --version 4.8.9
 ```

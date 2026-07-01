@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ACE_MCP_VERSION="${ACE_MCP_VERSION:-4.8.8}"
+ACE_MCP_VERSION="${ACE_MCP_VERSION:-4.8.9}"
 ACE_MCP_MIN_NODE_VERSION="${ACE_MCP_MIN_NODE_VERSION:-18.18.0}"
 ACE_MCP_RELEASE_BASE_URL="${ACE_MCP_RELEASE_BASE_URL:-https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v${ACE_MCP_VERSION}}"
 ACE_MCP_TGZ_URL="${ACE_MCP_TGZ_URL:-${ACE_MCP_RELEASE_BASE_URL}/ace-mcp-${ACE_MCP_VERSION}.tgz}"
