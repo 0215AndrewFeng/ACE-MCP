@@ -13,7 +13,7 @@ Add a beginner-friendly macOS command-line installer and README dependency check
 - [x] Implement `scripts/install-macos.sh` with Node/npm checks, optional Homebrew Node install, tgz download, global install, and doctor verification.
 - [x] Update README, CHANGELOG, ROADMAP, release checklist, Windows README version references, and version strings to v4.8.7.
 - [x] Run focused RED/GREEN tests and full validation.
-- [ ] Commit/tag/push, replace local service, and record handoff.
+- [x] Commit/tag/push, replace local service, and record handoff.
 
 ## Validation Plan
 
@@ -29,6 +29,7 @@ Add a beginner-friendly macOS command-line installer and README dependency check
 - 2026-07-01: Started v4.8.7 after user requested a macOS command-line quick install and beginner dependency checklist. Scope is installer/docs/package contract; no runtime MCP behavior change expected.
 - 2026-07-01: RED confirmed the package/README contract failed because `scripts/install-macos.sh` was missing. GREEN added the macOS installer, README one-command install and dependency checklist, release checklist script validation, and v4.8.7 docs/version updates.
 - 2026-07-01: Verification passed: focused package contract RED/GREEN, `bash -n scripts/install-macos.sh`, full `npm test` (100 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.7`, doctor with only the expected Web port in-use warning, tgz containing `package/scripts/install-macos.sh`, and Windows zip smoke content check.
+- 2026-07-01: Release handoff complete: committed `6b1d03c`, tagged and pushed `v4.8.7`, pushed `master`, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.8.7` on pid `70627`.
 
 # v4.8.6 Task Dedupe and Cancel
 
