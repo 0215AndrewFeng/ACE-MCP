@@ -1,3 +1,37 @@
+# v4.8.5 Task Center UI
+
+Author: feng.ling
+
+## Goal
+
+Make the async task system directly usable from the Web panel by adding task filters, task history, and compact result/error details for index and summary tasks.
+
+## Plan
+
+- [x] Review v4.8.4 task API, Web layout, static contract tests, and release lessons.
+- [x] Add `/api/tasks` filters for `type`, `status`, and `projectRootPath` while keeping `/health.tasks` active-only.
+- [x] Add focused Web route tests for task filtering and task detail behavior.
+- [x] Build a compact Web task center with type/status/project filters, manual refresh, and expandable result/error details.
+- [x] Update static/package contract tests for the new task center UI and polling paths.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.8.5.
+- [x] Run full validation.
+- [ ] Commit/tag/push, replace local service, and record handoff.
+
+## Validation Plan
+
+- Focused Web route tests: `/api/tasks` filters by type/status/project and `/api/tasks/:id` still returns full detail.
+- Static package contract tests prove the task center HTML controls and JS rendering functions exist.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Local service handoff: `/health` reports version `4.8.5` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-01: Started v4.8.5 after v4.8.4. Scope is UI/API visibility for existing in-memory task history; task persistence, de-dupe, and cancel remain future work.
+- 2026-07-01: Implemented `/api/tasks` type/status/project filters, compact Web task center with filters/details, and v4.8.5 docs/version updates. Focused Web route run and `npm run build` passed before full release validation.
+- 2026-07-01: Verification passed: full `npm test` (96 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.5`, and doctor with only the expected Web port in-use warning.
+
 # v4.8.4 Async Index Tasks
 
 Author: feng.ling

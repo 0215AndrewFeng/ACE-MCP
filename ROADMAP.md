@@ -51,10 +51,11 @@
 36. ✅ **长任务可观测与维护脚本**：`/health` 暴露摘要生成长任务，Web full index 对聚合父目录要求确认，新增 `maintenance:reindex` 逐项目 full index + 可选摘要生成脚本（v4.8.2）
 37. ✅ **摘要长任务异步化**：`POST /api/summary/generate` 快速返回 `202 + taskId`，新增 `/api/tasks` 查询成功/失败/耗时/结果，Web 和维护脚本改为提交后轮询完成（v4.8.3）
 38. ✅ **索引任务异步化与统一任务中心**：`POST /api/index-project` 快速返回 `202 + taskId`，`/api/tasks` 统一查询 index/summary 任务，Web 和维护脚本都改为轮询任务完成（v4.8.4）
-39. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-40. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-41. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-42. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+39. ✅ **Web 任务中心**：右侧任务中心展示最近 index/summary 任务，支持按类型、状态和当前项目过滤，成功/失败任务可展开查看结果或错误（v4.8.5）
+40. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+41. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+42. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+43. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

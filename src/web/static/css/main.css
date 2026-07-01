@@ -86,6 +86,32 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .index-options label { margin: 0; font-size: 13px; white-space: nowrap; }
 .index-options select { width: auto; flex: 1; }
 
+/* ── Task Center ── */
+.task-center-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.task-center-header h2 { margin: 0; }
+.task-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.task-filters select { min-width: 0; padding: 8px 10px; font-size: 13px; border-radius: 8px; }
+.task-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+.task-empty { padding: 12px; border: 1px dashed #d1d5db; border-radius: 8px; color: #6b7280; font-size: 13px; text-align: center; }
+.task-item { border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; overflow: hidden; }
+.task-item summary { list-style: none; cursor: pointer; padding: 10px 12px; }
+.task-item summary::-webkit-details-marker { display: none; }
+.task-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; min-width: 0; }
+.task-badge { border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: #eef2ff; color: #3730a3; }
+.task-status { border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 700; }
+.task-status.running { background: #fef3c7; color: #92400e; }
+.task-status.succeeded { background: #d1fae5; color: #065f46; }
+.task-status.failed { background: #fee2e2; color: #991b1b; }
+.task-main { min-width: 0; }
+.task-project { font-family: ui-monospace, monospace; font-size: 12px; color: #1f2937; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-meta { font-size: 11px; color: #6b7280; margin-top: 2px; }
+.task-details { border-top: 1px solid #f3f4f6; padding: 10px 12px; background: #f8fafc; }
+.task-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.task-detail-grid span { display: block; font-size: 11px; color: #6b7280; }
+.task-detail-grid strong { display: block; font-size: 13px; color: #111827; overflow-wrap: anywhere; }
+.task-error { margin: 0; color: #991b1b; background: #fee2e2; border-radius: 6px; padding: 8px; font-size: 12px; }
+.task-result { margin: 0; min-height: auto; max-height: 180px; padding: 10px; border-radius: 6px; font-size: 11px; background: #111827; color: #e5e7eb; }
+
 /* ── Setting Section ── */
 .setting-section { margin-bottom: 16px; }
 .setting-section:last-child { margin-bottom: 0; }

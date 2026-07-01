@@ -251,6 +251,30 @@
           </div>
         </div>
 
+        <!-- 任务中心 -->
+        <div class="card card-compact">
+          <div class="task-center-header">
+            <h2>任务中心</h2>
+            <button id="refresh-tasks" type="button" class="btn-secondary btn-small">刷新</button>
+          </div>
+          <div class="task-filters">
+            <select id="task-filter-type" aria-label="任务类型">
+              <option value="">全部类型</option>
+              <option value="index">索引</option>
+              <option value="summary">摘要</option>
+            </select>
+            <select id="task-filter-status" aria-label="任务状态">
+              <option value="">全部状态</option>
+              <option value="running">运行中</option>
+              <option value="succeeded">成功</option>
+              <option value="failed">失败</option>
+            </select>
+          </div>
+          <div id="task-list" class="task-list" aria-live="polite">
+            <div class="task-empty">暂无任务</div>
+          </div>
+        </div>
+
         <!-- v4.4.2: 搜索质量评估 -->
         <details class="card card-compact">
           <summary><h2 style="display:inline">📏 搜索质量评估</h2></summary>

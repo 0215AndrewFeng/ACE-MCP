@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.4");
+  assert.equal(pkg.version, "4.8.5");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -130,7 +130,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.4-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.5-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -139,10 +139,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.4 verification gates", () => {
+test("release checklist records the v4.8.5 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.4/);
+  assert.match(checklist, /v4\.8\.5/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -151,7 +151,7 @@ test("release checklist records the v4.8.4 verification gates", () => {
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.4/);
+  assert.match(checklist, /git tag -a v4\.8\.5/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
@@ -200,6 +200,10 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(html, /id="service-projects"/);
   assert.match(html, /id="service-latest-index"/);
   assert.match(html, /id="service-active-tasks"/);
+  assert.match(html, /id="task-list"/);
+  assert.match(html, /id="task-filter-type"/);
+  assert.match(html, /id="task-filter-status"/);
+  assert.match(html, /id="refresh-tasks"/);
   assert.match(html, /id="qa-effective-params"/);
   assert.match(html, /data-value-hint="qa-max-sources"/);
   assert.match(html, /data-value-hint="include-context-lines"/);
@@ -209,6 +213,11 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(appJs, /serviceActiveTasksEl/);
   assert.match(appJs, /function pollTask\(/);
   assert.match(appJs, /function submitIndexTask\(/);
+  assert.match(appJs, /function renderTaskCenter\(/);
+  assert.match(appJs, /function refreshTaskCenter\(/);
+  assert.match(appJs, /params\.set\("type", taskFilterTypeInput\.value\)/);
+  assert.match(appJs, /params\.set\("status", taskFilterStatusInput\.value\)/);
+  assert.match(appJs, /params\.set\("projectRootPath", projectRootInput\.value\.trim\(\)\)/);
   assert.match(appJs, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}/);
   assert.match(appJs, /request\("GET", "\/health"\)[\s\S]*renderServiceStatus/);
   assert.match(appJs, /PARENT_DIRECTORY_REQUIRES_CONFIRMATION/);

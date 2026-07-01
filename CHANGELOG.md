@@ -2,6 +2,17 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.5] - 2026-07-01
+
+### Web task center
+
+- Web 右侧新增任务中心，展示最近 `index` / `summary` 任务的项目路径、状态、耗时、开始/结束时间。
+- 任务中心支持按类型、状态和当前项目过滤，失败任务直接展示错误信息，成功任务可展开查看精简结果。
+- `GET /api/tasks` 新增 `type`、`status`、`projectRootPath` 查询参数，`GET /api/tasks/:taskId` 继续返回完整任务详情。
+- index/summary 提交和轮询过程中会自动刷新任务中心，`/health.tasks` 仍保持 active-only 轻量状态。
+- 新增 Web route 与静态契约测试，覆盖任务过滤、详情返回和任务中心 UI/JS 函数。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.5。
+
 ## [4.8.4] - 2026-06-30
 
 ### Async index tasks and unified task center

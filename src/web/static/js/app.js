@@ -38,6 +38,9 @@ const serviceWatchStatusEl = document.getElementById("service-watch-status");
 const serviceProjectsEl = document.getElementById("service-projects");
 const serviceLatestIndexEl = document.getElementById("service-latest-index");
 const serviceActiveTasksEl = document.getElementById("service-active-tasks");
+const taskListEl = document.getElementById("task-list");
+const taskFilterTypeInput = document.getElementById("task-filter-type");
+const taskFilterStatusInput = document.getElementById("task-filter-status");
 const qaEffectiveParamsEl = document.getElementById("qa-effective-params");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
@@ -251,6 +254,7 @@ async function pollTask(taskId, timeoutMs = 600000) {
       throw new Error(task.error?.message || `Task ${taskId} failed`);
     }
     await refreshServiceStatus();
+    await refreshTaskCenter();
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
   throw new Error(`Task ${taskId} timed out after ${Math.round(timeoutMs / 1000)}s`);
@@ -258,6 +262,7 @@ async function pollTask(taskId, timeoutMs = 600000) {
 
 async function submitIndexTask(payload) {
   const accepted = await request("POST", "/api/index-project", payload);
+  await refreshTaskCenter();
   const taskId = accepted?.data?.taskId;
   if (!taskId) return accepted;
   return pollTask(taskId);
@@ -296,6 +301,86 @@ async function refreshServiceStatus() {
     renderServiceStatus(await request("GET", "/health"));
   } catch (err) {
     console.warn("Failed to load service status:", err);
+  }
+}
+
+function formatTaskDuration(task) {
+  const value = task?.durationMs ?? task?.elapsedMs;
+  if (typeof value !== "number") return "--";
+  if (value < 1000) return `${value}ms`;
+  return `${Math.round(value / 100) / 10}s`;
+}
+
+function summarizeTaskResult(task) {
+  const result = task?.result || {};
+  if (task?.type === "index") {
+    return {
+      changedFiles: result.changedFiles,
+      chunkCount: result.chunkCount,
+      failedFileCount: result.failedFileCount,
+      indexedFiles: result.indexedFiles,
+      scannedFiles: result.scannedFiles,
+    };
+  }
+  if (task?.type === "summary") {
+    return {
+      filesWritten: result.filesWritten,
+      moduleCount: result.moduleCount,
+      outputDir: result.outputDir,
+      tokensUsed: result.tokensUsed,
+    };
+  }
+  return result;
+}
+
+function renderTaskCenter(tasks) {
+  if (!taskListEl) return;
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    taskListEl.innerHTML = '<div class="task-empty">暂无任务</div>';
+    return;
+  }
+
+  taskListEl.innerHTML = tasks.map((task) => {
+    const result = summarizeTaskResult(task);
+    const hasResult = task.status === "succeeded" && Object.keys(result).length > 0;
+    const resultHtml = hasResult ? `<pre class="task-result">${escapeHtml(JSON.stringify(result, null, 2))}</pre>` : "";
+    const errorHtml = task.error?.message ? `<p class="task-error">${escapeHtml(task.error.message)}</p>` : "";
+    return `
+      <details class="task-item">
+        <summary>
+          <div class="task-row">
+            <span class="task-badge">${escapeHtml(task.type || "--")}</span>
+            <div class="task-main">
+              <div class="task-project" title="${escapeHtml(task.projectRootPath || "")}">${escapeHtml(task.projectRootPath || "--")}</div>
+              <div class="task-meta">${escapeHtml(formatStatusTime(task.startedAt))} · ${escapeHtml(formatTaskDuration(task))}</div>
+            </div>
+            <span class="task-status ${escapeHtml(task.status || "")}">${escapeHtml(task.status || "--")}</span>
+          </div>
+        </summary>
+        <div class="task-details">
+          <div class="task-detail-grid">
+            <div><span>任务 ID</span><strong>${escapeHtml(task.taskId || "--")}</strong></div>
+            <div><span>开始</span><strong>${escapeHtml(formatStatusTime(task.startedAt))}</strong></div>
+            <div><span>结束</span><strong>${escapeHtml(formatStatusTime(task.completedAt))}</strong></div>
+          </div>
+          ${errorHtml}
+          ${resultHtml}
+        </div>
+      </details>`;
+  }).join("");
+}
+
+async function refreshTaskCenter() {
+  if (!taskListEl) return;
+  const params = new URLSearchParams();
+  if (taskFilterTypeInput?.value) params.set("type", taskFilterTypeInput.value);
+  if (taskFilterStatusInput?.value) params.set("status", taskFilterStatusInput.value);
+  if (projectRootInput?.value?.trim()) params.set("projectRootPath", projectRootInput.value.trim());
+  try {
+    const body = await request("GET", `/api/tasks${params.toString() ? `?${params.toString()}` : ""}`);
+    renderTaskCenter(body.tasks);
+  } catch (err) {
+    taskListEl.innerHTML = `<div class="task-empty">${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
   }
 }
 
@@ -480,6 +565,10 @@ projectRootSelect?.addEventListener("change", async () => {
 // v4.2.6: Initialize project select from LocalStorage on page load
 renderProjectSelect();
 refreshServiceStatus();
+refreshTaskCenter();
+
+document.getElementById("refresh-tasks")?.addEventListener("click", () => refreshTaskCenter());
+[taskFilterTypeInput, taskFilterStatusInput].forEach(input => input?.addEventListener("change", refreshTaskCenter));
 
 // v4.4.1: Auto-sync project list from backend on page load
 (async function syncProjectsOnStartup() {
@@ -643,6 +732,7 @@ document.getElementById("run-generate-summary")?.addEventListener("click", () =>
   const accepted = await request("POST", "/api/summary/generate", {
     projectRootPath: projectRootInput.value
   });
+  await refreshTaskCenter();
   render(accepted);
   const taskId = accepted?.data?.taskId;
   if (!taskId) return accepted;

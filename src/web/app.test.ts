@@ -178,6 +178,70 @@ test("health exposes active summary long tasks", async () => {
   }
 });
 
+test("task list filters by type status and project root", async () => {
+  const tracker = new LongTaskTracker();
+  const summaryTaskId = tracker.start("summary", "/repo-a");
+  tracker.finish(summaryTaskId, { moduleCount: 2 });
+  const indexTaskId = tracker.start("index", "/repo-b");
+  const failedTask = tracker.run("index", "/repo-a", async () => {
+    throw new Error("index failed");
+  });
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    await assertTaskStatus(app.port, failedTask.taskId, "failed");
+    const byType = await fetch(`http://127.0.0.1:${app.port}/api/tasks?type=summary`);
+    const byTypeBody = await byType.json();
+    assert.equal(byTypeBody.tasks.length, 1);
+    assert.equal(byTypeBody.tasks[0].taskId, summaryTaskId);
+    assert.equal(byTypeBody.filters.type, "summary");
+
+    const byProject = await fetch(`http://127.0.0.1:${app.port}/api/tasks?projectRootPath=${encodeURIComponent("/repo-b")}`);
+    const byProjectBody = await byProject.json();
+    assert.equal(byProjectBody.tasks.length, 1);
+    assert.equal(byProjectBody.tasks[0].taskId, indexTaskId);
+
+    const byStatus = await fetch(`http://127.0.0.1:${app.port}/api/tasks?status=succeeded`);
+    const byStatusBody = await byStatus.json();
+    assert.deepEqual(byStatusBody.tasks.map((task: { taskId: string }) => task.taskId), [summaryTaskId]);
+
+    const failed = await fetch(`http://127.0.0.1:${app.port}/api/tasks?status=failed&type=index`);
+    const failedBody = await failed.json();
+    assert.deepEqual(failedBody.tasks.map((task: { taskId: string }) => task.taskId), [failedTask.taskId]);
+
+    const detail = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(summaryTaskId)}`);
+    const detailBody = await detail.json();
+    assert.equal(detailBody.task.result.moduleCount, 2);
+  } finally {
+    await app.close();
+  }
+});
+
 test("summary generation starts a background task and exposes the result", async () => {
   let releaseSummary: ((value: unknown) => void) | undefined;
   const tracker = new LongTaskTracker();
