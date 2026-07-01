@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.10] - 2026-07-01
+
+### Release secret guard
+
+- 新增 `scripts/check-secrets.mjs` 和 `npm run security:secrets`，检查 `GITEE_TOKEN` 等环境变量值是否误入项目文件、打包产物或 git history。
+- secret scan 默认覆盖工作区文件、`ace-mcp-${version}.tgz`、`ace-mcp-v${version}-win-x64.zip` 与 `git log --all`，输出只显示 `redacted`，不打印真实 token。
+- `release:check` 在生成 tgz 与 Windows zip 后自动运行 `security:secrets`，把泄漏检查纳入发版门禁。
+- Windows zip 打包清单包含 `scripts/check-secrets.mjs`，release checklist 与 README 补充发布前安全检查步骤。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.8.10。
+
 ## [4.8.9] - 2026-07-01
 
 ### Gitee release publish automation

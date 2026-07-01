@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.8.9
+## v4.8.10
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -27,7 +27,13 @@ npm run release:pack
 npm run release:win
 ```
 
-5. 运行安装包 smoke test 与 benchmark smoke：
+5. 检查 Gitee token 是否误入源码、git history 或打包产物。该命令不会打印 token 内容：
+
+```bash
+npm run security:secrets
+```
+
+6. 运行安装包 smoke test 与 benchmark smoke：
 
 ```bash
 npm run release:smoke
@@ -37,31 +43,31 @@ npm run release:benchmark
 `release:smoke` 会临时全局安装当前 tgz，验证 `ace-mcp --version`、`ace-mcp --doctor`、`ace-mcp-web` 与 `/health`。
 `release:benchmark` 会启动隔离临时 Web 服务，索引小项目并输出 search/health p95 与事件循环响应性。
 
-6. 检查包内容：
+7. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.8.9.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/publish-gitee-release.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
-unzip -l release/ace-mcp-v4.8.9-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|publish-gitee-release.mjs|reindex-projects.mjs"
+tar -tf ace-mcp-4.8.10.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/check-secrets.mjs|scripts/publish-gitee-release.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
+unzip -l release/ace-mcp-v4.8.10-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|check-secrets.mjs|publish-gitee-release.mjs|reindex-projects.mjs"
 ```
 
-7. 提交、打 tag 并推送：
+8. 提交、打 tag 并推送：
 
 ```bash
 git add .
-git commit -m "chore: release v4.8.9 gitee release publish"
-git tag -a v4.8.9 -m "v4.8.9"
+git commit -m "chore: release v4.8.10 release secret guard"
+git tag -a v4.8.10 -m "v4.8.10"
 git push origin master
-git push origin v4.8.9
+git push origin v4.8.10
 ```
 
-8. 使用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并自动验证真实下载链路：
+9. 使用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并自动验证真实下载链路：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.8.9
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.8.10
 ```
 
 `release:publish` 默认会在上传后运行 `release:verify-assets`。如需单独复验：
 
 ```bash
-npm run release:verify-assets -- --version 4.8.9
+npm run release:verify-assets -- --version 4.8.10
 ```

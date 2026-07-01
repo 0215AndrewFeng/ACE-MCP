@@ -1,3 +1,35 @@
+# v4.8.10 Release Secret Guard
+
+Author: feng.ling
+
+## Goal
+
+Prevent Gitee token leakage by adding a repeatable release secret scanner that checks workspace files, packaged artifacts, and git history without printing secret values.
+
+## Plan
+
+- [x] Write failing package/README contract tests for `scripts/check-secrets.mjs`, `npm run security:secrets`, release checklist integration, and v4.8.10 docs/version references.
+- [x] Implement `scripts/check-secrets.mjs` with exact env-secret scans for project files, tgz/zip artifacts, and git history while redacting values from output.
+- [x] Wire `security:secrets` into `release:check` and Windows packaging.
+- [x] Update README release docs, CHANGELOG, ROADMAP, release checklist, Windows README references, version files, and task lessons to v4.8.10.
+- [x] Run focused RED/GREEN tests, full validation, and record local handoff without pushing remote branches.
+
+## Validation Plan
+
+- Focused contract test: `npm test -- src/config/packageManifest.test.ts`.
+- Script help/static execution: `node scripts/check-secrets.mjs --help`.
+- Real local secret scan: `npm run security:secrets`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Local service handoff only if release is installed locally; no remote branch push for this task.
+
+## Comments
+
+- 2026-07-01: Started v4.8.10 after user approved release secret guard. Scope is local release safety and documentation; no remote branch push should be performed.
+- 2026-07-01: RED confirmed missing secret guard: package version/script, `scripts/check-secrets.mjs`, release checklist secret gate, Windows packaging, and v4.8.10 docs failed before implementation. GREEN added the redacted scanner, package wiring, Windows package inclusion, docs/version updates, and focused package contract test passed with 103 tests.
+- 2026-07-01: Local validation passed without remote push: `node scripts/check-secrets.mjs --help`, `zsh -ic 'npm run security:secrets'` with `GITEE_TOKEN=redacted`, focused package contract test, full `npm test` inside `release:check` (103 tests), `npm run build`, full `zsh -ic 'npm run release:check'`, `node dist/index.js --version` returning `4.8.10`, doctor with only the expected Web port in-use warning, tgz and Windows zip containing `check-secrets.mjs`, and exact scan confirmed the provided token literal is absent from project files.
+
 # v4.8.9 Gitee Release Publish Automation
 
 Author: feng.ling

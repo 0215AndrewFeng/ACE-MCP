@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.9");
+  assert.equal(pkg.version, "4.8.10");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -37,7 +37,8 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke");
   assert.equal(pkg.scripts["release:verify-assets"], "node scripts/verify-release-assets.mjs");
   assert.equal(pkg.scripts["release:publish"], "node scripts/publish-gitee-release.mjs");
-  assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run release:smoke && npm run release:benchmark");
+  assert.equal(pkg.scripts["security:secrets"], "node scripts/check-secrets.mjs");
+  assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run security:secrets && npm run release:smoke && npm run release:benchmark");
   assert.equal(pkg.scripts["benchmark:search"], "node scripts/benchmark-search.mjs");
   assert.equal(pkg.scripts["maintenance:reindex"], "node scripts/reindex-projects.mjs");
   assert.match(pkg.scripts.test, /src\/adapters\/java\/index\.test\.ts/);
@@ -77,6 +78,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   const smokeScriptPath = path.join(rootDir, "scripts/smoke-release.mjs");
   const benchmarkScriptPath = path.join(rootDir, "scripts/benchmark-search.mjs");
   const verifyAssetsScriptPath = path.join(rootDir, "scripts/verify-release-assets.mjs");
+  const checkSecretsScriptPath = path.join(rootDir, "scripts/check-secrets.mjs");
   const publishScriptPath = path.join(rootDir, "scripts/publish-gitee-release.mjs");
   const reindexScriptPath = path.join(rootDir, "scripts/reindex-projects.mjs");
   const cmdInstallPath = path.join(rootDir, "scripts/install-windows.cmd");
@@ -86,6 +88,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.equal(existsSync(smokeScriptPath), true);
   assert.equal(existsSync(benchmarkScriptPath), true);
   assert.equal(existsSync(verifyAssetsScriptPath), true);
+  assert.equal(existsSync(checkSecretsScriptPath), true);
   assert.equal(existsSync(publishScriptPath), true);
   assert.equal(existsSync(reindexScriptPath), true);
   assert.equal(existsSync(cmdInstallPath), true);
@@ -95,6 +98,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   const smokeScript = readFileSync(smokeScriptPath, "utf8");
   const benchmarkScript = readFileSync(benchmarkScriptPath, "utf8");
   const verifyAssetsScript = readFileSync(verifyAssetsScriptPath, "utf8");
+  const checkSecretsScript = readFileSync(checkSecretsScriptPath, "utf8");
   const publishScript = readFileSync(publishScriptPath, "utf8");
   const reindexScript = readFileSync(reindexScriptPath, "utf8");
   const cmdInstall = readFileSync(cmdInstallPath, "utf8");
@@ -108,6 +112,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(packageScript, /scripts\/smoke-release\.mjs/);
   assert.match(packageScript, /scripts\/benchmark-search\.mjs/);
   assert.match(packageScript, /scripts\/verify-release-assets\.mjs/);
+  assert.match(packageScript, /scripts\/check-secrets\.mjs/);
   assert.match(packageScript, /scripts\/publish-gitee-release\.mjs/);
   assert.match(packageScript, /scripts\/reindex-projects\.mjs/);
   assert.match(smokeScript, /npm install/);
@@ -132,6 +137,14 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(benchmarkScript, /smoke benchmark did not return search results/);
   assert.match(verifyAssetsScript, /verify-release-assets ok/);
   assert.match(verifyAssetsScript, /ace-mcp-v\$\{version\}-win-x64\.zip/);
+  assert.match(checkSecretsScript, /--token-env/);
+  assert.match(checkSecretsScript, /GITEE_TOKEN/);
+  assert.match(checkSecretsScript, /git log --all/);
+  assert.match(checkSecretsScript, /npm pack/);
+  assert.match(checkSecretsScript, /unzip -p/);
+  assert.match(checkSecretsScript, /check-secrets ok/);
+  assert.match(checkSecretsScript, /redacted/);
+  assert.doesNotMatch(checkSecretsScript, /example-secret-token-value/);
   assert.match(publishScript, /GITEE_TOKEN/);
   assert.match(publishScript, /\/api\/v5\/repos\/\$\{owner\}\/\$\{repo\}\/releases/);
   assert.match(publishScript, /\/releases\/\$\{release\.id\}\/attach_files/);
@@ -170,14 +183,14 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.8\.9\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.8\.10\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.8\.9/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.8\.10/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
@@ -200,13 +213,13 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.8\.9/);
-  assert.match(readme, /raw\/v4\.8\.9\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.8\.10/);
+  assert.match(readme, /raw\/v4\.8\.10\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.8\.9/);
-  assert.match(checklist, /ace-mcp-4\.8\.9\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.8\.9-win-x64\.zip/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.8\.10/);
+  assert.match(checklist, /ace-mcp-4\.8\.10\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.8\.10-win-x64\.zip/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -228,18 +241,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.8\.9/);
+  assert.match(readme, /npm run release:publish -- --version 4\.8\.10/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.8\.9/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.8\.10/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.9-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.10-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -248,11 +261,12 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.9 verification gates", () => {
+test("release checklist records the v4.8.10 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.9/);
+  assert.match(checklist, /v4\.8\.10/);
   assert.match(checklist, /npm test/);
+  assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
   assert.match(checklist, /npm run release:win/);
@@ -262,7 +276,31 @@ test("release checklist records the v4.8.9 verification gates", () => {
   assert.match(checklist, /npm run release:publish/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.9/);
+  assert.match(checklist, /git tag -a v4\.8\.10/);
+});
+
+test("release secret scanner guards env tokens without leaking values", () => {
+  const scriptPath = path.join(rootDir, "scripts/check-secrets.mjs");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
+
+  assert.equal(existsSync(scriptPath), true);
+
+  const script = readFileSync(scriptPath, "utf8");
+  assert.match(script, /--token-env/);
+  assert.match(script, /--include-artifacts/);
+  assert.match(script, /--skip-history/);
+  assert.match(script, /process\.env\[options\.tokenEnv\]/);
+  assert.match(script, /scanProjectFiles/);
+  assert.match(script, /scanGitHistory/);
+  assert.match(script, /scanPackedArtifacts/);
+  assert.match(script, /redacted/);
+  assert.match(script, /check-secrets ok/);
+  assert.doesNotMatch(script, /example-secret-token-value/);
+
+  assert.match(readme, /npm run security:secrets/);
+  assert.match(readme, /不会打印 token 内容/);
+  assert.match(checklist, /npm run security:secrets/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {

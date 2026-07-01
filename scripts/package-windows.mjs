@@ -66,6 +66,7 @@ mkdirSync(stageDir, { recursive: true });
   "scripts/smoke-release.mjs",
   "scripts/benchmark-search.mjs",
   "scripts/verify-release-assets.mjs",
+  "scripts/check-secrets.mjs",
   "scripts/publish-gitee-release.mjs",
   "scripts/reindex-projects.mjs",
   "package.json",
