@@ -14,7 +14,7 @@ Close the one-command install release loop by pinning macOS installer docs to ve
 - [x] Update README install commands to tag-pinned script URLs and document release asset verification.
 - [x] Update package scripts, CHANGELOG, ROADMAP, release checklist, Windows README references, version files, and task lessons if needed to v4.8.8.
 - [x] Run focused RED/GREEN tests and full local validation.
-- [ ] Run network asset verification after tag push, replace local service, and record handoff.
+- [x] Run network asset verification after tag push, replace local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Close the one-command install release loop by pinning macOS installer docs to ve
 - 2026-07-01: Started v4.8.8 after user approved install release closure. Scope is release/install robustness, not runtime MCP behavior.
 - 2026-07-01: RED confirmed release/install contract gaps: README still used `raw/master`, `release:verify-assets` and verifier script were missing, and release docs still referenced v4.8.7. GREEN added the verifier, tag-pinned installer docs, package/Windows packaging coverage, and v4.8.8 version docs.
 - 2026-07-01: Local verification passed: focused package contract RED/GREEN, `node scripts/verify-release-assets.mjs --help`, `bash -n scripts/install-macos.sh`, full `npm test` (101 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.8`, doctor with only the expected Web port in-use warning, tgz containing installer/verifier scripts, and Windows zip containing verifier script.
+- 2026-07-01: Release handoff complete: committed `4ade428`, tagged and pushed `v4.8.8`, pushed `master`, created Gitee Release `v4.8.8`, uploaded `ace-mcp-4.8.8.tgz` and `ace-mcp-v4.8.8-win-x64.zip`, verified `npm run release:verify-assets -- --version 4.8.8 --timeout-ms 20000` returned 4/4 HTTP 200 checks, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.8.8` on pid `83217`.
 
 # v4.8.7 macOS Quick Install
 
