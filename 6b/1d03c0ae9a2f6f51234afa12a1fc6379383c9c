@@ -1,0 +1,40 @@
+package.json
+  s_3a219f3e07a2c0::t_8561498f2a37d8 3
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_a24ee085024223 24,171,180,183,192
+  s_3a219f3e07a2c0::t_cacd3b46a5c9cc 137-167
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_a24ee085024223 3,13,43-44,51-52,54
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_a24ee085024223 3,15,82,120
+ROADMAP.md
+  s_3a219f3e07a2c0::t_a24ee085024223 56-60
+README.md
+  s_3a219f3e07a2c0::t_00fd199a9438db 5,85,88,95,99,101-130,140-141,165,226,545-551
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_a24ee085024223 5-14
+scripts/install-macos.sh
+  s_3a219f3e07a2c0::t_738753ffb46035 1-128
+src/version.ts
+  s_3a219f3e07a2c0::t_8561498f2a37d8 2
+tasks/todo.md
+  s_3a219f3e07a2c0::t_222e4bcf56cb3b 15-16,31
+  s_3a219f3e07a2c0::t_16cc0045edb998 1-11,17-29,32
+  s_3a219f3e07a2c0::t_c62d8e906b4f13 12-14,30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6b1d03c0ae9a2f6f51234afa12a1fc6379383c9c",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
