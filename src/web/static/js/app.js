@@ -345,6 +345,9 @@ function renderTaskCenter(tasks) {
     const hasResult = task.status === "succeeded" && Object.keys(result).length > 0;
     const resultHtml = hasResult ? `<pre class="task-result">${escapeHtml(JSON.stringify(result, null, 2))}</pre>` : "";
     const errorHtml = task.error?.message ? `<p class="task-error">${escapeHtml(task.error.message)}</p>` : "";
+    const cancelHtml = task.status === "running"
+      ? `<button type="button" class="btn-secondary btn-small task-cancel" data-task-id="${escapeHtml(task.taskId)}">取消</button>`
+      : "";
     return `
       <details class="task-item">
         <summary>
@@ -363,11 +366,26 @@ function renderTaskCenter(tasks) {
             <div><span>开始</span><strong>${escapeHtml(formatStatusTime(task.startedAt))}</strong></div>
             <div><span>结束</span><strong>${escapeHtml(formatStatusTime(task.completedAt))}</strong></div>
           </div>
+          ${cancelHtml}
           ${errorHtml}
           ${resultHtml}
         </div>
       </details>`;
   }).join("");
+
+  taskListEl.querySelectorAll(".task-cancel").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const taskId = button.getAttribute("data-task-id");
+      if (!taskId) return;
+      button.disabled = true;
+      try {
+        await request("POST", `/api/tasks/${encodeURIComponent(taskId)}/cancel`);
+      } finally {
+        await refreshTaskCenter();
+        await refreshServiceStatus();
+      }
+    });
+  });
 }
 
 async function refreshTaskCenter() {

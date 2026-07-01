@@ -13,3 +13,5 @@ coverage/
 *.test.ts
 !src/**/*.test.ts
 eval-cases/
+/.ace-mcp
+/.codex

@@ -37,12 +37,13 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
           tokensUsed: result.tokensUsed,
           durationMs: result.durationMs,
         };
-      });
+      }, `summary:${normalizedProjectRootPath}`);
 
       res.status(202).json(buildEnvelope(
         { projectRootPath: normalizedProjectRootPath },
         {
           projectRootPath: normalizedProjectRootPath,
+          reused: task.reused ?? false,
           status: task.status,
           taskId: task.taskId,
           taskUrl: `/api/tasks/${encodeURIComponent(task.taskId)}`,

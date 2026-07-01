@@ -1,3 +1,37 @@
+# v4.8.6 Task Dedupe and Cancel
+
+Author: feng.ling
+
+## Goal
+
+Prevent duplicate long-running work and let users cancel active tasks from the API/Web task center, while formalizing local `.ace-mcp` / `.codex` ignores.
+
+## Plan
+
+- [x] Review v4.8.5 task tracker/routes/UI and the pre-existing `.gitignore` local change.
+- [x] Write failing tests for duplicate task reuse and task cancel behavior before production changes.
+- [x] Extend `LongTaskTracker` with task keys, duplicate active task reuse, `canceled` status, and cancel APIs.
+- [x] Wire index/summary submissions to stable task keys and add `POST /api/tasks/:taskId/cancel`.
+- [x] Add cancel controls to the Web task center and refresh task state after cancellation.
+- [x] Update static/package contract tests for cancel UI/API, plus `.gitignore` expectations.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.8.6.
+- [ ] Run full validation, commit/tag/push, replace local service, and record handoff.
+
+## Validation Plan
+
+- RED/GREEN focused Web route tests: duplicate index/summary submissions reuse one task id; cancel active task changes status to `canceled`; completed tasks cannot be canceled.
+- Static contract tests prove task center exposes cancel controls and route wiring.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `npm run release:check`.
+- Local service handoff: `/health` reports version `4.8.6` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-01: Started v4.8.6 after v4.8.5. Scope is best-effort in-memory de-dupe/cancel for active Web tasks; running work may not be preemptively aborted unless it cooperates, but canceled tasks must not be marked succeeded afterward.
+- 2026-07-01: RED confirmed duplicate active index submissions created separate task ids and `/api/tasks/:id/cancel` was missing. GREEN implemented active task key reuse, `canceled` status, cancel endpoint, Web cancel button, and `.gitignore` release hygiene.
+- 2026-07-01: Verification passed: focused Web route RED/GREEN, full `npm test` (99 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.6`, and doctor with only the expected Web port in-use warning.
+
 # v4.8.5 Task Center UI
 
 Author: feng.ling

@@ -1,5 +1,5 @@
 export type LongTaskType = "index" | "summary";
-export type LongTaskStatus = "queued" | "running" | "succeeded" | "failed";
+export type LongTaskStatus = "queued" | "running" | "succeeded" | "failed" | "canceled";
 
 export interface LongTaskInfo<TResult = unknown> {
   completedAt?: string;
@@ -10,6 +10,7 @@ export interface LongTaskInfo<TResult = unknown> {
     message: string;
   };
   projectRootPath: string;
+  reused?: boolean;
   startedAt: string;
   status: LongTaskStatus;
   taskId: string;
@@ -26,6 +27,7 @@ interface LongTaskRecord<TResult = unknown> {
     message: string;
   };
   projectRootPath: string;
+  key?: string;
   startedAt: number;
   startedAtIso: string;
   status: LongTaskStatus;
@@ -40,10 +42,11 @@ export class LongTaskTracker {
 
   public constructor(private readonly maxRetainedTasks = 100) {}
 
-  public start(type: LongTaskType, projectRootPath: string): string {
+  public start(type: LongTaskType, projectRootPath: string, key?: string): string {
     this.sequence += 1;
     const taskId = `${type}-${Date.now()}-${this.sequence}`;
     this.tasks.set(taskId, {
+      key,
       projectRootPath,
       startedAt: Date.now(),
       startedAtIso: new Date().toISOString(),
@@ -54,8 +57,13 @@ export class LongTaskTracker {
     return taskId;
   }
 
-  public run<TResult>(type: LongTaskType, projectRootPath: string, work: () => Promise<TResult>): LongTaskInfo<TResult> {
-    const taskId = this.start(type, projectRootPath);
+  public run<TResult>(type: LongTaskType, projectRootPath: string, work: () => Promise<TResult>, key?: string): LongTaskInfo<TResult> {
+    const existing = key ? this.findActiveByKey(key) : undefined;
+    if (existing) {
+      return { ...this.toInfo(existing), reused: true } as LongTaskInfo<TResult>;
+    }
+
+    const taskId = this.start(type, projectRootPath, key);
     const record = this.tasks.get(taskId);
     if (!record) {
       throw new Error(`Task was not created: ${taskId}`);
@@ -89,9 +97,24 @@ export class LongTaskTracker {
     return this.list().filter((task) => task.status === "queued" || task.status === "running");
   }
 
+  public cancel(taskId: string): LongTaskInfo | undefined {
+    const record = this.tasks.get(taskId);
+    if (!record || (record.status !== "queued" && record.status !== "running")) {
+      return undefined;
+    }
+    const completedAt = Date.now();
+    record.completedAt = completedAt;
+    record.completedAtIso = new Date(completedAt).toISOString();
+    record.durationMs = completedAt - record.startedAt;
+    record.status = "canceled";
+    this.pruneCompleted();
+    return this.toInfo(record);
+  }
+
   private markSucceeded(taskId: string, result: unknown): void {
     const record = this.tasks.get(taskId);
     if (!record) return;
+    if (record.status === "canceled") return;
     const completedAt = Date.now();
     record.completedAt = completedAt;
     record.completedAtIso = new Date(completedAt).toISOString();
@@ -104,6 +127,7 @@ export class LongTaskTracker {
   private markFailed(taskId: string, error: unknown): void {
     const record = this.tasks.get(taskId);
     if (!record) return;
+    if (record.status === "canceled") return;
     const completedAt = Date.now();
     const appError = error as { code?: unknown; message?: unknown };
     record.completedAt = completedAt;
@@ -120,13 +144,17 @@ export class LongTaskTracker {
   private pruneCompleted(): void {
     if (this.tasks.size <= this.maxRetainedTasks) return;
     const completed = [...this.tasks.values()]
-      .filter((task) => task.status === "succeeded" || task.status === "failed")
+      .filter((task) => task.status === "succeeded" || task.status === "failed" || task.status === "canceled")
       .sort((a, b) => (a.completedAt ?? a.startedAt) - (b.completedAt ?? b.startedAt));
 
     for (const task of completed) {
       if (this.tasks.size <= this.maxRetainedTasks) break;
       this.tasks.delete(task.taskId);
     }
+  }
+
+  private findActiveByKey(key: string): LongTaskRecord | undefined {
+    return [...this.tasks.values()].find((task) => task.key === key && (task.status === "queued" || task.status === "running"));
   }
 
   private toInfo<TResult = unknown>(task: LongTaskRecord<TResult>): LongTaskInfo<TResult> {

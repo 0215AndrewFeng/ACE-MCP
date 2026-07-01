@@ -44,6 +44,7 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
       }
       const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
       if (dependencies.longTaskTracker) {
+        const taskKey = `index:${mode}:${normalizedProjectRootPath}`;
         const task = dependencies.longTaskTracker.run("index", normalizedProjectRootPath, async () => {
           const result = await dependencies.indexCoordinator.indexProject(projectRootPath, mode);
           return {
@@ -61,7 +62,7 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
             timings: result.timings,
             vectorIndex: result.vectorIndex,
           };
-        });
+        }, taskKey);
 
         res.status(202).json(
           buildEnvelope(
@@ -69,6 +70,7 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
             {
               mode,
               projectRootPath: normalizedProjectRootPath,
+              reused: task.reused ?? false,
               status: task.status,
               taskId: task.taskId,
               taskUrl: `/api/tasks/${encodeURIComponent(task.taskId)}`,

@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.8.5`
+当前版本：`v4.8.6`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -82,17 +82,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.8.5.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.8.6.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.8.5.tgz
+npm install -g ./ace-mcp-4.8.6.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.8.5.tgz
+npm install -g .\ace-mcp-4.8.6.tgz
 ace-mcp-web
 ```
 
@@ -109,8 +109,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.5/ace-mcp-4.8.5.tgz
-npm install -g ./ace-mcp-4.8.5.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.8.6/ace-mcp-4.8.6.tgz
+npm install -g ./ace-mcp-4.8.6.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -134,7 +134,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.8.5-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.8.6-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -195,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.8.5.tgz
+npm install -g ./ace-mcp-4.8.6.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -514,7 +514,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.8.5（当前版本）
+### v4.8.6（当前版本）
+
+- **重复任务复用**：同一项目、同一类型、同一索引 mode 的运行中任务会直接复用已有 `taskId`
+- **任务取消**：新增 `POST /api/tasks/:taskId/cancel` 和 `canceled` 状态，任务中心可取消 running task
+- **本地目录忽略**：仓库内 `/.ace-mcp`、`/.codex` 已加入 `.gitignore`，减少运行产物噪音
+
+### v4.8.5
 
 - **Web 任务中心**：页面右侧展示最近 index/summary 任务，包含项目、状态、耗时和开始/结束时间
 - **任务过滤和详情**：支持按类型、状态和当前项目过滤，失败任务显示错误，成功任务可展开查看精简结果

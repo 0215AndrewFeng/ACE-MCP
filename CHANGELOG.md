@@ -2,6 +2,18 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.8.6] - 2026-07-01
+
+### Task dedupe and cancel
+
+- 长任务支持 active key 去重：同一项目、同一类型、同一索引 mode 的运行中任务会复用已有 `taskId`，避免重复点击触发重复 index/summary。
+- 任务状态新增 `canceled`，`POST /api/tasks/:taskId/cancel` 可取消 active task；已完成任务返回 `TASK_NOT_CANCELABLE`。
+- 被取消任务即使底层异步 work 随后 resolve/reject，也不会再覆盖为 succeeded/failed。
+- Web 任务中心为 running task 增加取消按钮，并支持筛选 `canceled` 状态。
+- `.gitignore` 正式忽略仓库内本地运行目录 `/.ace-mcp` 与 `/.codex`，减少维护和发布时的工作区噪音。
+- 新增 Web route 与静态契约测试，覆盖重复提交复用、取消状态、取消接口和任务中心取消控件。
+- README、Windows README、release checklist 与发布契约测试更新到 v4.8.6。
+
 ## [4.8.5] - 2026-07-01
 
 ### Web task center

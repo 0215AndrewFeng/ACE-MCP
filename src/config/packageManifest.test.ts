@@ -21,7 +21,7 @@ interface PackageJson {
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
 
-  assert.equal(pkg.version, "4.8.5");
+  assert.equal(pkg.version, "4.8.6");
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -45,6 +45,13 @@ test("CLI bin entrypoint is directly executable after global npm install", () =>
   const entrypoint = readFileSync(path.join(rootDir, "src/index.ts"), "utf8");
 
   assert.equal(entrypoint.startsWith("#!/usr/bin/env node\n"), true);
+});
+
+test("local runtime directories are ignored from release worktree noise", () => {
+  const gitignore = readFileSync(path.join(rootDir, ".gitignore"), "utf8");
+
+  assert.match(gitignore, /^\/\.ace-mcp$/m);
+  assert.match(gitignore, /^\/\.codex$/m);
 });
 
 test("global install helper scripts are packaged for Windows and cross-platform web startup", () => {
@@ -130,7 +137,7 @@ test("Windows zip release tooling is packaged with install scripts", () => {
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.8\.5-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.8\.6-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -139,10 +146,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.8.5 verification gates", () => {
+test("release checklist records the v4.8.6 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.8\.5/);
+  assert.match(checklist, /v4\.8\.6/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run build/);
   assert.match(checklist, /npm run release:pack/);
@@ -151,7 +158,7 @@ test("release checklist records the v4.8.5 verification gates", () => {
   assert.match(checklist, /npm run release:benchmark/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.8\.5/);
+  assert.match(checklist, /git tag -a v4\.8\.6/);
 });
 
 test("web static controls expose maximum shortcuts for snippet and context sizing", () => {
@@ -203,6 +210,7 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(html, /id="task-list"/);
   assert.match(html, /id="task-filter-type"/);
   assert.match(html, /id="task-filter-status"/);
+  assert.match(html, /value="canceled">已取消/);
   assert.match(html, /id="refresh-tasks"/);
   assert.match(html, /id="qa-effective-params"/);
   assert.match(html, /data-value-hint="qa-max-sources"/);
@@ -215,6 +223,8 @@ test("web static page exposes runtime status and effective request parameters", 
   assert.match(appJs, /function submitIndexTask\(/);
   assert.match(appJs, /function renderTaskCenter\(/);
   assert.match(appJs, /function refreshTaskCenter\(/);
+  assert.match(appJs, /class="btn-secondary btn-small task-cancel"/);
+  assert.match(appJs, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}\/cancel/);
   assert.match(appJs, /params\.set\("type", taskFilterTypeInput\.value\)/);
   assert.match(appJs, /params\.set\("status", taskFilterStatusInput\.value\)/);
   assert.match(appJs, /params\.set\("projectRootPath", projectRootInput\.value\.trim\(\)\)/);

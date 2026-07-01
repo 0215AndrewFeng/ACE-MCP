@@ -507,6 +507,161 @@ test("index project starts a background task and exposes the result", async () =
   }
 });
 
+test("duplicate active index submissions reuse the same task", async () => {
+  let releaseIndex: ((value: unknown) => void) | undefined;
+  let indexCalls = 0;
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      indexProject: async (projectRootPath: string, mode: string) => {
+        indexCalls += 1;
+        await new Promise((resolve) => {
+          releaseIndex = resolve;
+        });
+        return {
+          changedFiles: 1,
+          chunkCount: 1,
+          deletedFiles: 0,
+          failedFileCount: 0,
+          failedFiles: [],
+          indexedFiles: 1,
+          project: { languages: [], markers: [], projectType: "unknown", rootPath: projectRootPath },
+          projectId: "project-1",
+          projectRootPath,
+          scannedFiles: 1,
+          timings: { collectMs: 0, detectMs: 0, indexMs: 0, totalMs: 0, vectorMs: 0 },
+          vectorIndex: { enabled: true, hydratedChunkCount: 0, mode },
+        };
+      },
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const first = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "full", projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const firstBody = await first.json();
+    const second = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "full", projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const secondBody = await second.json();
+
+    assert.equal(first.status, 202);
+    assert.equal(second.status, 202);
+    assert.equal(secondBody.data.taskId, firstBody.data.taskId);
+    assert.equal(secondBody.data.reused, true);
+    assert.equal(indexCalls, 1);
+  } finally {
+    releaseIndex?.(undefined);
+    await app.close();
+  }
+});
+
+test("task cancel marks active task canceled and completed tasks reject cancel", async () => {
+  let releaseIndex: ((value: unknown) => void) | undefined;
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      indexProject: async (projectRootPath: string, mode: string) => {
+        await new Promise((resolve) => {
+          releaseIndex = resolve;
+        });
+        return {
+          changedFiles: 1,
+          chunkCount: 1,
+          deletedFiles: 0,
+          failedFileCount: 0,
+          failedFiles: [],
+          indexedFiles: 1,
+          project: { languages: [], markers: [], projectType: "unknown", rootPath: projectRootPath },
+          projectId: "project-1",
+          projectRootPath,
+          scannedFiles: 1,
+          timings: { collectMs: 0, detectMs: 0, indexMs: 0, totalMs: 0, vectorMs: 0 },
+          vectorIndex: { enabled: true, hydratedChunkCount: 0, mode },
+        };
+      },
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/index-project`, {
+      body: JSON.stringify({ mode: "full", projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+    const cancel = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}/cancel`, {
+      method: "POST",
+    });
+    const cancelBody = await cancel.json();
+
+    assert.equal(cancel.status, 200);
+    assert.equal(cancelBody.task.status, "canceled");
+
+    releaseIndex?.(undefined);
+    await assertTaskStatus(app.port, body.data.taskId, "canceled");
+
+    const secondCancel = await fetch(`http://127.0.0.1:${app.port}/api/tasks/${encodeURIComponent(body.data.taskId)}/cancel`, {
+      method: "POST",
+    });
+    const secondCancelBody = await secondCancel.json();
+    assert.equal(secondCancel.status, 409);
+    assert.equal(secondCancelBody.code, "TASK_NOT_CANCELABLE");
+  } finally {
+    releaseIndex?.(undefined);
+    await app.close();
+  }
+});
+
 test("index background task retains failure state", async () => {
   const tracker = new LongTaskTracker();
   const app = await startWebApp(0, {
