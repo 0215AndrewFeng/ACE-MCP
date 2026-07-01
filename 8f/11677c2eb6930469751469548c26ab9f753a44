@@ -1,0 +1,50 @@
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_025b4df368e6e2 5-14
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_c3b188cdb88a67 24,39,80,89,98,111,135-140,173,180,203-204,207-236,242,251,254,262,265
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_58a56ce9cce486 3,43-44,51-52,54,57,60-66
+tasks/todo.md
+  s_3a219f3e07a2c0::t_5cd8e8de19dd1d 1-11,15-29,32
+  s_3a219f3e07a2c0::t_9bb987af22d10c 31
+  s_3a219f3e07a2c0::t_a68aa88df8adfc 12-14,30
+scripts/package-windows.mjs
+  s_3a219f3e07a2c0::t_3792d9572b398f 69
+ROADMAP.md
+  s_3a219f3e07a2c0::t_56c1492b732b10 58-62
+package-lock.json
+  ai_agent 3,9
+package.json
+  s_3a219f3e07a2c0::t_3792d9572b398f 3,29
+README.md
+  s_3a219f3e07a2c0::t_3b876bdc40f106 5,85,88,95,104,110,140-141,165,226,253,256-262,557-563
+src/version.ts
+  s_3a219f3e07a2c0::t_3792d9572b398f 2
+scripts/publish-gitee-release.mjs
+  s_3a219f3e07a2c0::t_b5aa0fd03d98c3 210,215-216,234-241,341,344-352,409
+  s_3a219f3e07a2c0::t_8d4f4d4b7b81d6 4-5,335-336
+  s_3a219f3e07a2c0::t_b4aa3ff7afcd34 1-3,6-209,211-214,217-233,242-309,311-331,339-340,342-343,353-408,410-417
+  s_3a219f3e07a2c0::t_152b4132801d25 310,332-334,337-338
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_216013b1cd1cf4 3,15,82,120
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_fdd964d0d158f3 34
+scripts/install-macos.sh
+  s_3a219f3e07a2c0::t_3792d9572b398f 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8f11677c2eb6930469751469548c26ab9f753a44",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
