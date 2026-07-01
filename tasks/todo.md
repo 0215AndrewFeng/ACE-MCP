@@ -15,7 +15,7 @@ Make the async task system directly usable from the Web panel by adding task fil
 - [x] Update static/package contract tests for the new task center UI and polling paths.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, and release checklist to v4.8.5.
 - [x] Run full validation.
-- [ ] Commit/tag/push, replace local service, and record handoff.
+- [x] Commit/tag/push, replace local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Make the async task system directly usable from the Web panel by adding task fil
 - 2026-07-01: Started v4.8.5 after v4.8.4. Scope is UI/API visibility for existing in-memory task history; task persistence, de-dupe, and cancel remain future work.
 - 2026-07-01: Implemented `/api/tasks` type/status/project filters, compact Web task center with filters/details, and v4.8.5 docs/version updates. Focused Web route run and `npm run build` passed before full release validation.
 - 2026-07-01: Verification passed: full `npm test` (96 tests), `npm run build`, full `npm run release:check`, `node dist/index.js --version` returning `4.8.5`, and doctor with only the expected Web port in-use warning.
+- 2026-07-01: Committed `4372426`, tagged `v4.8.5`, pushed `master` and tag to Gitee, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.8.5` on pid `75011`.
 
 # v4.8.4 Async Index Tasks
 
