@@ -12,7 +12,7 @@ Close the Web diagnostics loop by turning project profile suggestions into one-c
 - [x] Implement Web suggestion actions for full index, summary generation, vector warmup, and failed-file review using existing `/api/index-project`, `/api/summary/generate`, `/api/index/warm`, task polling, and profile reload.
 - [x] Keep unsupported/manual diagnostics visible without breaking raw JSON output.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package docs to v4.9.2.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -28,6 +28,7 @@ Close the Web diagnostics loop by turning project profile suggestions into one-c
 
 - 2026-07-02: Started v4.9.2 after user approved one-click project profile repair. Scope is front-end repair orchestration on top of existing index, summary, warm, task, and profile APIs.
 - 2026-07-02: RED confirmed missing one-click Web profile actions and v4.9.2 docs/version references. GREEN added profile suggestion buttons, repair dispatch for full index/summary/vector warmup/failed-file review, task polling, task-center refresh, profile reload, and docs/version updates. Focused package contract tests passed with 15 tests, full `npm test` passed with 108 tests, `npm run build` passed, and `zsh -ic 'npm run release:check'` passed including secret scan, smoke, benchmark, tgz, and Windows zip generation.
+- 2026-07-02: Release handoff complete: committed `4ee745e`, tagged and pushed `v4.9.2`, pushed `master`, published Gitee Release `v4.9.2` (#731242), uploaded `ace-mcp-4.9.2.tgz` and `ace-mcp-v4.9.2-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.2` on pid `60330`.
 
 # v4.9.1 Project Search Profile Diagnostics
 
