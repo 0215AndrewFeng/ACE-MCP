@@ -12,7 +12,7 @@ Close the Web result-location loop by adding direct jump/copy actions for IDEs a
 - [x] Implement reusable Web helpers for source absolute paths, IDE deep links, and agent handoff prompts using the selected project root plus result file/line/snippet data.
 - [x] Add the new actions to search result explanation rows and QA source cards while preserving existing copy path/reference/snippet controls and lazy context preview.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.7.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Close the Web result-location loop by adding direct jump/copy actions for IDEs a
 - 2026-07-02: Started v4.9.7 after user approved keeping VS Code, adding IDEA, adding absolute-path copy, and adding Codex/Claude handoff as copied prompts. Cursor is intentionally out of scope.
 - 2026-07-02: RED confirmed missing IDE/Agent action helpers and v4.9.7 version contracts. GREEN added absolute-path formatting, VS Code/IDEA deep links, Codex/Claude prompt copy actions, shared binding for search summaries and QA source cards, CSS styling, and v4.9.7 docs/version updates; focused package contract test passed with 22 tests.
 - 2026-07-02: Full local validation passed before release commit: `npm test` passed with 115 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.7`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.7.tgz` and `release/ace-mcp-v4.9.7-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-02: Release handoff complete: committed `02078a6`, tagged and pushed `v4.9.7`, pushed `master`, published Gitee Release `v4.9.7` (#731683), uploaded `ace-mcp-4.9.7.tgz` and `ace-mcp-v4.9.7-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.7` on pid `42805`.
 
 # v4.9.6 Lazy Context Preview
 
