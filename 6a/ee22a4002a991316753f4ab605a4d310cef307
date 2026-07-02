@@ -1,0 +1,53 @@
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_47c329dfebb64e 32,35,197,204,227-228,231-233,261,265,272,281,284,296
+  s_3a219f3e07a2c0::t_7426883dbefe3e 753-776,921-922,1020-1028,1037,1047-1049,1052-1055
+  s_3a219f3e07a2c0::t_91040eab4ff314 234-239,777-910,912-920
+  s_3a219f3e07a2c0::t_f4628db56424cf 911
+  s_3a219f3e07a2c0::t_8ee517807bd275 315
+package-lock.json
+  ai_agent 3,9
+package.json
+  s_3a219f3e07a2c0::t_0744acc5c10f52 3
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_667257f244f3be 49-73
+  s_3a219f3e07a2c0::t_eefbead438bfe0 3,80-81,83,89,95
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_fd9e1d11facfa0 3,15,82,120
+tasks/lessons.md
+  s_3a219f3e07a2c0::t_5c55ba9d80acee 40
+README.md
+  s_3a219f3e07a2c0::t_3f964d20265371 5,28,91,94,101,110,116,146-147,171,232,268,274,570-576
+src/web/static/css/main.css
+  s_3a219f3e07a2c0::t_c3c34a9afd9ba1 153,155
+  s_3a219f3e07a2c0::t_375654c926d884 150-152,156-157
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_ba72fe5b4908f3 5-13
+src/version.ts
+  s_3a219f3e07a2c0::t_17d22121e3706e 2
+tasks/todo.md
+  s_3a219f3e07a2c0::t_98714930279f49 33
+  s_3a219f3e07a2c0::t_eaed90562cc13d 11-14,32
+  s_3a219f3e07a2c0::t_c8ba76ab2529c2 1-10,15-31,34
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_3aa75de71cee75 13-18,589-591,594-602,625,628,631-633,637,923-936,938-942,950
+scripts/install-macos.sh
+  s_3a219f3e07a2c0::t_61345733112248 4
+ROADMAP.md
+  s_3a219f3e07a2c0::t_719f35e52738af 68-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6aee22a4002a991316753f4ab605a4d310cef307",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
