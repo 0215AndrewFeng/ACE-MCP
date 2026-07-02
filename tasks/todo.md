@@ -12,7 +12,7 @@ Let Web users add or choose a lightweight task instruction before copying a sele
 - [x] Implement Web helpers to read task draft text, apply preset task instructions, and inject task intent into context bundle Markdown above selected source details.
 - [x] Add compact task draft controls to search result and QA context bundle toolbars while preserving existing bundle copy buttons and single-result actions.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.9.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Let Web users add or choose a lightweight task instruction before copying a sele
 - 2026-07-02: Started v4.9.9 after user approved editable task draft for context bundles. Scope is Web UI prompt quality over existing selected result bundle data; no backend, indexing, ranking, or MCP API change planned.
 - 2026-07-02: RED confirmed missing v4.9.9 version contracts plus missing task draft constants, textarea/preset controls, and Markdown task instruction output. GREEN added `CONTEXT_BUNDLE_TASK_PRESETS`, task draft read/apply helpers, compact toolbar textarea/presets, Markdown `任务说明` injection for copy/Codex/Claude actions, CSS styling, and v4.9.9 docs/version updates; focused package contract test passed with 25 tests.
 - 2026-07-02: Review tightened the release: replaced broad package-content `rg` examples with per-artifact `rg -Fx` checks, added a behavior-level DOM/event contract proving preset click is reused by copy/Codex/Claude bundle actions, and updated `tasks/lessons.md`. Focused package contract test passed with 26 tests, full `npm test` passed with 119 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.9`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed every required artifact individually in `ace-mcp-4.9.9.tgz` and `release/ace-mcp-v4.9.9-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-02: Release handoff complete: committed `6aee22a`, tagged and pushed `v4.9.9`, pushed `master`, published Gitee Release `v4.9.9` (#731739), uploaded `ace-mcp-4.9.9.tgz` and `ace-mcp-v4.9.9-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.9` on pid `62802`.
 
 # v4.9.8 Result Context Bundle
 
