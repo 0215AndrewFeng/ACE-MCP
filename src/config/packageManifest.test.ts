@@ -19,10 +19,20 @@ interface PackageJson {
   version: string;
 }
 
+interface PackageLockJson {
+  packages?: Record<string, { version?: string }>;
+  version: string;
+}
+
 test("package manifest is ready for npm and tgz global installation", () => {
   const pkg = readJson<PackageJson>("package.json");
+  const lock = readJson<PackageLockJson>("package-lock.json");
+  const versionTs = readFileSync(path.join(rootDir, "src/version.ts"), "utf8");
 
-  assert.equal(pkg.version, "4.9.4");
+  assert.equal(pkg.version, "4.9.5");
+  assert.equal(lock.version, pkg.version);
+  assert.equal(lock.packages?.[""]?.version, pkg.version);
+  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.9\.5"/);
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -184,14 +194,14 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.4\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.5\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.9\.4/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.9\.5/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
@@ -214,13 +224,13 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.4/);
-  assert.match(readme, /raw\/v4\.9\.4\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.5/);
+  assert.match(readme, /raw\/v4\.9\.5\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.4/);
-  assert.match(checklist, /ace-mcp-4\.9\.4\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.9\.4-win-x64\.zip/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.5/);
+  assert.match(checklist, /ace-mcp-4\.9\.5\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.9\.5-win-x64\.zip/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -242,18 +252,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.9\.4/);
+  assert.match(readme, /npm run release:publish -- --version 4\.9\.5/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.9\.4/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.9\.5/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.9\.4-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.9\.5-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -262,10 +272,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.9.4 verification gates", () => {
+test("release checklist records the v4.9.5 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.9\.4/);
+  assert.match(checklist, /v4\.9\.5/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
@@ -277,7 +287,7 @@ test("release checklist records the v4.9.4 verification gates", () => {
   assert.match(checklist, /npm run release:publish/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.9\.4/);
+  assert.match(checklist, /git tag -a v4\.9\.5/);
 });
 
 test("web project profile diagnostics are wired through API and static controls", () => {
@@ -296,13 +306,13 @@ test("web project profile diagnostics are wired through API and static controls"
   assert.match(appJs, /GENERATE_SUMMARY/);
   assert.match(appJs, /WARM_VECTOR_INDEX/);
   assert.match(appJs, /REVIEW_FAILED_FILES/);
-  assert.match(readme, /当前版本：`v4\.9\.4`/);
+  assert.match(readme, /当前版本：`v4\.9\.5`/);
   assert.match(readme, /项目级搜索画像/);
   assert.match(readme, /\/api\/project-profile/);
-  assert.match(changelog, /## \[4\.9\.4\]/);
+  assert.match(changelog, /## \[4\.9\.5\]/);
   assert.match(changelog, /Project search profile diagnostics/);
   assert.match(roadmap, /项目级搜索画像/);
-  assert.match(roadmap, /v4\.9\.4/);
+  assert.match(roadmap, /v4\.9\.5/);
 });
 
 test("web project profile suggestions provide one-click repair actions", () => {
@@ -485,6 +495,57 @@ test("web search match explanation escapes attribute values and falls back to re
   const fallbackHtml = vm.runInContext(`renderSearchMatchExplanation({ reason: "path+semantic", score: 0.2 })`, context) as string;
   assert.match(fallbackHtml, /路径命中/);
   assert.match(fallbackHtml, /语义召回/);
+
+  const actionsHtml = vm.runInContext(`renderSearchResultActions({
+    filePath: "src/example.ts",
+    startLine: 7,
+    snippet: "  const answer = 42;\\n"
+  })`, context) as string;
+  assert.match(actionsHtml, /data-source-reference="src\/example\.ts:7"/);
+  assert.match(actionsHtml, /data-source-snippet="  const answer = 42;\n"/);
+});
+
+test("web search and QA results expose copy actions and explanation toggles", () => {
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
+
+  assert.match(appJs, /function formatSourceReference\(/);
+  assert.match(appJs, /function getSourceSnippetText\(/);
+  assert.match(appJs, /function hasSourceSnippet\(/);
+  assert.match(appJs, /function renderSearchResultActions\(/);
+  assert.match(appJs, /function bindSearchResultActions\(/);
+  assert.match(appJs, /function bindSearchExplanationToggles\(/);
+  assert.match(appJs, /data-copy-kind="path"/);
+  assert.match(appJs, /data-copy-kind="reference"/);
+  assert.match(appJs, /data-copy-kind="snippet"/);
+  assert.match(appJs, /data-source-path="\$\{escapeHtmlAttribute\(source\.filePath/);
+  assert.match(appJs, /data-source-reference="\$\{escapeHtmlAttribute\(formatSourceReference\(source\)\)\}"/);
+  assert.match(appJs, /data-source-snippet="\$\{escapeHtmlAttribute\(snippet\)\}"/);
+  assert.match(appJs, /dataset\.searchActionBound/);
+  assert.match(appJs, /button\.dataset\.searchActionBound = "1"/);
+  assert.match(appJs, /copyTextToClipboard\(value, button\)/);
+  assert.match(appJs, /search-result-action/);
+  assert.match(appJs, /search-explanations-toggle/);
+  assert.match(appJs, /data-explanation-action="expand"/);
+  assert.match(appJs, /data-explanation-action="collapse"/);
+  assert.match(appJs, /search-explanations-collapsed/);
+  assert.match(appJs, /bindSearchResultActions\(\)/);
+  assert.match(appJs, /bindSearchExplanationToggles\(\)/);
+  assert.match(appJs, /renderSearchResultActions\(item\)/);
+  assert.match(appJs, /renderSearchResultActions\(source\)/);
+  assert.match(css, /\.search-result-actions/);
+  assert.match(css, /\.search-result-action/);
+  assert.match(css, /\.search-explanations-toggle/);
+  assert.match(css, /\.search-explanations-collapsed/);
+  assert.match(readme, /搜索结果可操作化/);
+  assert.match(readme, /复制路径/);
+  assert.match(readme, /复制引用/);
+  assert.match(readme, /复制代码片段/);
+  assert.match(changelog, /Search result actions/);
+  assert.match(roadmap, /搜索结果可操作化/);
 });
 
 test("release secret scanner guards env tokens without leaking values", () => {

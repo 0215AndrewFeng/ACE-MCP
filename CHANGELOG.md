@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.5] - 2026-07-02
+
+### Search result actions
+
+- Web 搜索结果摘要区和 QA 来源卡片新增复制操作：复制文件路径、复制 `path:line` 引用，以及在有 snippet 时复制代码片段。
+- 搜索结果命中解释区新增“展开全部 / 收起全部”，可批量控制“为什么命中”标签显示。
+- metadata 模式结果即使没有 snippet，也保留路径和引用复制能力，不改变搜索排序、索引、原始 JSON 输出或后端 API。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.5。
+
 ## [4.9.4] - 2026-07-02
 
 ### Search result match explanations

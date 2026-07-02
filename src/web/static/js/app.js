@@ -488,14 +488,48 @@ function renderSearchMatchExplanation(source) {
   </div>`;
 }
 
+function formatSourceReference(source) {
+  const filePath = source?.filePath || "--";
+  const startLine = Number(source?.startLine || 0);
+  return startLine > 0 ? `${filePath}:${startLine}` : filePath;
+}
+
+function getSourceSnippetText(source) {
+  return String(source?.snippet || "");
+}
+
+function hasSourceSnippet(source) {
+  return getSourceSnippetText(source).trim().length > 0;
+}
+
+function renderSearchResultActions(source) {
+  if (!source?.filePath) return "";
+  const snippet = getSourceSnippetText(source);
+  const snippetButton = hasSourceSnippet(source)
+    ? `<button type="button" class="search-result-action" data-copy-kind="snippet" data-source-snippet="${escapeHtmlAttribute(snippet)}" title="复制代码片段">复制片段</button>`
+    : "";
+  return `<div class="search-result-actions">
+    <button type="button" class="search-result-action" data-copy-kind="path" data-source-path="${escapeHtmlAttribute(source.filePath)}" title="复制文件路径">复制路径</button>
+    <button type="button" class="search-result-action" data-copy-kind="reference" data-source-reference="${escapeHtmlAttribute(formatSourceReference(source))}" title="复制 path:line 引用">复制引用</button>
+    ${snippetButton}
+  </div>`;
+}
+
 function renderSearchResultExplanations(results) {
   const items = Array.isArray(results) ? results.slice(0, 5) : [];
   if (items.length === 0) return "";
   return `<div class="search-result-explanations">
-    <strong>搜索结果命中解释</strong>
+    <div class="search-result-explanations-header">
+      <strong>搜索结果命中解释</strong>
+      <div class="search-explanations-controls">
+        <button type="button" class="search-explanations-toggle" data-explanation-action="expand">展开全部</button>
+        <button type="button" class="search-explanations-toggle" data-explanation-action="collapse">收起全部</button>
+      </div>
+    </div>
     ${items.map((item, index) => `<div class="search-result-explanation">
       <span class="search-result-explanation-index">#${index + 1}</span>
       <span class="search-result-explanation-path">${escapeHtml(item.filePath || "--")}</span>
+      ${renderSearchResultActions(item)}
       ${renderSearchMatchExplanation(item)}
     </div>`).join("")}
   </div>`;
@@ -640,6 +674,35 @@ function copyText(filePath) {
   return copyTextToClipboard(filePath);
 }
 
+function bindSearchResultActions() {
+  document.querySelectorAll(".search-result-action").forEach((button) => {
+    if (button.dataset.searchActionBound === "1") return;
+    button.dataset.searchActionBound = "1";
+    button.addEventListener("click", () => {
+      const kind = button.getAttribute("data-copy-kind");
+      const value = kind === "reference"
+        ? button.getAttribute("data-source-reference")
+        : kind === "snippet"
+          ? button.getAttribute("data-source-snippet")
+          : button.getAttribute("data-source-path");
+      if (!value) return;
+      copyTextToClipboard(value, button);
+    });
+  });
+}
+
+function bindSearchExplanationToggles() {
+  if (!resultSummaryEl) return;
+  resultSummaryEl.querySelectorAll(".search-explanations-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.getAttribute("data-explanation-action");
+      resultSummaryEl.querySelectorAll(".search-result-explanation").forEach((item) => {
+        item.classList.toggle("search-explanations-collapsed", action === "collapse");
+      });
+    });
+  });
+}
+
 async function runProjectProfileFix(code, profile) {
   const projectRootPath = profile?.projectRootPath || projectRootInput.value?.trim();
   if (!projectRootPath) throw new Error("projectRootPath is required");
@@ -716,6 +779,8 @@ function renderSummary(data) {
     resultSummaryEl.hidden = false;
     resultSummaryEl.innerHTML = data.summaryHtml;
     bindFailedFileCopyActions();
+    bindSearchResultActions();
+    bindSearchExplanationToggles();
     return;
   }
 
@@ -723,6 +788,8 @@ function renderSummary(data) {
     resultSummaryEl.hidden = false;
     resultSummaryEl.innerHTML = renderProjectProfileSummary(payload);
     bindProjectProfileActions(payload);
+    bindSearchResultActions();
+    bindSearchExplanationToggles();
     return;
   }
 
@@ -751,6 +818,8 @@ function renderSummary(data) {
   if (cards.length === 0) {
     resultSummaryEl.hidden = explanationHtml === "";
     resultSummaryEl.innerHTML = explanationHtml;
+    bindSearchResultActions();
+    bindSearchExplanationToggles();
     return;
   }
 
@@ -758,6 +827,8 @@ function renderSummary(data) {
   resultSummaryEl.innerHTML = cards.map(card =>
     `<div class="result-summary-card"><strong>${escapeHtml(card.label)}</strong><span>${escapeHtml(card.value)}</span></div>`
   ).join("") + explanationHtml;
+  bindSearchResultActions();
+  bindSearchExplanationToggles();
 }
 
 async function run(action) {
@@ -1426,6 +1497,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
           L${source.startLine}-${source.endLine} (${totalLines} lines)
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
+        ${renderSearchResultActions(source)}
         ${renderSearchMatchExplanation(source)}
         <div class="qa-source-snippet-container" id="${snippetId}">
           <div class="qa-source-snippet-preview" hidden>${previewHtml}</div>
@@ -1692,6 +1764,7 @@ async function runAskQuestion() {
                 const maxScore = Math.max(...data.sources.map(s => s.score || 0));
                 const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
                 sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>` + cards;
+                bindSearchResultActions();
                 sourcesListEl.hidden = false;
               }
               break;

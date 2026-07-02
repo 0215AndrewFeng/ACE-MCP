@@ -61,10 +61,11 @@
 46. ✅ **画像一键修复**：搜索画像诊断建议可直接触发全量索引、摘要生成、向量预热或失败文件查看，任务完成后自动刷新任务中心和画像（v4.9.2）
 47. ✅ **画像修复结果可见化**：一键修复完成后展示任务状态、耗时、画像前后差异；失败文件查看改为明细面板，显示路径/错误并支持复制路径（v4.9.3）
 48. ✅ **搜索结果命中解释**：Web 搜索结果摘要区和问答来源卡片展示 `reason`、`score`、命中来源、关键词覆盖、路径/符号/片段命中，说明“为什么命中”（v4.9.4）
-49. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-50. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-51. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-52. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+49. ✅ **搜索结果可操作化**：Web 搜索结果和 QA 来源卡片可复制文件路径、`path:line` 引用和代码片段，搜索摘要支持展开/收起所有命中解释（v4.9.5）
+50. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+51. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+52. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+53. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

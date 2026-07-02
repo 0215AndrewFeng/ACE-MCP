@@ -1,3 +1,39 @@
+# v4.9.5 Search Result Actions
+
+Author: feng.ling
+
+## Goal
+
+Make Web search and QA source results directly actionable by adding copy controls for file paths, `path:line` references, and snippets, plus compact controls to expand or collapse all match explanations.
+
+## Plan
+
+- [x] Write failing static package contract tests for result action rendering, copy handlers, explanation expand/collapse controls, metadata-mode path copy support, and v4.9.5 docs/version references.
+- [x] Implement reusable Web helpers for source reference formatting, snippet extraction, copy button rendering, and action binding without changing search result ordering or backend APIs.
+- [x] Add action buttons to search result explanation rows and QA source cards: copy file path, copy `path:startLine`, and copy snippet when available.
+- [x] Add search summary controls to expand or collapse all match explanation chips while keeping raw JSON output unchanged.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.5.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Static contract tests prove Web result cards expose copy controls, bind copy handlers, keep metadata-mode path copy available without snippets, and include v4.9.5 docs/version references.
+- Focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.5 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.5 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.5` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.5 after user approved search-result action controls. Scope is Web UI ergonomics over existing search/QA result data; no search backend, scoring, indexing, or API contract change planned.
+- 2026-07-02: RED confirmed missing v4.9.5 docs/version references and Web result action contracts. GREEN added copy path/reference/snippet controls, search explanation expand/collapse binding, metadata-mode path/reference action coverage, CSS styling, and v4.9.5 docs/version updates; focused package contract test passed with 19 tests.
+- 2026-07-02: Review caught duplicate click-listener risk when QA source cards remain mounted across summary refreshes. RED added an idempotent binding contract for search result actions; GREEN stores `dataset.searchActionBound` before attaching the listener, and the focused package contract test passed with 19 tests.
+- 2026-07-02: Subagent review found copy-snippet values trimmed leading/trailing whitespace and noted missing version-sync assertions. RED added a VM render assertion for snippet whitespace preservation plus package-lock/`APP_VERSION` version checks; GREEN split snippet presence detection from copied snippet text, and the focused package contract test passed with 19 tests.
+- 2026-07-02: Full local validation passed before release commit: `npm test` passed with 112 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.5`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.5.tgz` and `release/ace-mcp-v4.9.5-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.4 Search Result Match Explanation
 
 Author: feng.ling
