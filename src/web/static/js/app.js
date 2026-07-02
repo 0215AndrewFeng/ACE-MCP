@@ -473,10 +473,63 @@ function renderProjectProfileSummary(profile) {
   const suggestionHtml = suggestions.length > 0
     ? `<div class="diagnostic-suggestions">${suggestions.map((suggestion) => {
       const label = suggestionLabels[suggestion.code] || suggestion.code;
-      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}</span>`;
+      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}<button type="button" class="btn-secondary btn-small profile-fix-action" data-profile-fix="${escapeHtml(suggestion.code)}">${escapeHtml(label)}</button></span>`;
     }).join("")}</div>`
     : "";
   return `${cardHtml}${suggestionHtml}`;
+}
+
+async function refreshProjectProfile(projectRootPath) {
+  const profile = await request("GET", "/api/project-profile?projectRootPath=" + encodeURIComponent(projectRootPath));
+  render(profile);
+  return profile;
+}
+
+async function runProjectProfileFix(code, profile) {
+  const projectRootPath = profile?.projectRootPath || projectRootInput.value?.trim();
+  if (!projectRootPath) throw new Error("projectRootPath is required");
+
+  if (code === "RUN_FULL_INDEX") {
+    const accepted = await submitIndexTask({ mode: "full", projectRootPath });
+    const taskId = accepted?.data?.taskId;
+    if (taskId) await pollTask(taskId);
+    await refreshTaskCenter();
+    return await refreshProjectProfile(projectRootPath);
+  }
+
+  if (code === "GENERATE_SUMMARY") {
+    const accepted = await request("POST", "/api/summary/generate", { projectRootPath });
+    const taskId = accepted?.data?.taskId;
+    if (taskId) await pollTask(taskId);
+    await refreshTaskCenter();
+    return await refreshProjectProfile(projectRootPath);
+  }
+
+  if (code === "WARM_VECTOR_INDEX") {
+    await request("POST", "/api/index/warm", { projectRootPath });
+    await refreshTaskCenter();
+    return await refreshProjectProfile(projectRootPath);
+  }
+
+  if (code === "REVIEW_FAILED_FILES") {
+    return {
+      failedFiles: profile?.latestIndexing?.failedFiles || [],
+      projectRootPath,
+    };
+  }
+
+  return await refreshProjectProfile(projectRootPath);
+}
+
+function bindProjectProfileActions(payload) {
+  if (!resultSummaryEl) return;
+  resultSummaryEl.querySelectorAll(".profile-fix-action").forEach((button) => {
+    button.addEventListener("click", () => run(async () => {
+      const code = button.getAttribute("data-profile-fix");
+      if (!code) return payload;
+      return runProjectProfileFix(code, payload);
+    }));
+  });
 }
 
 function render(data) {
@@ -496,6 +549,7 @@ function renderSummary(data) {
   if (payload?.diagnostics?.suggestions && payload?.counts && payload?.vector && payload?.summary) {
     resultSummaryEl.hidden = false;
     resultSummaryEl.innerHTML = renderProjectProfileSummary(payload);
+    bindProjectProfileActions(payload);
     return;
   }
 

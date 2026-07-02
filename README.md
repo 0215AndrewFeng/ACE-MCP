@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.9.1`
+当前版本：`v4.9.2`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -83,17 +83,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.9.1.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.9.2.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.9.1.tgz
+npm install -g ./ace-mcp-4.9.2.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.9.1.tgz
+npm install -g .\ace-mcp-4.9.2.tgz
 ace-mcp-web
 ```
 
@@ -102,13 +102,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.1/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.2/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.9.1 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.1/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.9.2 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.2/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -138,8 +138,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.9.1/ace-mcp-4.9.1.tgz
-npm install -g ./ace-mcp-4.9.1.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.9.2/ace-mcp-4.9.2.tgz
+npm install -g ./ace-mcp-4.9.2.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -163,7 +163,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.9.1-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.9.2-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -224,7 +224,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.9.1.tgz
+npm install -g ./ace-mcp-4.9.2.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -260,13 +260,13 @@ npm run security:secrets
 发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.1
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.2
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.9.1
+npm run release:verify-assets -- --version 4.9.2
 ```
 
 ## 本地运行
@@ -562,7 +562,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.9.1（当前版本）
+### v4.9.2（当前版本）
+
+- **画像一键修复**：搜索画像的诊断建议直接提供按钮，点击即可提交对应修复动作
+- **修复动作闭环**：`RUN_FULL_INDEX` 提交全量索引任务，`GENERATE_SUMMARY` 提交摘要任务，`WARM_VECTOR_INDEX` 调用向量预热，完成后自动刷新任务中心和搜索画像
+- **失败文件查看**：`REVIEW_FAILED_FILES` 可直接展开最近索引失败文件，减少在 JSON 中查找问题的步骤
+
+### v4.9.1
 
 - **项目级搜索画像**：新增 `/api/project-profile`，一次性返回索引数量、语言分布、摘要状态、向量覆盖、最近索引事件和项目状态
 - **召回诊断建议**：自动提示需要全量索引、生成摘要、预热向量、重建符号或检查失败文件，定位“为什么搜不到”的常见原因

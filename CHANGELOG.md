@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.2] - 2026-07-02
+
+### Project profile one-click fixes
+
+- 搜索画像诊断建议改为可点击操作，用户可从画像结果区直接触发对应修复动作。
+- `RUN_FULL_INDEX` 提交全量索引任务并轮询完成，`GENERATE_SUMMARY` 提交摘要任务并轮询完成，`WARM_VECTOR_INDEX` 调用向量预热接口。
+- 修复动作完成后自动刷新任务中心和项目搜索画像，减少手动切换按钮和重复刷新。
+- `REVIEW_FAILED_FILES` 可直接展示最近索引失败文件列表，便于快速定位失败原因。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.2。
+
 ## [4.9.1] - 2026-07-02
 
 ### Project search profile diagnostics

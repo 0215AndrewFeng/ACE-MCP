@@ -1,3 +1,34 @@
+# v4.9.2 Project Profile One-Click Fixes
+
+Author: feng.ling
+
+## Goal
+
+Close the Web diagnostics loop by turning project profile suggestions into one-click actions that submit the matching repair work, refresh task visibility, and reload the profile after the repair completes.
+
+## Plan
+
+- [x] Write failing static package contract tests for project profile suggestion action buttons, fix dispatcher, task polling, profile refresh, and v4.9.2 docs/version references.
+- [x] Implement Web suggestion actions for full index, summary generation, vector warmup, and failed-file review using existing `/api/index-project`, `/api/summary/generate`, `/api/index/warm`, task polling, and profile reload.
+- [x] Keep unsupported/manual diagnostics visible without breaking raw JSON output.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package docs to v4.9.2.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Static contract tests prove the Web profile suggestions render actionable controls and wire `RUN_FULL_INDEX`, `GENERATE_SUMMARY`, `WARM_VECTOR_INDEX`, and `REVIEW_FAILED_FILES`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.2 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.2 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.2` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.2 after user approved one-click project profile repair. Scope is front-end repair orchestration on top of existing index, summary, warm, task, and profile APIs.
+- 2026-07-02: RED confirmed missing one-click Web profile actions and v4.9.2 docs/version references. GREEN added profile suggestion buttons, repair dispatch for full index/summary/vector warmup/failed-file review, task polling, task-center refresh, profile reload, and docs/version updates. Focused package contract tests passed with 15 tests, full `npm test` passed with 108 tests, `npm run build` passed, and `zsh -ic 'npm run release:check'` passed including secret scan, smoke, benchmark, tgz, and Windows zip generation.
+
 # v4.9.1 Project Search Profile Diagnostics
 
 Author: feng.ling
