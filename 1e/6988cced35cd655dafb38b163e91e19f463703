@@ -1,0 +1,19 @@
+tasks/todo.md
+  s_3a219f3e07a2c0::t_4b4b82d443c861 16,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1e6988cced35cd655dafb38b163e91e19f463703",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
