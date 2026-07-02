@@ -12,7 +12,7 @@ Make Web search results explain why they matched by surfacing existing result re
 - [x] Implement Web rendering helpers that turn result `reason`, `score`, and `explanation` fields into concise "why matched" labels.
 - [x] Show explanation details on search/source result cards while preserving raw JSON output and existing result ordering.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.4.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -30,6 +30,7 @@ Make Web search results explain why they matched by surfacing existing result re
 - 2026-07-02: RED confirmed missing v4.9.4 docs/version references and Web match-explanation contracts. GREEN added search match explanation helpers, summary/source-card rendering, CSS styling, v4.9.4 docs/version updates, and focused package contract test passed with 17 tests.
 - 2026-07-02: Review found `title` attribute escaping risk in the match explanation tooltip. Added a focused VM render test for quote-bearing tokens and reason fallback, introduced `escapeHtmlAttribute`, and reran focused package contract tests with 18 passing tests.
 - 2026-07-02: Full local validation passed before release commit: `npm test` passed with 111 tests, `npm run build` passed, `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; `node dist/index.js --version` returned `4.9.4`; `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error; package content checks confirmed Web JS/CSS and release scripts are included in tgz and Windows zip.
+- 2026-07-02: Release handoff complete: committed `96dbf0e`, tagged and pushed `v4.9.4`, pushed `master`, published Gitee Release `v4.9.4` (#731386), uploaded `ace-mcp-4.9.4.tgz` and `ace-mcp-v4.9.4-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.4` on pid `70043`.
 
 # v4.9.3 Profile Repair Result Visibility
 
