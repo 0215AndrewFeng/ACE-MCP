@@ -29,10 +29,10 @@ test("package manifest is ready for npm and tgz global installation", () => {
   const lock = readJson<PackageLockJson>("package-lock.json");
   const versionTs = readFileSync(path.join(rootDir, "src/version.ts"), "utf8");
 
-  assert.equal(pkg.version, "4.9.5");
+  assert.equal(pkg.version, "4.9.6");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages?.[""]?.version, pkg.version);
-  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.9\.5"/);
+  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.9\.6"/);
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -194,14 +194,14 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.5\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.6\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.9\.5/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.9\.6/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
@@ -224,13 +224,13 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.5/);
-  assert.match(readme, /raw\/v4\.9\.5\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.6/);
+  assert.match(readme, /raw\/v4\.9\.6\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.5/);
-  assert.match(checklist, /ace-mcp-4\.9\.5\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.9\.5-win-x64\.zip/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.6/);
+  assert.match(checklist, /ace-mcp-4\.9\.6\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.9\.6-win-x64\.zip/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -252,18 +252,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.9\.5/);
+  assert.match(readme, /npm run release:publish -- --version 4\.9\.6/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.9\.5/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.9\.6/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.9\.5-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.9\.6-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -272,10 +272,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.9.5 verification gates", () => {
+test("release checklist records the v4.9.6 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.9\.5/);
+  assert.match(checklist, /v4\.9\.6/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
@@ -287,7 +287,7 @@ test("release checklist records the v4.9.5 verification gates", () => {
   assert.match(checklist, /npm run release:publish/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.9\.5/);
+  assert.match(checklist, /git tag -a v4\.9\.6/);
 });
 
 test("web project profile diagnostics are wired through API and static controls", () => {
@@ -306,13 +306,13 @@ test("web project profile diagnostics are wired through API and static controls"
   assert.match(appJs, /GENERATE_SUMMARY/);
   assert.match(appJs, /WARM_VECTOR_INDEX/);
   assert.match(appJs, /REVIEW_FAILED_FILES/);
-  assert.match(readme, /当前版本：`v4\.9\.5`/);
+  assert.match(readme, /当前版本：`v4\.9\.6`/);
   assert.match(readme, /项目级搜索画像/);
   assert.match(readme, /\/api\/project-profile/);
-  assert.match(changelog, /## \[4\.9\.5\]/);
+  assert.match(changelog, /## \[4\.9\.6\]/);
   assert.match(changelog, /Project search profile diagnostics/);
   assert.match(roadmap, /项目级搜索画像/);
-  assert.match(roadmap, /v4\.9\.5/);
+  assert.match(roadmap, /v4\.9\.6/);
 });
 
 test("web project profile suggestions provide one-click repair actions", () => {
@@ -546,6 +546,121 @@ test("web search and QA results expose copy actions and explanation toggles", ()
   assert.match(readme, /复制代码片段/);
   assert.match(changelog, /Search result actions/);
   assert.match(roadmap, /搜索结果可操作化/);
+});
+
+test("web search and QA results lazy-load wider source context", () => {
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
+
+  assert.match(appJs, /const LAZY_CONTEXT_LINES = 30;/);
+  assert.match(appJs, /function buildLazyContextRange\(/);
+  assert.match(appJs, /function renderLazyContextAction\(/);
+  assert.match(appJs, /function bindLazyContextActions\(/);
+  assert.match(appJs, /async function loadLazyContextPreview\(/);
+  assert.match(appJs, /function renderLazyContextSnippet\(/);
+  assert.match(appJs, /response\?\.meta\?\.snippet\?\.endLine/);
+  assert.match(appJs, /data-context-action="load"/);
+  assert.match(appJs, /data-context-file-path="\$\{escapeHtmlAttribute\(source\.filePath\)\}"/);
+  assert.match(appJs, /data-context-start-line="\$\{range\.startLine\}"/);
+  assert.match(appJs, /data-context-end-line="\$\{range\.endLine\}"/);
+  assert.match(appJs, /request\("POST", "\/api\/file-snippet"/);
+  assert.match(appJs, /projectRootPath: projectRootInput\.value\.trim\(\)/);
+  assert.match(appJs, /filePath: button\.getAttribute\("data-context-file-path"\)/);
+  assert.match(appJs, /startLine: Number\(button\.getAttribute\("data-context-start-line"\)/);
+  assert.match(appJs, /endLine: Number\(button\.getAttribute\("data-context-end-line"\)/);
+  assert.match(appJs, /lazy-context-preview/);
+  assert.match(appJs, /bindLazyContextActions\(\)/);
+  assert.match(appJs, /renderLazyContextAction\(item\)/);
+  assert.match(appJs, /renderLazyContextAction\(source\)/);
+  assert.match(css, /\.lazy-context-preview/);
+  assert.match(css, /\.lazy-context-action/);
+  assert.match(css, /\.lazy-context-error/);
+  assert.match(readme, /懒加载上下文预览/);
+  assert.match(readme, /更多上下文/);
+  assert.match(changelog, /Lazy context preview/);
+  assert.match(roadmap, /懒加载上下文预览/);
+
+  const element = () => {
+    const node = {
+      addEventListener() {},
+      appendChild() {},
+      append() {},
+      classList: { add() {}, remove() {}, toggle() { return false; } },
+      click() {},
+      dataset: {},
+      hidden: false,
+      innerHTML: "",
+      options: [{ text: "" }],
+      parentElement: null,
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      remove() {},
+      select() {},
+      selectedIndex: 0,
+      setAttribute() {},
+      style: {},
+      value: "",
+    };
+    Object.defineProperty(node, "textContent", {
+      get() {
+        return node.innerHTML;
+      },
+      set(value) {
+        node.innerHTML = String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      },
+    });
+    return node;
+  };
+  const context = vm.createContext({
+    AbortController,
+    alert() {},
+    clearTimeout,
+    confirm() { return false; },
+    console,
+    document: {
+      addEventListener() {},
+      body: element(),
+      createElement() { return element(); },
+      execCommand() { return true; },
+      getElementById() { return element(); },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    },
+    fetch() {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ projects: [], tasks: [] }),
+      });
+    },
+    localStorage: {
+      getItem() { return null; },
+      removeItem() {},
+      setItem() {},
+    },
+    navigator: {},
+    setInterval() { return 1; },
+    setTimeout,
+    URLSearchParams,
+    window: { confirm() { return false; }, isSecureContext: false },
+  });
+
+  vm.runInContext(appJs, context);
+  const actionHtml = vm.runInContext(`renderLazyContextAction({
+    filePath: "src/example.ts",
+    startLine: 40,
+    endLine: 45,
+    snippet: ""
+  })`, context) as string;
+  assert.match(actionHtml, /data-context-action="load"/);
+  assert.match(actionHtml, /data-context-start-line="10"/);
+  assert.match(actionHtml, /data-context-end-line="75"/);
+  assert.match(actionHtml, />更多上下文</);
 });
 
 test("release secret scanner guards env tokens without leaking values", () => {

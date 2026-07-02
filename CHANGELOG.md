@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.6] - 2026-07-02
+
+### Lazy context preview
+
+- Web 搜索结果摘要区和 QA 来源卡片新增“更多上下文”，点击后才调用 `/api/file-snippet` 拉取命中行前后代码。
+- metadata 模式结果不带 snippet 时也能按文件路径和行号懒加载源码上下文，不增加默认搜索响应体积。
+- 懒加载上下文复用现有高亮和行号渲染，失败时在卡片内显示错误并支持重试。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.6。
+
 ## [4.9.5] - 2026-07-02
 
 ### Search result actions

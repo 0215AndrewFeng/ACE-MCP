@@ -1,3 +1,37 @@
+# v4.9.6 Lazy Context Preview
+
+Author: feng.ling
+
+## Goal
+
+Let Web search result explanations and QA source cards load a wider code context on demand, so users can inspect surrounding code directly without changing search ranking, indexing, or default response payload size.
+
+## Plan
+
+- [x] Write failing package/static contracts for v4.9.6 docs/version references, lazy context preview controls, `/api/file-snippet` payload wiring, metadata-mode compatibility, and CSS states.
+- [x] Add reusable Web helpers to derive preview ranges from `filePath/startLine/endLine`, render a "more context" action, request `/api/file-snippet` only after click, and render highlighted line-numbered context.
+- [x] Add lazy context preview actions to search result explanation rows and QA source cards while preserving existing copy actions, raw JSON output, and QA snippet expand/collapse behavior.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.6.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Static and VM contract tests prove lazy context buttons are rendered for search/QA sources, preserve metadata-mode path-only behavior, call `/api/file-snippet` with expanded line ranges, and render returned snippets without preloading them.
+- Focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.6 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.6 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.6` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.6 after user approved lazy context preview. Scope is Web UI inspection over existing `/api/file-snippet`; no search backend, ranking, indexing, or MCP API contract change planned.
+- 2026-07-02: RED confirmed missing v4.9.6 docs/version references and lazy context preview contracts. GREEN added range derivation, "更多上下文" actions, click-only `/api/file-snippet` loading, line-numbered highlighted preview rendering, CSS states, metadata-mode coverage, and v4.9.6 docs/version updates; focused package contract test passed with 20 tests.
+- 2026-07-02: Review found preview headers should use server-clamped snippet end lines instead of deriving from split line count. RED added a contract for `response.meta.snippet.endLine`; GREEN updated preview rendering to display returned start/end range, and the focused package contract test passed with 20 tests.
+- 2026-07-02: Full local validation passed before release commit: `npm test` passed with 113 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.6`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.6.tgz` and `release/ace-mcp-v4.9.6-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.5 Search Result Actions
 
 Author: feng.ling

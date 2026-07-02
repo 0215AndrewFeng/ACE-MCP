@@ -9,6 +9,7 @@ const QA_CONTEXT_TOKENS_DEFAULT = 48000;
 const QA_MAX_TOKENS = 32768;
 const QA_TIMEOUT_SECONDS_MAX = 600;
 const QA_RETRIES_MAX = 5;
+const LAZY_CONTEXT_LINES = 30;
 
 const resultEl = document.getElementById("result");
 const resultSummaryEl = document.getElementById("result-summary");
@@ -515,6 +516,31 @@ function renderSearchResultActions(source) {
   </div>`;
 }
 
+function buildLazyContextRange(source) {
+  const startLine = Math.max(1, Number(source?.startLine || 1));
+  const endLine = Math.max(startLine, Number(source?.endLine || startLine));
+  return {
+    startLine: Math.max(1, startLine - LAZY_CONTEXT_LINES),
+    endLine: endLine + LAZY_CONTEXT_LINES,
+  };
+}
+
+function renderLazyContextAction(source) {
+  if (!source?.filePath) return "";
+  const range = buildLazyContextRange(source);
+  return `<div class="lazy-context-panel">
+    <button type="button"
+      class="lazy-context-action"
+      data-context-action="load"
+      data-context-file-path="${escapeHtmlAttribute(source.filePath)}"
+      data-context-start-line="${range.startLine}"
+      data-context-end-line="${range.endLine}"
+      data-context-language="${escapeHtmlAttribute(source.language || "")}"
+      title="按需加载更大范围的代码上下文">更多上下文</button>
+    <div class="lazy-context-preview" hidden></div>
+  </div>`;
+}
+
 function renderSearchResultExplanations(results) {
   const items = Array.isArray(results) ? results.slice(0, 5) : [];
   if (items.length === 0) return "";
@@ -530,6 +556,7 @@ function renderSearchResultExplanations(results) {
       <span class="search-result-explanation-index">#${index + 1}</span>
       <span class="search-result-explanation-path">${escapeHtml(item.filePath || "--")}</span>
       ${renderSearchResultActions(item)}
+      ${renderLazyContextAction(item)}
       ${renderSearchMatchExplanation(item)}
     </div>`).join("")}
   </div>`;
@@ -703,6 +730,58 @@ function bindSearchExplanationToggles() {
   });
 }
 
+function renderLazyContextSnippet(snippet, startLine, endLine, language) {
+  const lines = String(snippet || "").split("\n");
+  if (lines.length === 1 && lines[0] === "") {
+    return `<div class="lazy-context-empty">没有读取到代码片段</div>`;
+  }
+  const body = lines.map((line, index) =>
+    `<div class="snippet-line"><span class="snippet-linenum">${startLine + index}</span>${highlightSyntax(line, language, [])}</div>`
+  ).join("");
+  return `<div class="lazy-context-meta">上下文 L${startLine}-${endLine}</div>
+  <div class="lazy-context-snippet">${body}</div>`;
+}
+
+async function loadLazyContextPreview(button) {
+  const panel = button.closest(".lazy-context-panel");
+  const preview = panel?.querySelector(".lazy-context-preview");
+  if (!preview) return;
+  button.disabled = true;
+  button.textContent = "加载中...";
+  preview.hidden = false;
+  preview.innerHTML = `<div class="lazy-context-meta">正在读取更多上下文...</div>`;
+  try {
+    const response = await request("POST", "/api/file-snippet", {
+      projectRootPath: projectRootInput.value.trim(),
+      filePath: button.getAttribute("data-context-file-path"),
+      startLine: Number(button.getAttribute("data-context-start-line") || 1),
+      endLine: Number(button.getAttribute("data-context-end-line") || 1),
+    });
+    const startLine = Number(response?.meta?.snippet?.startLine || button.getAttribute("data-context-start-line") || 1);
+    const endLine = Number(response?.meta?.snippet?.endLine || button.getAttribute("data-context-end-line") || startLine);
+    preview.innerHTML = renderLazyContextSnippet(
+      response?.data?.snippet || "",
+      startLine,
+      endLine,
+      button.getAttribute("data-context-language") || "",
+    );
+    button.textContent = "刷新上下文";
+  } catch (err) {
+    preview.innerHTML = `<div class="lazy-context-error">${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
+    button.textContent = "重试上下文";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function bindLazyContextActions() {
+  document.querySelectorAll(".lazy-context-action").forEach((button) => {
+    if (button.dataset.lazyContextBound === "1") return;
+    button.dataset.lazyContextBound = "1";
+    button.addEventListener("click", () => loadLazyContextPreview(button));
+  });
+}
+
 async function runProjectProfileFix(code, profile) {
   const projectRootPath = profile?.projectRootPath || projectRootInput.value?.trim();
   if (!projectRootPath) throw new Error("projectRootPath is required");
@@ -781,6 +860,7 @@ function renderSummary(data) {
     bindFailedFileCopyActions();
     bindSearchResultActions();
     bindSearchExplanationToggles();
+    bindLazyContextActions();
     return;
   }
 
@@ -790,6 +870,7 @@ function renderSummary(data) {
     bindProjectProfileActions(payload);
     bindSearchResultActions();
     bindSearchExplanationToggles();
+    bindLazyContextActions();
     return;
   }
 
@@ -820,6 +901,7 @@ function renderSummary(data) {
     resultSummaryEl.innerHTML = explanationHtml;
     bindSearchResultActions();
     bindSearchExplanationToggles();
+    bindLazyContextActions();
     return;
   }
 
@@ -829,6 +911,7 @@ function renderSummary(data) {
   ).join("") + explanationHtml;
   bindSearchResultActions();
   bindSearchExplanationToggles();
+  bindLazyContextActions();
 }
 
 async function run(action) {
@@ -1498,6 +1581,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
         ${renderSearchResultActions(source)}
+        ${renderLazyContextAction(source)}
         ${renderSearchMatchExplanation(source)}
         <div class="qa-source-snippet-container" id="${snippetId}">
           <div class="qa-source-snippet-preview" hidden>${previewHtml}</div>
@@ -1765,6 +1849,7 @@ async function runAskQuestion() {
                 const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
                 sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>` + cards;
                 bindSearchResultActions();
+                bindLazyContextActions();
                 sourcesListEl.hidden = false;
               }
               break;
