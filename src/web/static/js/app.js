@@ -10,6 +10,12 @@ const QA_MAX_TOKENS = 32768;
 const QA_TIMEOUT_SECONDS_MAX = 600;
 const QA_RETRIES_MAX = 5;
 const LAZY_CONTEXT_LINES = 30;
+const CONTEXT_BUNDLE_TASK_PRESETS = [
+  "解释这段逻辑",
+  "找潜在 bug",
+  "生成修改方案",
+  "补测试",
+];
 
 const resultEl = document.getElementById("result");
 const resultSummaryEl = document.getElementById("result-summary");
@@ -580,11 +586,20 @@ function renderSourceBundleSelector(source, id) {
 }
 
 function renderContextBundleToolbar(scope) {
+  const presetButtons = CONTEXT_BUNDLE_TASK_PRESETS.map((preset) =>
+    `<button type="button" class="context-bundle-preset" data-context-bundle-preset="${escapeHtmlAttribute(preset)}">${escapeHtml(preset)}</button>`
+  ).join("");
   return `<div class="context-bundle-toolbar" data-context-bundle-scope="${escapeHtmlAttribute(scope)}">
     <strong>上下文包</strong>
-    <button type="button" class="context-bundle-action" data-context-bundle-action="copy">复制上下文包</button>
-    <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="codex">发送到 Codex</button>
-    <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="claude">发送到 Claude</button>
+    <div class="context-bundle-actions">
+      <button type="button" class="context-bundle-action" data-context-bundle-action="copy">复制上下文包</button>
+      <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="codex">发送到 Codex</button>
+      <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="claude">发送到 Claude</button>
+    </div>
+    <div class="context-bundle-task">
+      <textarea class="context-bundle-task-input" data-context-bundle-task rows="2" placeholder="任务说明（可选）"></textarea>
+      <div class="context-bundle-presets">${presetButtons}</div>
+    </div>
   </div>`;
 }
 
@@ -607,15 +622,19 @@ function describeBundleAgent(agentKind) {
   return "AI 助手";
 }
 
-function buildContextBundleMarkdown(sources, agentKind) {
+function buildContextBundleMarkdown(sources, agentKind, taskDraft = "") {
   const items = Array.isArray(sources) ? sources.map(normalizeBundleSource).filter((source) => source.filePath) : [];
   const agentName = describeBundleAgent(agentKind);
+  const taskText = String(taskDraft || "").trim();
   const lines = [
     `请用 ${agentName} 基于以下多文件上下文继续分析。`,
+  ];
+  if (taskText) lines.push(`任务说明：${taskText}`);
+  lines.push(
     `项目根目录：${getProjectRootPath() || "(未选择)"}`,
     `共 ${items.length} 个代码片段`,
     "",
-  ];
+  );
 
   items.forEach((source, index) => {
     const absoluteReference = formatSourceAbsoluteReference(source);
@@ -901,7 +920,26 @@ function collectSelectedBundleSources(root = document) {
     .filter(Boolean);
 }
 
+function getContextBundleTaskDraft(root) {
+  const input = root?.querySelector?.("[data-context-bundle-task]");
+  return String(input?.value || "").trim();
+}
+
+function applyContextBundleTaskPreset(button) {
+  const preset = button.getAttribute("data-context-bundle-preset") || "";
+  const toolbar = button.closest(".context-bundle-toolbar");
+  const input = toolbar?.querySelector("[data-context-bundle-task]");
+  if (!input || !preset) return;
+  input.value = preset;
+  if (typeof input.focus === "function") input.focus();
+}
+
 function bindContextBundleActions() {
+  document.querySelectorAll(".context-bundle-preset").forEach((button) => {
+    if (button.dataset.contextBundlePresetBound === "1") return;
+    button.dataset.contextBundlePresetBound = "1";
+    button.addEventListener("click", () => applyContextBundleTaskPreset(button));
+  });
   document.querySelectorAll(".context-bundle-action").forEach((button) => {
     if (button.dataset.contextBundleBound === "1") return;
     button.dataset.contextBundleBound = "1";
@@ -909,7 +947,7 @@ function bindContextBundleActions() {
       const toolbar = button.closest(".context-bundle-toolbar");
       const container = toolbar?.parentElement || document;
       const selectedSources = collectSelectedBundleSources(container);
-      const markdown = buildContextBundleMarkdown(selectedSources, button.getAttribute("data-context-bundle-agent") || "");
+      const markdown = buildContextBundleMarkdown(selectedSources, button.getAttribute("data-context-bundle-agent") || "", getContextBundleTaskDraft(toolbar));
       if (!markdown) return;
       copyTextToClipboard(markdown, button);
     });

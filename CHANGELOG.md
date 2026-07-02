@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.9] - 2026-07-02
+
+### Editable context bundle task draft
+
+- Web 搜索结果摘要区和 QA 来源卡片的上下文包工具栏新增任务说明输入框，可在复制多文件上下文前补充具体任务意图。
+- 新增“解释这段逻辑”“找潜在 bug”“生成修改方案”“补测试”预设任务草稿，点击后仍可继续编辑。
+- 复制上下文包、发送到 Codex、发送到 Claude 会复用同一个任务说明，并把它放在 Markdown 顶部，减少 Agent 接手时的意图丢失。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.9。
+
 ## [4.9.8] - 2026-07-02
 
 ### Result context bundle

@@ -1,3 +1,37 @@
+# v4.9.9 Editable Context Bundle Task Draft
+
+Author: feng.ling
+
+## Goal
+
+Let Web users add or choose a lightweight task instruction before copying a selected context bundle, so Codex/Claude handoff includes both multi-file evidence and the intended work, without changing backend APIs, indexing, or search ranking.
+
+## Plan
+
+- [x] Write failing package/static contracts for v4.9.9 docs/version references, context bundle task textarea, preset buttons, task instruction Markdown output, and Codex/Claude reuse of the same task draft.
+- [x] Implement Web helpers to read task draft text, apply preset task instructions, and inject task intent into context bundle Markdown above selected source details.
+- [x] Add compact task draft controls to search result and QA context bundle toolbars while preserving existing bundle copy buttons and single-result actions.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.9.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- RED/GREEN focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Static and VM contracts prove preset controls render, task draft text is inserted near the top of Markdown, and Codex/Claude bundle buttons reuse the same draft.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Runtime checks: `node dist/index.js --version`, `node dist/index.js --doctor`, `bash -n scripts/install-macos.sh`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.9 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.9 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.9` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.9 after user approved editable task draft for context bundles. Scope is Web UI prompt quality over existing selected result bundle data; no backend, indexing, ranking, or MCP API change planned.
+- 2026-07-02: RED confirmed missing v4.9.9 version contracts plus missing task draft constants, textarea/preset controls, and Markdown task instruction output. GREEN added `CONTEXT_BUNDLE_TASK_PRESETS`, task draft read/apply helpers, compact toolbar textarea/presets, Markdown `任务说明` injection for copy/Codex/Claude actions, CSS styling, and v4.9.9 docs/version updates; focused package contract test passed with 25 tests.
+- 2026-07-02: Review tightened the release: replaced broad package-content `rg` examples with per-artifact `rg -Fx` checks, added a behavior-level DOM/event contract proving preset click is reused by copy/Codex/Claude bundle actions, and updated `tasks/lessons.md`. Focused package contract test passed with 26 tests, full `npm test` passed with 119 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.9`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed every required artifact individually in `ace-mcp-4.9.9.tgz` and `release/ace-mcp-v4.9.9-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.8 Result Context Bundle
 
 Author: feng.ling
