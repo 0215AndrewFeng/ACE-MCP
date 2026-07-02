@@ -13,7 +13,7 @@ Make Web search and QA source results directly actionable by adding copy control
 - [x] Add action buttons to search result explanation rows and QA source cards: copy file path, copy `path:startLine`, and copy snippet when available.
 - [x] Add search summary controls to expand or collapse all match explanation chips while keeping raw JSON output unchanged.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.5.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -33,6 +33,7 @@ Make Web search and QA source results directly actionable by adding copy control
 - 2026-07-02: Review caught duplicate click-listener risk when QA source cards remain mounted across summary refreshes. RED added an idempotent binding contract for search result actions; GREEN stores `dataset.searchActionBound` before attaching the listener, and the focused package contract test passed with 19 tests.
 - 2026-07-02: Subagent review found copy-snippet values trimmed leading/trailing whitespace and noted missing version-sync assertions. RED added a VM render assertion for snippet whitespace preservation plus package-lock/`APP_VERSION` version checks; GREEN split snippet presence detection from copied snippet text, and the focused package contract test passed with 19 tests.
 - 2026-07-02: Full local validation passed before release commit: `npm test` passed with 112 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.5`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.5.tgz` and `release/ace-mcp-v4.9.5-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-02: Release handoff complete: committed `e7d0db0`, tagged and pushed `v4.9.5`, pushed `master`, published Gitee Release `v4.9.5` (#731525), uploaded `ace-mcp-4.9.5.tgz` and `ace-mcp-v4.9.5-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.5` on pid `11253`.
 
 # v4.9.4 Search Result Match Explanation
 
