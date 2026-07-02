@@ -1,3 +1,35 @@
+# v4.9.1 Project Search Profile Diagnostics
+
+Author: feng.ling
+
+## Goal
+
+Add a project-level search profile and recall diagnostics panel so users can quickly see whether a project is indexed, summarized, vector-ready, and likely to return useful search results.
+
+## Plan
+
+- [x] Write failing Web route and static package contract tests for `/api/project-profile`, profile diagnostics fields, Web controls, and v4.9.1 references.
+- [x] Implement a lightweight project profile API that reads project stats, summary metadata, vector coverage, language distribution, and deterministic diagnostic suggestions without slowing `/health`.
+- [x] Add a compact Web profile panel for counts, languages, vector coverage, summary status, latest index metadata, and actionable suggestions.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package docs to v4.9.1.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Focused Web/API tests: `/api/project-profile` validates `projectRootPath`, returns indexed profile details, and reports missing index/summary/vector/symbol diagnostics.
+- Static package contract tests prove v4.9.1 docs/version references and Web UI/API wiring.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.1 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.1 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.1` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.1 after user approved project-level search profile diagnostics. Scope is a detail endpoint and Web visibility; `/health` must remain free of per-project aggregate reads.
+- 2026-07-02: RED confirmed missing `/api/project-profile`, Web search profile controls, and v4.9.1 docs/version references. GREEN added the profile API, Web summary cards/suggestions, docs/version updates, and focused Web/static tests passed with 30 tests.
+
 # v4.8.10 Release Secret Guard
 
 Author: feng.ling

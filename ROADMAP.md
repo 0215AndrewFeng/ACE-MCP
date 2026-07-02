@@ -57,10 +57,11 @@
 42. ✅ **安装发布闭环**：README macOS installer 使用 tag 固定来源，新增 `release:verify-assets` 校验 Gitee tag、tgz、Windows zip 和 installer 下载链路（v4.8.8）
 43. ✅ **Gitee Release 自动发布**：新增 `release:publish`，通过 Gitee OpenAPI 创建/更新 Release、替换上传 tgz/Windows zip 附件并自动验证下载链路（v4.8.9）
 44. ✅ **Release 防泄漏检查**：新增 `security:secrets` 扫描环境变量 token 是否出现在项目文件、tgz/Windows zip 产物或 git history 中，并接入 `release:check`（v4.8.10）
-45. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-46. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-47. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-48. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+45. ✅ **项目级搜索画像**：新增 `/api/project-profile` 和 Web“搜索画像”入口，汇总文件/代码块/符号/语言/摘要/向量覆盖，并给出索引、摘要、向量、符号和失败文件诊断建议（v4.9.1）
+46. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+47. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+48. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+49. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

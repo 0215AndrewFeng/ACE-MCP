@@ -441,6 +441,44 @@ function renderQaEffectiveParams(requestParams) {
   ).join("");
 }
 
+function renderProjectProfileSummary(profile) {
+  const suggestions = profile?.diagnostics?.suggestions || [];
+  const suggestionLabels = {
+    RUN_FULL_INDEX: "全量索引",
+    GENERATE_SUMMARY: "生成摘要",
+    WARM_VECTOR_INDEX: "预热向量",
+    REINDEX_FOR_SYMBOLS: "重建符号",
+    REVIEW_FAILED_FILES: "检查失败文件",
+  };
+  const languages = Array.isArray(profile?.languages) && profile.languages.length > 0
+    ? profile.languages.slice(0, 4).map((item) => `${item.language}:${item.fileCount}`).join(" / ")
+    : "--";
+  const vectorCoverage = profile?.vector?.coverage || {};
+  const vectorPercent = vectorCoverage.totalChunkCount > 0
+    ? `${Math.round((vectorCoverage.coverageRatio || 0) * 100)}%`
+    : "--";
+  const cards = [
+    { label: "画像状态", value: profile?.diagnostics?.status || "--" },
+    { label: "文件", value: String(profile?.counts?.fileCount ?? 0) },
+    { label: "代码块", value: String(profile?.counts?.chunkCount ?? 0) },
+    { label: "符号", value: String(profile?.counts?.symbolCount ?? 0) },
+    { label: "语言", value: languages },
+    { label: "摘要", value: profile?.summary?.found ? `${profile.summary.moduleCount} 模块` : "未生成" },
+    { label: "向量覆盖", value: `${vectorPercent} (${vectorCoverage.indexedChunkCount ?? 0}/${vectorCoverage.totalChunkCount ?? 0})` },
+    { label: "最近索引", value: formatStatusTime(profile?.timestamps?.lastIndexAt) },
+  ];
+  const cardHtml = cards.map(card =>
+    `<div class="result-summary-card"><strong>${escapeHtml(card.label)}</strong><span>${escapeHtml(card.value)}</span></div>`
+  ).join("");
+  const suggestionHtml = suggestions.length > 0
+    ? `<div class="diagnostic-suggestions">${suggestions.map((suggestion) => {
+      const label = suggestionLabels[suggestion.code] || suggestion.code;
+      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}</span>`;
+    }).join("")}</div>`
+    : "";
+  return `${cardHtml}${suggestionHtml}`;
+}
+
 function render(data) {
   renderSummary(data);
   resultEl.textContent = JSON.stringify(data, null, 2);
@@ -454,6 +492,12 @@ function renderSummary(data) {
   const payload = data?.data || {};
   const diagnostics = payload?.diagnostics || {};
   const vectorIndex = diagnostics?.vectorIndex || stats?.indexSync?.vectorIndex;
+
+  if (payload?.diagnostics?.suggestions && payload?.counts && payload?.vector && payload?.summary) {
+    resultSummaryEl.hidden = false;
+    resultSummaryEl.innerHTML = renderProjectProfileSummary(payload);
+    return;
+  }
 
   if (stats?.search?.resultCount ?? stats?.resultCount) {
     cards.push({ label: "Results", value: String(stats.search?.resultCount ?? stats.resultCount) });
@@ -651,6 +695,11 @@ document.getElementById("run-index")?.addEventListener("click", () => run(async 
 document.getElementById("run-stats")?.addEventListener("click", () => run(() => request(
   "GET",
   "/api/project-stats?projectRootPath=" + encodeURIComponent(projectRootInput.value)
+)));
+
+document.getElementById("run-project-profile")?.addEventListener("click", () => run(() => request(
+  "GET",
+  "/api/project-profile?projectRootPath=" + encodeURIComponent(projectRootInput.value)
 )));
 
 document.getElementById("run-search")?.addEventListener("click", () => {

@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.1] - 2026-07-02
+
+### Project search profile diagnostics
+
+- 新增 `GET /api/project-profile`，聚合项目索引数量、语言分布、摘要状态、向量覆盖、最近索引事件和项目状态。
+- 项目画像返回确定性召回诊断建议：未索引提示全量索引，缺摘要提示生成摘要，向量缺失提示预热向量，符号缺失提示重新索引，索引失败提示检查失败文件。
+- Web 项目管理区新增“搜索画像”按钮，结果摘要区展示文件、代码块、符号、语言、摘要、向量覆盖和最近索引卡片。
+- `/health` 继续保持轻量，不读取 per-project 深度统计；画像诊断集中在项目详情 endpoint。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.1。
+
 ## [4.8.10] - 2026-07-01
 
 ### Release secret guard

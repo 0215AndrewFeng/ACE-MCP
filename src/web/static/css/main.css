@@ -123,6 +123,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .result-summary-card { background: #f8fafc; border-radius: 10px; padding: 10px 12px; }
 .result-summary-card strong { display: block; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 .result-summary-card span { font-size: 14px; color: #1a1a2e; font-weight: 600; }
+.diagnostic-suggestions { grid-column: 1 / -1; display: grid; gap: 8px; }
+.diagnostic-suggestion { border: 1px solid #dbeafe; border-radius: 8px; background: #eff6ff; color: #1e3a8a; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.diagnostic-suggestion strong { display: inline-block; margin-right: 8px; color: #1d4ed8; }
+.diagnostic-suggestion.warning { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
+.diagnostic-suggestion.warning strong { color: #c2410c; }
 
 /* ── QA Loading ── */
 .qa-loading { display: flex; align-items: center; gap: 12px; padding: 16px 0 8px; color: #6b7280; font-size: 14px; }

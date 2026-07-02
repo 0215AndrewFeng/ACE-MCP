@@ -178,6 +178,167 @@ test("health exposes active summary long tasks", async () => {
   }
 });
 
+test("project profile validates project root path", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: { getModelName: () => "test-vector-model" } as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: { loadSummary: async () => null } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/project-profile`);
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.code, "VALIDATION_ERROR");
+    assert.equal(body.error, "projectRootPath is required");
+  } finally {
+    await app.close();
+  }
+});
+
+test("project profile reports full-index recommendation for unknown projects", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: { getModelName: () => "test-vector-model" } as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      getProjectByRoot: () => undefined,
+      getProjectStats: () => null,
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: { loadSummary: async () => null } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/project-profile?projectRootPath=${encodeURIComponent("/repo")}`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.indexed, false);
+    assert.equal(body.data.counts.fileCount, 0);
+    assert.equal(body.data.summary.found, false);
+    assert.equal(body.data.vector.enabled, true);
+    assert.equal(body.data.vector.modelName, "test-vector-model");
+    assert.equal(body.data.diagnostics.status, "not_indexed");
+    assert.deepEqual(
+      body.data.diagnostics.suggestions.map((suggestion: { code: string }) => suggestion.code),
+      ["RUN_FULL_INDEX"],
+    );
+    assert.deepEqual(body.notes, ["Project has not been indexed yet."]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("project profile returns indexed search readiness diagnostics", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/order.ts": "export class OrderService {\n  refund(orderId: string) { return orderId; }\n}\n",
+  });
+  await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+  const summaryGeneratedAt = "2026-07-02T10:00:00.000Z";
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: env.indexCoordinator,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: {
+      loadSummary: async () => ({
+        architecture: "Indexed test project",
+        generatedAt: summaryGeneratedAt,
+        modules: [
+          {
+            description: "Order module",
+            fileCount: 1,
+            keySymbols: ["OrderService"],
+            path: "src",
+          },
+        ],
+        projectRootPath: env.projectRootPath,
+        relationships: [],
+        tokensUsed: { completion: 3, prompt: 5 },
+        version: 1,
+      }),
+    } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/project-profile?projectRootPath=${encodeURIComponent(env.projectRootPath)}`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.indexed, true);
+    assert.equal(body.data.projectRootPath, env.projectRootPath);
+    assert.equal(typeof body.data.projectId, "string");
+    assert.ok(body.data.counts.fileCount >= 1);
+    assert.ok(body.data.counts.chunkCount >= 1);
+    assert.ok(body.data.counts.symbolCount >= 1);
+    assert.ok(body.data.languages.some((item: { fileCount: number; language: string }) => item.fileCount >= 1 && item.language.length > 0));
+    assert.equal(body.data.summary.found, true);
+    assert.equal(body.data.summary.generatedAt, summaryGeneratedAt);
+    assert.equal(body.data.summary.moduleCount, 1);
+    assert.equal(body.data.vector.enabled, true);
+    assert.equal(body.data.vector.mode, "lazy");
+    assert.equal(body.data.vector.modelName, env.embeddingProvider.getModelName());
+    assert.equal(typeof body.data.vector.hasIndex, "boolean");
+    assert.ok(body.data.vector.coverage.totalChunkCount >= body.data.vector.coverage.indexedChunkCount);
+    assert.equal(body.data.diagnostics.suggestions.some((suggestion: { code: string }) => suggestion.code === "GENERATE_SUMMARY"), false);
+    assert.match(body.data.diagnostics.status, /healthy|needs_attention/);
+    assert.equal(body.stats.project.fileCount, body.data.counts.fileCount);
+    assert.equal(body.stats.vector.modelName, env.embeddingProvider.getModelName());
+  } finally {
+    await app.close();
+    await env.cleanup();
+  }
+});
+
 test("task list filters by type status and project root", async () => {
   const tracker = new LongTaskTracker();
   const summaryTaskId = tracker.start("summary", "/repo-a");
