@@ -12,7 +12,7 @@ Complete the Web project profile loop by making one-click repair outcomes visibl
 - [x] Implement Web repair result summary after project profile fix actions, including task status, duration, and profile count/vector/summary changes.
 - [x] Render failed-file review as a compact detail panel with file paths, errors, and copy buttons while preserving raw JSON output.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.3.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -29,6 +29,7 @@ Complete the Web project profile loop by making one-click repair outcomes visibl
 - 2026-07-02: Started v4.9.3 after user approved profile repair result visibility. Scope is Web outcome visibility on top of existing v4.9.2 repair dispatch; no index core changes planned.
 - 2026-07-02: RED confirmed missing v4.9.3 docs/version references and Web repair-result contracts. GREEN added profile summary diffing, repair result rendering, failed-file detail rendering, copy-path actions, CSS styling, and v4.9.3 docs/version updates; focused package contract test passed with 16 tests.
 - 2026-07-02: Local validation passed: full `npm test` passed with 109 tests, `npm run build` passed, `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; `node dist/index.js --version` returned `4.9.3`; `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error; package content checks confirmed Web JS/CSS and release scripts are included in tgz and Windows zip.
+- 2026-07-02: Release handoff complete: committed `c9a5066`, tagged and pushed `v4.9.3`, pushed `master`, published Gitee Release `v4.9.3` (#731297), uploaded `ace-mcp-4.9.3.tgz` and `ace-mcp-v4.9.3-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.3` on pid `19340`.
 
 # v4.9.2 Project Profile One-Click Fixes
 
