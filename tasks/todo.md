@@ -12,7 +12,7 @@ Add a project-level search profile and recall diagnostics panel so users can qui
 - [x] Implement a lightweight project profile API that reads project stats, summary metadata, vector coverage, language distribution, and deterministic diagnostic suggestions without slowing `/health`.
 - [x] Add a compact Web profile panel for counts, languages, vector coverage, summary status, latest index metadata, and actionable suggestions.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, and package docs to v4.9.1.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -29,6 +29,7 @@ Add a project-level search profile and recall diagnostics panel so users can qui
 
 - 2026-07-02: Started v4.9.1 after user approved project-level search profile diagnostics. Scope is a detail endpoint and Web visibility; `/health` must remain free of per-project aggregate reads.
 - 2026-07-02: RED confirmed missing `/api/project-profile`, Web search profile controls, and v4.9.1 docs/version references. GREEN added the profile API, Web summary cards/suggestions, docs/version updates, and focused Web/static tests passed with 30 tests.
+- 2026-07-02: Release handoff complete: full `npm test` passed with 107 tests, `npm run build` passed, `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; committed `ea14734`, tagged and pushed `v4.9.1`, pushed `master`, published Gitee Release `v4.9.1` (#731102), verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.1` on pid `70703`.
 
 # v4.8.10 Release Secret Guard
 
