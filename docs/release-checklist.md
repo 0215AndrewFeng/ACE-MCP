@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.9.3
+## v4.9.4
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -46,28 +46,28 @@ npm run release:benchmark
 7. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.9.3.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/check-secrets.mjs|scripts/publish-gitee-release.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
-unzip -l release/ace-mcp-v4.9.3-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|check-secrets.mjs|publish-gitee-release.mjs|reindex-projects.mjs"
+tar -tf ace-mcp-4.9.4.tgz | rg "package/(dist/index.js|scripts/install-macos.sh|scripts/verify-release-assets.mjs|scripts/check-secrets.mjs|scripts/publish-gitee-release.mjs|scripts/start-web.cmd|scripts/README-WINDOWS.md|scripts/smoke-release.mjs|scripts/benchmark-search.mjs|scripts/reindex-projects.mjs)"
+unzip -l release/ace-mcp-v4.9.4-win-x64.zip | rg "dist/index.js|install.ps1|start-web.cmd|README-WINDOWS.md|benchmark-search.mjs|check-secrets.mjs|publish-gitee-release.mjs|reindex-projects.mjs"
 ```
 
 8. 提交、打 tag 并推送：
 
 ```bash
 git add .
-git commit -m "chore: release v4.9.3 profile repair visibility"
-git tag -a v4.9.3 -m "v4.9.3"
+git commit -m "feat: release v4.9.4 search explanations"
+git tag -a v4.9.4 -m "v4.9.4"
 git push origin master
-git push origin v4.9.3
+git push origin v4.9.4
 ```
 
 9. 使用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并自动验证真实下载链路：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.3
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.4
 ```
 
 `release:publish` 默认会在上传后运行 `release:verify-assets`。如需单独复验：
 
 ```bash
-npm run release:verify-assets -- --version 4.9.3
+npm run release:verify-assets -- --version 4.9.4
 ```

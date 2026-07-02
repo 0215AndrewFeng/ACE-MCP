@@ -36,3 +36,4 @@
 - 2026-07-01: When checking whether a secret exists in Keychain or env, capture the command exit code immediately. Do not run `printf` or another command before inspecting `$?`, or missing secrets can be reported as present.
 - 2026-07-01: Secret-scan tests must never embed a real token literal, even in `doesNotMatch` assertions. Use dummy sentinel values so the test itself cannot become the leak.
 - 2026-07-02: Web route tests that use `createTestProjectEnvironment` should assert indexed behavior from files covered by `textExtensions`. Do not assume `.json` files are indexed, and avoid binding assertions to adapter-internal language names when only language distribution is under test.
+- 2026-07-02: Web rendering tests should cover HTML attribute contexts separately from text-node contexts. `escapeHtml()` via textContent is not enough for attributes because quotes can break `title="..."`; add attribute-specific escaping and a render test with quote-bearing input.

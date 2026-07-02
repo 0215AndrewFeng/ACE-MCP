@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.4] - 2026-07-02
+
+### Search result match explanations
+
+- Web 搜索结果摘要区新增“搜索结果命中解释”，展示前 5 条结果的命中来源、路径、符号、片段、关键词覆盖和分数。
+- 问答参考代码来源卡片同步展示“为什么命中”标签，直接复用搜索结果的 `reason`、`score` 和 `explanation` 元数据。
+- metadata 模式下仍可看到命中解释，不改变搜索排序、索引、原始 JSON 输出或后端召回逻辑。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.4。
+
 ## [4.9.3] - 2026-07-02
 
 ### Profile repair result visibility

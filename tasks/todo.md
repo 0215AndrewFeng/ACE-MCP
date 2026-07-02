@@ -1,3 +1,36 @@
+# v4.9.4 Search Result Match Explanation
+
+Author: feng.ling
+
+## Goal
+
+Make Web search results explain why they matched by surfacing existing result reason/explanation metadata in compact, readable UI without changing search ranking or indexing behavior.
+
+## Plan
+
+- [x] Write failing static package contract tests for Web search match explanation rendering, explanation chips, metadata-mode support, CSS styling, and v4.9.4 docs/version references.
+- [x] Implement Web rendering helpers that turn result `reason`, `score`, and `explanation` fields into concise "why matched" labels.
+- [x] Show explanation details on search/source result cards while preserving raw JSON output and existing result ordering.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.4.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Static contract tests prove Web source cards render match explanations from `reason`, `score`, and `explanation` metadata, including metadata-mode responses.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.4 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.4 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.4` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.4 after user approved search result match explanations. Scope is Web visibility over existing search result metadata; no scoring or ranking changes planned.
+- 2026-07-02: RED confirmed missing v4.9.4 docs/version references and Web match-explanation contracts. GREEN added search match explanation helpers, summary/source-card rendering, CSS styling, v4.9.4 docs/version updates, and focused package contract test passed with 17 tests.
+- 2026-07-02: Review found `title` attribute escaping risk in the match explanation tooltip. Added a focused VM render test for quote-bearing tokens and reason fallback, introduced `escapeHtmlAttribute`, and reran focused package contract tests with 18 passing tests.
+- 2026-07-02: Full local validation passed before release commit: `npm test` passed with 111 tests, `npm run build` passed, `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; `node dist/index.js --version` returned `4.9.4`; `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error; package content checks confirmed Web JS/CSS and release scripts are included in tgz and Windows zip.
+
 # v4.9.3 Profile Repair Result Visibility
 
 Author: feng.ling

@@ -127,6 +127,15 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function escapeHtmlAttribute(text) {
+  return String(text ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 // ── v4.2.6: Syntax highlighting for code snippets ────────────────────────────
 const SYNTAX_PATTERNS = {
   // Keywords by language
@@ -441,6 +450,57 @@ function renderQaEffectiveParams(requestParams) {
   ).join("");
 }
 
+function describeSearchMatchSource(source) {
+  const labels = {
+    lexical: "文本命中",
+    path: "路径命中",
+    semantic: "语义召回",
+    symbol: "符号命中",
+  };
+  return labels[source] || source;
+}
+
+function renderSearchMatchExplanation(source) {
+  if (!source) return "";
+  const chips = [];
+  const explanation = source?.explanation || {};
+  const matchedSources = Array.isArray(source.explanation?.matchedSources)
+    ? source.explanation.matchedSources
+    : String(source.reason || "").split("+").filter(Boolean);
+  for (const matchedSource of matchedSources) {
+    chips.push(describeSearchMatchSource(matchedSource));
+  }
+  if (source.explanation?.pathMatch) chips.push(`路径 ${source.explanation.pathMatch}`);
+  if (source.explanation?.symbolMatch) chips.push(`符号 ${source.explanation.symbolMatch}`);
+  if (source.explanation?.snippetMatch) chips.push("代码片段命中");
+  if (source.explanation?.tokenCoverage) {
+    const coverage = source.explanation.tokenCoverage;
+    chips.push(`Token ${coverage.matched}/${coverage.total}`);
+  }
+  if (Array.isArray(source.explanation?.matchedTokens) && source.explanation.matchedTokens.length > 0) {
+    chips.push(`关键词 ${source.explanation.matchedTokens.slice(0, 4).join(", ")}`);
+  }
+  if (source.score !== undefined) chips.push(`Score ${Number(source.score).toFixed(2)}`);
+  if (chips.length === 0) return "";
+  return `<div class="search-match-explanation" title="${escapeHtmlAttribute(JSON.stringify(explanation))}">
+    <strong>为什么命中</strong>
+    ${chips.map(chip => `<span class="search-match-chip">${escapeHtml(chip)}</span>`).join("")}
+  </div>`;
+}
+
+function renderSearchResultExplanations(results) {
+  const items = Array.isArray(results) ? results.slice(0, 5) : [];
+  if (items.length === 0) return "";
+  return `<div class="search-result-explanations">
+    <strong>搜索结果命中解释</strong>
+    ${items.map((item, index) => `<div class="search-result-explanation">
+      <span class="search-result-explanation-index">#${index + 1}</span>
+      <span class="search-result-explanation-path">${escapeHtml(item.filePath || "--")}</span>
+      ${renderSearchMatchExplanation(item)}
+    </div>`).join("")}
+  </div>`;
+}
+
 function renderProjectProfileSummary(profile) {
   const suggestions = profile?.diagnostics?.suggestions || [];
   const suggestionLabels = {
@@ -686,17 +746,18 @@ function renderSummary(data) {
     const hydrated = vectorIndex.hydratedChunkCount ? `, hydrated ${vectorIndex.hydratedChunkCount}` : "";
     cards.push({ label: "Vector index", value: `${vectorIndex.enabled ? "on" : "off"}${mode}${hydrated}` });
   }
+  const explanationHtml = renderSearchResultExplanations(payload.results);
 
   if (cards.length === 0) {
-    resultSummaryEl.hidden = true;
-    resultSummaryEl.innerHTML = "";
+    resultSummaryEl.hidden = explanationHtml === "";
+    resultSummaryEl.innerHTML = explanationHtml;
     return;
   }
 
   resultSummaryEl.hidden = false;
   resultSummaryEl.innerHTML = cards.map(card =>
     `<div class="result-summary-card"><strong>${escapeHtml(card.label)}</strong><span>${escapeHtml(card.value)}</span></div>`
-  ).join("");
+  ).join("") + explanationHtml;
 }
 
 async function run(action) {
@@ -1365,6 +1426,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
           L${source.startLine}-${source.endLine} (${totalLines} lines)
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
+        ${renderSearchMatchExplanation(source)}
         <div class="qa-source-snippet-container" id="${snippetId}">
           <div class="qa-source-snippet-preview" hidden>${previewHtml}</div>
           <div class="qa-source-snippet-full" hidden>${fullHtml}</div>
