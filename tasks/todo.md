@@ -12,7 +12,7 @@ Let Web users select multiple search results or QA source cards and copy a singl
 - [x] Implement Web helpers to normalize selected sources, format multi-file Markdown bundles, and preserve absolute paths, `path:line` references, snippets, and match explanations.
 - [x] Add selection checkboxes and copy bundle controls to search result explanation rows and QA source cards while preserving existing single-result actions and lazy context preview.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.8.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Let Web users select multiple search results or QA source cards and copy a singl
 - 2026-07-02: Started v4.9.8 after user approved multi-result context bundle direction. Scope is Web UI packaging of already-rendered search/QA result data; no search backend, indexing, ranking, or MCP API changes planned.
 - 2026-07-02: RED confirmed missing v4.9.8 version contracts and selected context bundle helpers. GREEN added source bundle selectors, search/QA context bundle toolbars, Markdown bundle generation for Codex/Claude, DOM-based selected-source collection, compact CSS, and v4.9.8 docs/version updates; focused package contract test passed with 24 tests.
 - 2026-07-02: Full local validation passed before release commit: `npm test` passed with 117 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.8`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.8.tgz` and `release/ace-mcp-v4.9.8-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-02: Release handoff complete: committed `85415b9`, tagged and pushed `v4.9.8`, pushed `master`, published Gitee Release `v4.9.8` (#731700), uploaded `ace-mcp-4.9.8.tgz` and `ace-mcp-v4.9.8-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.8` on pid `29653`.
 
 # v4.9.7 IDE / Agent Jump Actions
 
