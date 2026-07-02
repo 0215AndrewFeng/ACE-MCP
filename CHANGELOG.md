@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.8] - 2026-07-02
+
+### Result context bundle
+
+- Web 搜索结果摘要区和 QA 来源卡片新增“加入上下文包”选择框，可勾选多个结果后一次性复制 Markdown 上下文包。
+- 上下文包包含项目根目录、绝对路径、`path:line` 引用、代码片段、命中原因、分数和 matched tokens，方便交给 Codex/Claude 继续分析。
+- 新增“复制上下文包”“发送到 Codex”“发送到 Claude”批量交接按钮，全部只复制文本，不执行本机 agent CLI。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.8。
+
 ## [4.9.7] - 2026-07-02
 
 ### IDE / Agent jump actions

@@ -558,6 +558,88 @@ function buildAgentPrompt(source, agentKind) {
   return lines.join("\n");
 }
 
+function serializeSourceForBundle(source) {
+  return JSON.stringify({
+    endLine: source?.endLine,
+    explanation: source?.explanation,
+    filePath: source?.filePath || "",
+    language: source?.language || "",
+    reason: source?.reason || "",
+    score: source?.score,
+    snippet: getSourceSnippetText(source),
+    startLine: source?.startLine,
+  });
+}
+
+function renderSourceBundleSelector(source, id) {
+  if (!source?.filePath) return "";
+  return `<label class="source-bundle-selector" title="加入上下文包">
+    <input type="checkbox" class="source-bundle-checkbox" data-bundle-source="${escapeHtmlAttribute(serializeSourceForBundle(source))}" data-bundle-source-id="${escapeHtmlAttribute(id)}" />
+    <span>加入上下文包</span>
+  </label>`;
+}
+
+function renderContextBundleToolbar(scope) {
+  return `<div class="context-bundle-toolbar" data-context-bundle-scope="${escapeHtmlAttribute(scope)}">
+    <strong>上下文包</strong>
+    <button type="button" class="context-bundle-action" data-context-bundle-action="copy">复制上下文包</button>
+    <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="codex">发送到 Codex</button>
+    <button type="button" class="context-bundle-action" data-context-bundle-action="copy" data-context-bundle-agent="claude">发送到 Claude</button>
+  </div>`;
+}
+
+function normalizeBundleSource(source) {
+  return {
+    endLine: source?.endLine,
+    explanation: source?.explanation,
+    filePath: source?.filePath || "",
+    language: source?.language || "",
+    reason: source?.reason || "",
+    score: source?.score,
+    snippet: getSourceSnippetText(source),
+    startLine: source?.startLine,
+  };
+}
+
+function describeBundleAgent(agentKind) {
+  if (agentKind === "claude") return "Claude Code";
+  if (agentKind === "codex") return "Codex";
+  return "AI 助手";
+}
+
+function buildContextBundleMarkdown(sources, agentKind) {
+  const items = Array.isArray(sources) ? sources.map(normalizeBundleSource).filter((source) => source.filePath) : [];
+  const agentName = describeBundleAgent(agentKind);
+  const lines = [
+    `请用 ${agentName} 基于以下多文件上下文继续分析。`,
+    `项目根目录：${getProjectRootPath() || "(未选择)"}`,
+    `共 ${items.length} 个代码片段`,
+    "",
+  ];
+
+  items.forEach((source, index) => {
+    const absoluteReference = formatSourceAbsoluteReference(source);
+    const sourceReference = formatSourceReference(source);
+    lines.push(`## ${index + 1}. ${sourceReference}`);
+    lines.push(`- Absolute: ${absoluteReference || sourceReference}`);
+    lines.push(`- Reference: ${sourceReference}`);
+    if (source.reason) lines.push(`- Reason: ${source.reason}`);
+    if (source.score !== undefined) lines.push(`- Score: ${Number(source.score).toFixed(2)}`);
+    if (Array.isArray(source.explanation?.matchedTokens) && source.explanation.matchedTokens.length > 0) {
+      lines.push(`- Matched tokens: ${source.explanation.matchedTokens.join(", ")}`);
+    }
+    if (Array.isArray(source.explanation?.matchedSources) && source.explanation.matchedSources.length > 0) {
+      lines.push(`- Matched sources: ${source.explanation.matchedSources.join(", ")}`);
+    }
+    if (source.explanation?.snippetMatch) lines.push("- Snippet match: true");
+    if (source.snippet) {
+      lines.push("", `\`\`\`${source.language || ""}`, source.snippet, "```");
+    }
+    lines.push("");
+  });
+  return lines.join("\n").trimEnd();
+}
+
 function getSourceSnippetText(source) {
   return String(source?.snippet || "");
 }
@@ -623,9 +705,11 @@ function renderSearchResultExplanations(results) {
         <button type="button" class="search-explanations-toggle" data-explanation-action="collapse">收起全部</button>
       </div>
     </div>
+    ${renderContextBundleToolbar("search")}
     ${items.map((item, index) => `<div class="search-result-explanation">
       <span class="search-result-explanation-index">#${index + 1}</span>
       <span class="search-result-explanation-path">${escapeHtml(item.filePath || "--")}</span>
+      ${renderSourceBundleSelector(item, `search-${index}`)}
       ${renderSearchResultActions(item)}
       ${renderLazyContextAction(item)}
       ${renderSearchMatchExplanation(item)}
@@ -805,6 +889,33 @@ function bindSearchIdeActions() {
   });
 }
 
+function collectSelectedBundleSources(root = document) {
+  return Array.from(root.querySelectorAll(".source-bundle-checkbox:checked"))
+    .map((input) => {
+      try {
+        return JSON.parse(input.getAttribute("data-bundle-source") || "{}");
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function bindContextBundleActions() {
+  document.querySelectorAll(".context-bundle-action").forEach((button) => {
+    if (button.dataset.contextBundleBound === "1") return;
+    button.dataset.contextBundleBound = "1";
+    button.addEventListener("click", () => {
+      const toolbar = button.closest(".context-bundle-toolbar");
+      const container = toolbar?.parentElement || document;
+      const selectedSources = collectSelectedBundleSources(container);
+      const markdown = buildContextBundleMarkdown(selectedSources, button.getAttribute("data-context-bundle-agent") || "");
+      if (!markdown) return;
+      copyTextToClipboard(markdown, button);
+    });
+  });
+}
+
 function bindSearchExplanationToggles() {
   if (!resultSummaryEl) return;
   resultSummaryEl.querySelectorAll(".search-explanations-toggle").forEach((button) => {
@@ -947,6 +1058,7 @@ function renderSummary(data) {
     bindFailedFileCopyActions();
     bindSearchResultActions();
     bindSearchIdeActions();
+    bindContextBundleActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -958,6 +1070,7 @@ function renderSummary(data) {
     bindProjectProfileActions(payload);
     bindSearchResultActions();
     bindSearchIdeActions();
+    bindContextBundleActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -990,6 +1103,7 @@ function renderSummary(data) {
     resultSummaryEl.innerHTML = explanationHtml;
     bindSearchResultActions();
     bindSearchIdeActions();
+    bindContextBundleActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -1001,6 +1115,7 @@ function renderSummary(data) {
   ).join("") + explanationHtml;
   bindSearchResultActions();
   bindSearchIdeActions();
+  bindContextBundleActions();
   bindSearchExplanationToggles();
   bindLazyContextActions();
 }
@@ -1671,6 +1786,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
           L${source.startLine}-${source.endLine} (${totalLines} lines)
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
+        ${renderSourceBundleSelector(source, `qa-${source.index}`)}
         ${renderSearchResultActions(source)}
         ${renderLazyContextAction(source)}
         ${renderSearchMatchExplanation(source)}
@@ -1938,9 +2054,10 @@ async function runAskQuestion() {
               if (data.sources?.length) {
                 const maxScore = Math.max(...data.sources.map(s => s.score || 0));
                 const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
-                sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>` + cards;
+                sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>${renderContextBundleToolbar("qa")}` + cards;
                 bindSearchResultActions();
                 bindSearchIdeActions();
+                bindContextBundleActions();
                 bindLazyContextActions();
                 sourcesListEl.hidden = false;
               }

@@ -64,10 +64,11 @@
 49. ✅ **搜索结果可操作化**：Web 搜索结果和 QA 来源卡片可复制文件路径、`path:line` 引用和代码片段，搜索摘要支持展开/收起所有命中解释（v4.9.5）
 50. ✅ **懒加载上下文预览**：Web 搜索结果和 QA 来源卡片可按需加载命中行前后代码上下文；metadata 模式不带 snippet 时也能通过 `/api/file-snippet` 继续定位源码，默认搜索响应体积不变（v4.9.6）
 51. ✅ **IDE / Agent 定位闭环**：Web 搜索结果和 QA 来源卡片可复制绝对路径、打开 VS Code/IDEA，并复制 Codex/Claude 交接提示词；不直接执行本机 agent CLI（v4.9.7）
-52. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-53. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-54. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-55. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+52. ✅ **结果上下文打包**：Web 搜索结果和 QA 来源卡片可多选后复制 Markdown 上下文包，包含项目根目录、绝对路径、引用、片段、命中原因和分数，便于多文件交接给 Codex/Claude（v4.9.8）
+53. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+54. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+55. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+56. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 

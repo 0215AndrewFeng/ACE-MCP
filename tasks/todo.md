@@ -1,3 +1,37 @@
+# v4.9.8 Result Context Bundle
+
+Author: feng.ling
+
+## Goal
+
+Let Web users select multiple search results or QA source cards and copy a single Markdown context bundle for Codex/Claude follow-up, without changing indexing, search ranking, result payloads, or backend APIs.
+
+## Plan
+
+- [x] Write failing package/static contracts for v4.9.8 docs/version references, source selection controls, context bundle toolbar, Markdown bundle generation, Codex/Claude bundle prompts, and no backend API changes.
+- [x] Implement Web helpers to normalize selected sources, format multi-file Markdown bundles, and preserve absolute paths, `path:line` references, snippets, and match explanations.
+- [x] Add selection checkboxes and copy bundle controls to search result explanation rows and QA source cards while preserving existing single-result actions and lazy context preview.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.8.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- RED/GREEN focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Static and VM contracts prove selected result bundles include project root, absolute paths, references, snippets, match reasons, and agent-specific wording for Codex/Claude.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Runtime checks: `node dist/index.js --version`, `node dist/index.js --doctor`, `bash -n scripts/install-macos.sh`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.8 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.8 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.8` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.8 after user approved multi-result context bundle direction. Scope is Web UI packaging of already-rendered search/QA result data; no search backend, indexing, ranking, or MCP API changes planned.
+- 2026-07-02: RED confirmed missing v4.9.8 version contracts and selected context bundle helpers. GREEN added source bundle selectors, search/QA context bundle toolbars, Markdown bundle generation for Codex/Claude, DOM-based selected-source collection, compact CSS, and v4.9.8 docs/version updates; focused package contract test passed with 24 tests.
+- 2026-07-02: Full local validation passed before release commit: `npm test` passed with 117 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.8`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.8.tgz` and `release/ace-mcp-v4.9.8-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.7 IDE / Agent Jump Actions
 
 Author: feng.ling
