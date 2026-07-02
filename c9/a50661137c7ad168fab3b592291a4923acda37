@@ -1,0 +1,49 @@
+README.md
+  s_3a219f3e07a2c0::t_3452f0281b13f2 5,86,89,96,105,111,141-142,166,227,263,269,565
+  s_3a219f3e07a2c0::t_8cfcc6426221b0 25,566-571
+src/version.ts
+  s_3a219f3e07a2c0::t_1df534e8a43114 2
+scripts/install-macos.sh
+  s_3a219f3e07a2c0::t_8b0eaf67799d3e 4
+src/web/static/js/app.js
+  s_3a219f3e07a2c0::t_a489584601a3eb 488-527,530-551,553-564,566-573,575-578,581-582,586-588,591,593-594,597,599-601,603-607,610-611,614-627,655-660
+  s_3a219f3e07a2c0::t_bac368e5648e9c 552,565,574,579-580
+  s_3a219f3e07a2c0::t_6f15d9000f7282 528-529
+CHANGELOG.md
+  s_3a219f3e07a2c0::t_a922463dad1cd1 5-14
+src/web/static/css/main.css
+  s_3a219f3e07a2c0::t_04cb5c4bf1cae0 131-146
+src/config/packageManifest.test.ts
+  s_3a219f3e07a2c0::t_f2bb7b8ba6f713 24,186,193,216-217,220-222,244,248,255,264,267,279,298,301,304,331-355
+tasks/todo.md
+  s_3a219f3e07a2c0::t_a32e87b9e2074c 11-14,30
+  s_3a219f3e07a2c0::t_4153270ae08a3e 1-10,15-29,32
+  s_3a219f3e07a2c0::t_9bb348ed6dffcc 31
+docs/release-checklist.md
+  s_3a219f3e07a2c0::t_a7fa1d3a07433a 57
+  s_3a219f3e07a2c0::t_3452f0281b13f2 3,49-50,58,60,66,72
+package.json
+  s_3a219f3e07a2c0::t_017999ee5fbf4f 3
+ROADMAP.md
+  s_3a219f3e07a2c0::t_8996c9e4eb7b6c 62-66
+scripts/README-WINDOWS.md
+  s_3a219f3e07a2c0::t_3452f0281b13f2 3,15,82,120
+package-lock.json
+  ai_agent 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c9a50661137c7ad168fab3b592291a4923acda37",
+  "prompts": {},
+  "sessions": {
+    "s_3a219f3e07a2c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f112d-6504-7eb1-b82f-48d72f279aee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
