@@ -495,6 +495,69 @@ function formatSourceReference(source) {
   return startLine > 0 ? `${filePath}:${startLine}` : filePath;
 }
 
+function getProjectRootPath() {
+  return String(projectRootInput?.value || "").trim();
+}
+
+function isAbsoluteSourcePath(filePath) {
+  return String(filePath || "").startsWith("/") || /^[A-Za-z]:[\\/]/.test(String(filePath || ""));
+}
+
+function joinSourcePath(projectRootPath, filePath) {
+  const sourcePath = String(filePath || "").trim();
+  const rootPath = String(projectRootPath || "").trim();
+  if (!sourcePath) return rootPath;
+  if (isAbsoluteSourcePath(sourcePath) || !rootPath) return sourcePath;
+  return `${rootPath.replace(/[\\/]+$/, "")}/${sourcePath.replace(/^[\\/]+/, "")}`;
+}
+
+function formatSourceAbsolutePath(source) {
+  return joinSourcePath(getProjectRootPath(), source?.filePath || "");
+}
+
+function getSourceLine(source) {
+  return Math.max(1, Number(source?.startLine || 1));
+}
+
+function formatSourceAbsoluteReference(source) {
+  const absolutePath = formatSourceAbsolutePath(source);
+  const startLine = Number(source?.startLine || 0);
+  return startLine > 0 ? `${absolutePath}:${startLine}` : absolutePath;
+}
+
+function buildIdeDeepLink(source, kind) {
+  const absolutePath = formatSourceAbsolutePath(source);
+  if (!absolutePath) return "";
+  const line = getSourceLine(source);
+  if (kind === "idea") {
+    const projectRootPath = getProjectRootPath();
+    const query = new URLSearchParams({
+      project: projectRootPath || absolutePath,
+      path: absolutePath,
+      line: String(line),
+    });
+    return `jetbrains://idea/navigate/reference?${query.toString()}`;
+  }
+  return `vscode://file/${absolutePath}:${line}`;
+}
+
+function buildAgentPrompt(source, agentKind) {
+  const agentName = agentKind === "claude" ? "Claude Code" : "Codex";
+  const absoluteReference = formatSourceAbsoluteReference(source);
+  const sourceReference = formatSourceReference(source);
+  const snippet = getSourceSnippetText(source);
+  const lines = [
+    `请用 ${agentName} 继续定位这段代码。`,
+    `项目根目录：${getProjectRootPath() || "(未选择)"}`,
+    `文件位置：${absoluteReference || sourceReference}`,
+    `相对引用：${sourceReference}`,
+  ];
+  if (snippet) {
+    lines.push("", "代码片段：", "```", snippet, "```");
+  }
+  return lines.join("\n");
+}
+
 function getSourceSnippetText(source) {
   return String(source?.snippet || "");
 }
@@ -506,12 +569,20 @@ function hasSourceSnippet(source) {
 function renderSearchResultActions(source) {
   if (!source?.filePath) return "";
   const snippet = getSourceSnippetText(source);
+  const absolutePath = formatSourceAbsolutePath(source);
+  const vscodeUrl = buildIdeDeepLink(source, "vscode");
+  const ideaUrl = buildIdeDeepLink(source, "idea");
   const snippetButton = hasSourceSnippet(source)
     ? `<button type="button" class="search-result-action" data-copy-kind="snippet" data-source-snippet="${escapeHtmlAttribute(snippet)}" title="复制代码片段">复制片段</button>`
     : "";
   return `<div class="search-result-actions">
     <button type="button" class="search-result-action" data-copy-kind="path" data-source-path="${escapeHtmlAttribute(source.filePath)}" title="复制文件路径">复制路径</button>
     <button type="button" class="search-result-action" data-copy-kind="reference" data-source-reference="${escapeHtmlAttribute(formatSourceReference(source))}" title="复制 path:line 引用">复制引用</button>
+    <button type="button" class="search-result-action" data-copy-kind="absolute" data-source-absolute-path="${escapeHtmlAttribute(absolutePath)}" title="复制绝对路径">复制绝对路径</button>
+    <button type="button" class="search-result-ide-action" data-ide-kind="vscode" data-ide-url="${escapeHtmlAttribute(vscodeUrl)}" title="在 VS Code 中打开当前文件行">打开 VS Code</button>
+    <button type="button" class="search-result-ide-action" data-ide-kind="idea" data-ide-url="${escapeHtmlAttribute(ideaUrl)}" title="在 IntelliJ IDEA 中打开当前文件行">打开 IDEA</button>
+    <button type="button" class="search-result-action" data-copy-kind="codex" data-agent-prompt="${escapeHtmlAttribute(buildAgentPrompt(source, "codex"))}" title="复制 Codex 交接提示词">发送到 Codex</button>
+    <button type="button" class="search-result-action" data-copy-kind="claude" data-agent-prompt="${escapeHtmlAttribute(buildAgentPrompt(source, "claude"))}" title="复制 Claude Code 交接提示词">发送到 Claude</button>
     ${snippetButton}
   </div>`;
 }
@@ -711,9 +782,25 @@ function bindSearchResultActions() {
         ? button.getAttribute("data-source-reference")
         : kind === "snippet"
           ? button.getAttribute("data-source-snippet")
-          : button.getAttribute("data-source-path");
+          : kind === "absolute"
+            ? button.getAttribute("data-source-absolute-path")
+            : kind === "codex" || kind === "claude"
+              ? button.getAttribute("data-agent-prompt")
+              : button.getAttribute("data-source-path");
       if (!value) return;
       copyTextToClipboard(value, button);
+    });
+  });
+}
+
+function bindSearchIdeActions() {
+  document.querySelectorAll(".search-result-ide-action").forEach((button) => {
+    if (button.dataset.searchIdeActionBound === "1") return;
+    button.dataset.searchIdeActionBound = "1";
+    button.addEventListener("click", () => {
+      const url = button.getAttribute("data-ide-url") || "";
+      if (!url) return;
+      window.location.href = url;
     });
   });
 }
@@ -859,6 +946,7 @@ function renderSummary(data) {
     resultSummaryEl.innerHTML = data.summaryHtml;
     bindFailedFileCopyActions();
     bindSearchResultActions();
+    bindSearchIdeActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -869,6 +957,7 @@ function renderSummary(data) {
     resultSummaryEl.innerHTML = renderProjectProfileSummary(payload);
     bindProjectProfileActions(payload);
     bindSearchResultActions();
+    bindSearchIdeActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -900,6 +989,7 @@ function renderSummary(data) {
     resultSummaryEl.hidden = explanationHtml === "";
     resultSummaryEl.innerHTML = explanationHtml;
     bindSearchResultActions();
+    bindSearchIdeActions();
     bindSearchExplanationToggles();
     bindLazyContextActions();
     return;
@@ -910,6 +1000,7 @@ function renderSummary(data) {
     `<div class="result-summary-card"><strong>${escapeHtml(card.label)}</strong><span>${escapeHtml(card.value)}</span></div>`
   ).join("") + explanationHtml;
   bindSearchResultActions();
+  bindSearchIdeActions();
   bindSearchExplanationToggles();
   bindLazyContextActions();
 }
@@ -1849,6 +1940,7 @@ async function runAskQuestion() {
                 const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
                 sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>` + cards;
                 bindSearchResultActions();
+                bindSearchIdeActions();
                 bindLazyContextActions();
                 sourcesListEl.hidden = false;
               }

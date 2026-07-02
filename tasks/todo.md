@@ -1,3 +1,37 @@
+# v4.9.7 IDE / Agent Jump Actions
+
+Author: feng.ling
+
+## Goal
+
+Close the Web result-location loop by adding direct jump/copy actions for IDEs and agent handoff prompts on search result explanations and QA source cards, without changing indexing, search ranking, or backend API contracts.
+
+## Plan
+
+- [x] Write failing package/static contracts for v4.9.7 docs/version references, absolute path formatting, VS Code and IDEA deep links, Codex/Claude prompt actions, and no Cursor action.
+- [x] Implement reusable Web helpers for source absolute paths, IDE deep links, and agent handoff prompts using the selected project root plus result file/line/snippet data.
+- [x] Add the new actions to search result explanation rows and QA source cards while preserving existing copy path/reference/snippet controls and lazy context preview.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.7.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- RED/GREEN focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Static and VM contracts prove absolute path, VS Code link, IDEA link, copied Codex prompt, copied Claude prompt, and no Cursor action.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Runtime checks: `node dist/index.js --version`, `node dist/index.js --doctor`, `bash -n scripts/install-macos.sh`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.7 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.7 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.7` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.7 after user approved keeping VS Code, adding IDEA, adding absolute-path copy, and adding Codex/Claude handoff as copied prompts. Cursor is intentionally out of scope.
+- 2026-07-02: RED confirmed missing IDE/Agent action helpers and v4.9.7 version contracts. GREEN added absolute-path formatting, VS Code/IDEA deep links, Codex/Claude prompt copy actions, shared binding for search summaries and QA source cards, CSS styling, and v4.9.7 docs/version updates; focused package contract test passed with 22 tests.
+- 2026-07-02: Full local validation passed before release commit: `npm test` passed with 115 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.7`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.7.tgz` and `release/ace-mcp-v4.9.7-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.6 Lazy Context Preview
 
 Author: feng.ling

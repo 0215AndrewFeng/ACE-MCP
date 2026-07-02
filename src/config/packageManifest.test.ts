@@ -29,10 +29,10 @@ test("package manifest is ready for npm and tgz global installation", () => {
   const lock = readJson<PackageLockJson>("package-lock.json");
   const versionTs = readFileSync(path.join(rootDir, "src/version.ts"), "utf8");
 
-  assert.equal(pkg.version, "4.9.6");
+  assert.equal(pkg.version, "4.9.7");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages?.[""]?.version, pkg.version);
-  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.9\.6"/);
+  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.9\.7"/);
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -194,14 +194,14 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.6\/scripts\/install-macos\.sh\)"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.9\.7\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.9\.6/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.9\.7/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
@@ -224,13 +224,13 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.6/);
-  assert.match(readme, /raw\/v4\.9\.6\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.9\.7/);
+  assert.match(readme, /raw\/v4\.9\.7\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.6/);
-  assert.match(checklist, /ace-mcp-4\.9\.6\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.9\.6-win-x64\.zip/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.9\.7/);
+  assert.match(checklist, /ace-mcp-4\.9\.7\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.9\.7-win-x64\.zip/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -252,18 +252,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.9\.6/);
+  assert.match(readme, /npm run release:publish -- --version 4\.9\.7/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.9\.6/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.9\.7/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.9\.6-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.9\.7-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
@@ -272,10 +272,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /ExecutionPolicy/);
 });
 
-test("release checklist records the v4.9.6 verification gates", () => {
+test("release checklist records the v4.9.7 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.9\.6/);
+  assert.match(checklist, /v4\.9\.7/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
@@ -287,7 +287,7 @@ test("release checklist records the v4.9.6 verification gates", () => {
   assert.match(checklist, /npm run release:publish/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.9\.6/);
+  assert.match(checklist, /git tag -a v4\.9\.7/);
 });
 
 test("web project profile diagnostics are wired through API and static controls", () => {
@@ -306,13 +306,13 @@ test("web project profile diagnostics are wired through API and static controls"
   assert.match(appJs, /GENERATE_SUMMARY/);
   assert.match(appJs, /WARM_VECTOR_INDEX/);
   assert.match(appJs, /REVIEW_FAILED_FILES/);
-  assert.match(readme, /当前版本：`v4\.9\.6`/);
+  assert.match(readme, /当前版本：`v4\.9\.7`/);
   assert.match(readme, /项目级搜索画像/);
   assert.match(readme, /\/api\/project-profile/);
-  assert.match(changelog, /## \[4\.9\.6\]/);
+  assert.match(changelog, /## \[4\.9\.1\]/);
   assert.match(changelog, /Project search profile diagnostics/);
   assert.match(roadmap, /项目级搜索画像/);
-  assert.match(roadmap, /v4\.9\.6/);
+  assert.match(roadmap, /v4\.9\.1/);
 });
 
 test("web project profile suggestions provide one-click repair actions", () => {
@@ -546,6 +546,170 @@ test("web search and QA results expose copy actions and explanation toggles", ()
   assert.match(readme, /复制代码片段/);
   assert.match(changelog, /Search result actions/);
   assert.match(roadmap, /搜索结果可操作化/);
+});
+
+test("web search and QA results expose IDE and agent jump actions", () => {
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
+
+  assert.match(appJs, /function getProjectRootPath\(/);
+  assert.match(appJs, /function joinSourcePath\(/);
+  assert.match(appJs, /function formatSourceAbsolutePath\(/);
+  assert.match(appJs, /function buildIdeDeepLink\(/);
+  assert.match(appJs, /function buildAgentPrompt\(/);
+  assert.match(appJs, /function bindSearchIdeActions\(/);
+  assert.match(appJs, /data-copy-kind="absolute"/);
+  assert.match(appJs, /data-copy-kind="codex"/);
+  assert.match(appJs, /data-copy-kind="claude"/);
+  assert.match(appJs, /data-ide-kind="vscode"/);
+  assert.match(appJs, /data-ide-kind="idea"/);
+  assert.match(appJs, /data-source-absolute-path="\$\{escapeHtmlAttribute\(absolutePath\)\}"/);
+  assert.match(appJs, /data-agent-prompt="\$\{escapeHtmlAttribute\(buildAgentPrompt\(source, "codex"\)\)\}"/);
+  assert.match(appJs, /data-agent-prompt="\$\{escapeHtmlAttribute\(buildAgentPrompt\(source, "claude"\)\)\}"/);
+  assert.match(appJs, /window\.location\.href = url/);
+  assert.match(appJs, /bindSearchIdeActions\(\)/);
+  assert.doesNotMatch(appJs, /data-ide-kind="cursor"/i);
+  assert.doesNotMatch(appJs, /Cursor/);
+  assert.match(css, /\.search-result-ide-action/);
+  assert.match(readme, /IDE \/ Agent 定位闭环/);
+  assert.match(readme, /打开 IDEA/);
+  assert.match(readme, /发送到 Codex/);
+  assert.match(readme, /发送到 Claude/);
+  assert.match(changelog, /IDE \/ Agent jump actions/);
+  assert.match(roadmap, /IDE \/ Agent 定位闭环/);
+});
+
+test("web IDE and agent jump helpers derive paths from project root", () => {
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const element = () => {
+    const node = {
+      addEventListener() {},
+      appendChild() {},
+      append() {},
+      classList: { add() {}, remove() {}, toggle() { return false; } },
+      click() {},
+      dataset: {},
+      hidden: false,
+      innerHTML: "",
+      options: [{ text: "" }],
+      parentElement: null,
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      remove() {},
+      select() {},
+      selectedIndex: 0,
+      setAttribute() {},
+      style: {},
+      value: "",
+    };
+    Object.defineProperty(node, "textContent", {
+      get() {
+        return node.innerHTML;
+      },
+      set(value) {
+        node.innerHTML = String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      },
+    });
+    return node;
+  };
+  const inputs = new Map<string, ReturnType<typeof element>>();
+  const projectRoot = element();
+  projectRoot.value = "/repo/app";
+  inputs.set("project-root", projectRoot);
+  const context = vm.createContext({
+    AbortController,
+    alert() {},
+    clearTimeout,
+    confirm() { return false; },
+    console,
+    document: {
+      addEventListener() {},
+      body: element(),
+      createElement() { return element(); },
+      execCommand() { return true; },
+      getElementById(id: string) { return inputs.get(id) || element(); },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    },
+    fetch() {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ projects: [], tasks: [] }),
+      });
+    },
+    localStorage: {
+      getItem() { return null; },
+      removeItem() {},
+      setItem() {},
+    },
+    navigator: {},
+    setInterval() { return 1; },
+    setTimeout,
+    URLSearchParams,
+    window: { confirm() { return false; }, isSecureContext: false, location: { href: "" } },
+  });
+
+  vm.runInContext(appJs, context);
+  const absolutePath = vm.runInContext(`formatSourceAbsolutePath({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  })`, context) as string;
+  const vscodeUrl = vm.runInContext(`buildIdeDeepLink({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  }, "vscode")`, context) as string;
+  const ideaUrl = vm.runInContext(`buildIdeDeepLink({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  }, "idea")`, context) as string;
+  const codexPrompt = vm.runInContext(`buildAgentPrompt({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  }, "codex")`, context) as string;
+  const claudePrompt = vm.runInContext(`buildAgentPrompt({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  }, "claude")`, context) as string;
+  const actionsHtml = vm.runInContext(`renderSearchResultActions({
+    filePath: "src/example.ts",
+    startLine: 7,
+    endLine: 9,
+    snippet: "const answer = 42;"
+  })`, context) as string;
+
+  assert.equal(absolutePath, "/repo/app/src/example.ts");
+  assert.equal(vscodeUrl, "vscode://file//repo/app/src/example.ts:7");
+  assert.match(ideaUrl, /^jetbrains:\/\/idea\/navigate\/reference\?/);
+  assert.match(ideaUrl, /project=%2Frepo%2Fapp/);
+  assert.match(ideaUrl, /path=%2Frepo%2Fapp%2Fsrc%2Fexample\.ts/);
+  assert.match(ideaUrl, /line=7/);
+  assert.match(codexPrompt, /Codex/);
+  assert.match(codexPrompt, /\/repo\/app\/src\/example\.ts:7/);
+  assert.match(codexPrompt, /const answer = 42;/);
+  assert.match(claudePrompt, /Claude Code/);
+  assert.match(claudePrompt, /\/repo\/app\/src\/example\.ts:7/);
+  assert.match(actionsHtml, /复制绝对路径/);
+  assert.match(actionsHtml, /打开 VS Code/);
+  assert.match(actionsHtml, /打开 IDEA/);
+  assert.match(actionsHtml, /发送到 Codex/);
+  assert.match(actionsHtml, /发送到 Claude/);
+  assert.doesNotMatch(actionsHtml, /Cursor/i);
 });
 
 test("web search and QA results lazy-load wider source context", () => {

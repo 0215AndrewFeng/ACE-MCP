@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.7] - 2026-07-02
+
+### IDE / Agent jump actions
+
+- Web 搜索结果摘要区和 QA 来源卡片新增“复制绝对路径”，基于当前项目根目录和结果相对路径生成可直接使用的本机路径。
+- 新增“打开 VS Code”和“打开 IDEA”按钮，分别生成 `vscode://file/...` 与 JetBrains IDEA deep link，直达命中文件行。
+- 新增“发送到 Codex”和“发送到 Claude”按钮，复制包含项目根目录、文件行号和代码片段的交接提示词，不直接执行本机 agent CLI。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.7。
+
 ## [4.9.6] - 2026-07-02
 
 ### Lazy context preview
