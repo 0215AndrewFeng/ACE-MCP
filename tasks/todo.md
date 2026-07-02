@@ -12,7 +12,7 @@ Let Web search result explanations and QA source cards load a wider code context
 - [x] Add reusable Web helpers to derive preview ranges from `filePath/startLine/endLine`, render a "more context" action, request `/api/file-snippet` only after click, and render highlighted line-numbered context.
 - [x] Add lazy context preview actions to search result explanation rows and QA source cards while preserving existing copy actions, raw JSON output, and QA snippet expand/collapse behavior.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.6.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Let Web search result explanations and QA source cards load a wider code context
 - 2026-07-02: RED confirmed missing v4.9.6 docs/version references and lazy context preview contracts. GREEN added range derivation, "更多上下文" actions, click-only `/api/file-snippet` loading, line-numbered highlighted preview rendering, CSS states, metadata-mode coverage, and v4.9.6 docs/version updates; focused package contract test passed with 20 tests.
 - 2026-07-02: Review found preview headers should use server-clamped snippet end lines instead of deriving from split line count. RED added a contract for `response.meta.snippet.endLine`; GREEN updated preview rendering to display returned start/end range, and the focused package contract test passed with 20 tests.
 - 2026-07-02: Full local validation passed before release commit: `npm test` passed with 113 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.6`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed Web JS/CSS and release scripts are included in `ace-mcp-4.9.6.tgz` and `release/ace-mcp-v4.9.6-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-02: Release handoff complete: committed `753b226`, tagged and pushed `v4.9.6`, pushed `master`, published Gitee Release `v4.9.6` (#731613), uploaded `ace-mcp-4.9.6.tgz` and `ace-mcp-v4.9.6-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.6` on pid `30479`.
 
 # v4.9.5 Search Result Actions
 
