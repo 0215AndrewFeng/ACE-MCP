@@ -2,6 +2,16 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.3] - 2026-07-02
+
+### Profile repair result visibility
+
+- 搜索画像一键修复完成后，Web 结果区展示修复结果摘要，包括动作类型、任务状态、耗时和画像前后差异。
+- 新增画像前后对比，覆盖文件数、代码块数、符号数、向量覆盖和摘要状态，方便判断修复是否真正生效。
+- `REVIEW_FAILED_FILES` 渲染为失败文件明细面板，展示文件路径、错误信息，并提供复制路径按钮。
+- 原始 JSON 输出保持不变，便于需要排查细节时继续查看完整响应。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.3。
+
 ## [4.9.2] - 2026-07-02
 
 ### Project profile one-click fixes

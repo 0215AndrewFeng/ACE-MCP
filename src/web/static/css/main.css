@@ -128,6 +128,22 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .diagnostic-suggestion strong { display: inline-block; margin-right: 8px; color: #1d4ed8; }
 .diagnostic-suggestion.warning { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
 .diagnostic-suggestion.warning strong { color: #c2410c; }
+.profile-repair-result { grid-column: 1 / -1; border: 1px solid #dbeafe; border-radius: 8px; background: #f8fafc; padding: 12px; }
+.profile-repair-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.profile-repair-header strong { color: #111827; font-size: 14px; }
+.profile-repair-header span { color: #6b7280; font-size: 12px; overflow-wrap: anywhere; }
+.profile-repair-deltas { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.profile-repair-delta { border: 1px solid #e5e7eb; border-radius: 6px; background: #ffffff; padding: 8px; }
+.profile-repair-delta strong { display: block; color: #6b7280; font-size: 11px; margin-bottom: 2px; }
+.profile-repair-delta span { display: block; color: #111827; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.profile-repair-delta em { display: block; color: #2563eb; font-size: 11px; font-style: normal; margin-top: 2px; }
+.failed-file-details { display: grid; gap: 8px; margin-top: 12px; }
+.failed-file-header { color: #991b1b; font-size: 12px; font-weight: 700; }
+.failed-file-detail { border: 1px solid #fecaca; border-radius: 6px; background: #fff7f7; padding: 8px; }
+.failed-file-detail.empty { color: #6b7280; border-color: #e5e7eb; background: #ffffff; }
+.failed-file-path { color: #111827; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.failed-file-error { color: #991b1b; font-size: 12px; margin: 4px 0 8px; overflow-wrap: anywhere; }
+.copy-failed-file-path { margin-top: 6px; }
 
 /* ── QA Loading ── */
 .qa-loading { display: flex; align-items: center; gap: 12px; padding: 16px 0 8px; color: #6b7280; font-size: 14px; }

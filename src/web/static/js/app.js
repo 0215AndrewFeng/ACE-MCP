@@ -485,40 +485,146 @@ async function refreshProjectProfile(projectRootPath) {
   return profile;
 }
 
+function summarizeProjectProfile(profile) {
+  const vectorCoverage = profile?.vector?.coverage || {};
+  return {
+    chunkCount: Number(profile?.counts?.chunkCount ?? 0),
+    fileCount: Number(profile?.counts?.fileCount ?? 0),
+    summaryModules: Number(profile?.summary?.moduleCount ?? 0),
+    summaryStatus: profile?.summary?.found ? "已生成" : "未生成",
+    symbolCount: Number(profile?.counts?.symbolCount ?? 0),
+    vectorIndexed: Number(vectorCoverage.indexedChunkCount ?? 0),
+    vectorTotal: Number(vectorCoverage.totalChunkCount ?? 0),
+  };
+}
+
+function diffProjectProfile(beforeSummary, afterSummary) {
+  return [
+    { label: "文件", before: beforeSummary.fileCount, after: afterSummary.fileCount },
+    { label: "代码块", before: beforeSummary.chunkCount, after: afterSummary.chunkCount },
+    { label: "符号", before: beforeSummary.symbolCount, after: afterSummary.symbolCount },
+    { label: "向量", before: `${beforeSummary.vectorIndexed}/${beforeSummary.vectorTotal}`, after: `${afterSummary.vectorIndexed}/${afterSummary.vectorTotal}` },
+    { label: "摘要", before: beforeSummary.summaryStatus, after: afterSummary.summaryStatus },
+  ];
+}
+
+function formatDeltaValue(before, after) {
+  if (typeof before === "number" && typeof after === "number") {
+    const delta = after - before;
+    if (delta > 0) return `+${delta}`;
+    return String(delta);
+  }
+  return before === after ? "无变化" : "已变化";
+}
+
+function renderFailedFileDetails(failedFiles, projectRootPath) {
+  const files = Array.isArray(failedFiles) ? failedFiles : [];
+  if (files.length === 0) {
+    return `<div class="failed-file-detail empty">暂无失败文件</div>`;
+  }
+  return `<div class="failed-file-details">
+    <div class="failed-file-header">失败文件明细 · ${escapeHtml(String(files.length))}</div>
+    ${files.map((file) => {
+      const filePath = String(typeof file === "string" ? file : (file.filePath || file.path || file.relativePath || "--"));
+      const error = String(typeof file === "string" ? "" : (file.message || file.error || file.reason || ""));
+      const displayPath = projectRootPath && filePath.startsWith(projectRootPath)
+        ? filePath.slice(projectRootPath.length).replace(/^\/+/, "")
+        : filePath;
+      return `<div class="failed-file-detail">
+        <div class="failed-file-path mono" title="${escapeHtml(filePath)}">${escapeHtml(displayPath || filePath)}</div>
+        ${error ? `<div class="failed-file-error">${escapeHtml(error)}</div>` : ""}
+        <button type="button" class="btn-secondary btn-small copy-failed-file-path" data-copy-path="${escapeHtml(filePath)}">复制路径</button>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderProfileRepairResult(code, beforeProfile, afterProfile, taskResult) {
+  const beforeSummary = summarizeProjectProfile(beforeProfile);
+  const afterSummary = summarizeProjectProfile(afterProfile || beforeProfile);
+  const task = taskResult?.task || taskResult;
+  const taskStatus = task?.status || (code === "REVIEW_FAILED_FILES" ? "ready" : "done");
+  const durationMs = task?.durationMs ?? task?.elapsedMs;
+  const deltas = diffProjectProfile(beforeSummary, afterSummary);
+  const failedFiles = code === "REVIEW_FAILED_FILES"
+    ? beforeProfile?.latestIndexing?.failedFiles || []
+    : afterProfile?.latestIndexing?.failedFiles || [];
+  const projectRootPath = beforeProfile?.projectRootPath || afterProfile?.projectRootPath || "";
+  return `<div class="profile-repair-result">
+    <div class="profile-repair-header">
+      <strong>修复结果</strong>
+      <span>${escapeHtml(code || "--")} · ${escapeHtml(taskStatus)} · ${escapeHtml(formatTaskDuration({ durationMs }))}</span>
+    </div>
+    <div class="profile-repair-deltas">
+      ${deltas.map((item) => `<div class="profile-repair-delta">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span>${escapeHtml(String(item.before))} → ${escapeHtml(String(item.after))}</span>
+        <em>${escapeHtml(formatDeltaValue(item.before, item.after))}</em>
+      </div>`).join("")}
+    </div>
+    ${code === "REVIEW_FAILED_FILES" ? renderFailedFileDetails(failedFiles, projectRootPath) : ""}
+  </div>`;
+}
+
+function bindFailedFileCopyActions() {
+  if (!resultSummaryEl) return;
+  resultSummaryEl.querySelectorAll(".copy-failed-file-path").forEach((button) => {
+    button.addEventListener("click", () => {
+      const filePath = button.getAttribute("data-copy-path") || "";
+      copyText(filePath);
+    });
+  });
+}
+
+function copyText(filePath) {
+  return copyTextToClipboard(filePath);
+}
+
 async function runProjectProfileFix(code, profile) {
   const projectRootPath = profile?.projectRootPath || projectRootInput.value?.trim();
   if (!projectRootPath) throw new Error("projectRootPath is required");
+  const beforeProfile = profile;
+  let afterResponse;
+  let taskResult;
 
   if (code === "RUN_FULL_INDEX") {
-    const accepted = await submitIndexTask({ mode: "full", projectRootPath });
-    const taskId = accepted?.data?.taskId;
-    if (taskId) await pollTask(taskId);
+    taskResult = await submitIndexTask({ mode: "full", projectRootPath });
     await refreshTaskCenter();
-    return await refreshProjectProfile(projectRootPath);
-  }
-
-  if (code === "GENERATE_SUMMARY") {
+    afterResponse = await refreshProjectProfile(projectRootPath);
+  } else if (code === "GENERATE_SUMMARY") {
     const accepted = await request("POST", "/api/summary/generate", { projectRootPath });
     const taskId = accepted?.data?.taskId;
-    if (taskId) await pollTask(taskId);
+    taskResult = taskId ? await pollTask(taskId) : accepted;
     await refreshTaskCenter();
-    return await refreshProjectProfile(projectRootPath);
-  }
-
-  if (code === "WARM_VECTOR_INDEX") {
-    await request("POST", "/api/index/warm", { projectRootPath });
+    afterResponse = await refreshProjectProfile(projectRootPath);
+  } else if (code === "WARM_VECTOR_INDEX") {
+    taskResult = await request("POST", "/api/index/warm", { projectRootPath });
     await refreshTaskCenter();
-    return await refreshProjectProfile(projectRootPath);
-  }
-
-  if (code === "REVIEW_FAILED_FILES") {
-    return {
-      failedFiles: profile?.latestIndexing?.failedFiles || [],
+    afterResponse = await refreshProjectProfile(projectRootPath);
+  } else if (code === "REVIEW_FAILED_FILES") {
+    afterResponse = {
+      data: beforeProfile,
+      failedFiles: beforeProfile?.latestIndexing?.failedFiles || [],
       projectRootPath,
     };
+  } else {
+    afterResponse = await refreshProjectProfile(projectRootPath);
   }
 
-  return await refreshProjectProfile(projectRootPath);
+  const afterProfile = afterResponse?.data || afterResponse;
+  return {
+    ...afterResponse,
+    data: afterProfile,
+    profileRepair: {
+      afterSummary: summarizeProjectProfile(afterProfile),
+      beforeSummary: summarizeProjectProfile(beforeProfile),
+      code,
+      durationMs: taskResult?.task?.durationMs ?? taskResult?.task?.elapsedMs,
+      failedFiles: afterProfile?.latestIndexing?.failedFiles || [],
+      taskStatus: taskResult?.task?.status || "done",
+    },
+    summaryHtml: renderProfileRepairResult(code, beforeProfile, afterProfile, taskResult),
+  };
 }
 
 function bindProjectProfileActions(payload) {
@@ -545,6 +651,13 @@ function renderSummary(data) {
   const payload = data?.data || {};
   const diagnostics = payload?.diagnostics || {};
   const vectorIndex = diagnostics?.vectorIndex || stats?.indexSync?.vectorIndex;
+
+  if (data?.summaryHtml) {
+    resultSummaryEl.hidden = false;
+    resultSummaryEl.innerHTML = data.summaryHtml;
+    bindFailedFileCopyActions();
+    return;
+  }
 
   if (payload?.diagnostics?.suggestions && payload?.counts && payload?.vector && payload?.summary) {
     resultSummaryEl.hidden = false;

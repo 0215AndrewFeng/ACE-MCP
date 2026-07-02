@@ -1,3 +1,35 @@
+# v4.9.3 Profile Repair Result Visibility
+
+Author: feng.ling
+
+## Goal
+
+Complete the Web project profile loop by making one-click repair outcomes visible, showing before/after profile deltas, and turning failed-file review into a readable detail panel with copyable paths.
+
+## Plan
+
+- [x] Write failing static package contract tests for repair result rendering, before/after comparison, failed-file details, copy path actions, and v4.9.3 docs/version references.
+- [x] Implement Web repair result summary after project profile fix actions, including task status, duration, and profile count/vector/summary changes.
+- [x] Render failed-file review as a compact detail panel with file paths, errors, and copy buttons while preserving raw JSON output.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, release checklist, macOS installer, and package docs to v4.9.3.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- Static contract tests prove Web profile repair actions render a result panel, compare before/after profile fields, show failed files, and expose copy path actions.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.3 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.3 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.3` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-02: Started v4.9.3 after user approved profile repair result visibility. Scope is Web outcome visibility on top of existing v4.9.2 repair dispatch; no index core changes planned.
+- 2026-07-02: RED confirmed missing v4.9.3 docs/version references and Web repair-result contracts. GREEN added profile summary diffing, repair result rendering, failed-file detail rendering, copy-path actions, CSS styling, and v4.9.3 docs/version updates; focused package contract test passed with 16 tests.
+- 2026-07-02: Local validation passed: full `npm test` passed with 109 tests, `npm run build` passed, `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; `node dist/index.js --version` returned `4.9.3`; `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error; package content checks confirmed Web JS/CSS and release scripts are included in tgz and Windows zip.
+
 # v4.9.2 Project Profile One-Click Fixes
 
 Author: feng.ling
