@@ -1,3 +1,37 @@
+# v4.9.10 Web Query Task Templates
+
+Author: feng.ling
+
+## Goal
+
+Add lightweight Web templates that fill the search or QA input with common code-reading tasks, reducing repeated prompt typing after users find and package code context, without changing backend APIs, indexing, search ranking, or LLM request semantics.
+
+## Plan
+
+- [x] Write failing package/static and VM behavior contracts for v4.9.10 docs/version references, search template controls, QA task template controls, and input-fill behavior.
+- [x] Add compact template button groups below Web search and QA inputs with common tasks: call chain, impact analysis, bug scan, test generation, and business flow summary.
+- [x] Implement reusable front-end helpers to render templates, apply template text to the correct textarea, focus the input, and keep Enter/send behavior unchanged.
+- [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.10.
+- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+
+## Validation Plan
+
+- RED/GREEN focused package contract test: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Static and VM contracts prove templates render for both search and QA inputs and clicking a template fills only the intended textarea.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+- Runtime checks: `node dist/index.js --version`, `node dist/index.js --doctor`, `bash -n scripts/install-macos.sh`.
+- Full release validation: `zsh -ic 'npm run release:check'`.
+- Post-tag release publishing: `zsh -ic 'npm run release:publish -- --version 4.9.10 --timeout-ms 20000'`.
+- Asset verification: `npm run release:verify-assets -- --version 4.9.10 --timeout-ms 20000`.
+- Local service handoff: `/health` reports version `4.9.10` after LaunchAgent restart.
+
+## Comments
+
+- 2026-07-03: Started v4.9.10 after user approved Web query/task templates. Scope is front-end input ergonomics only; no backend, indexing, ranking, or MCP API changes planned.
+- 2026-07-03: RED confirmed missing v4.9.10 version contracts and missing Web query/task template containers, helpers, CSS, docs, and click-fill behavior. GREEN added `QUERY_TASK_TEMPLATES`, QA/search template panels, render/apply/bind/mount helpers, compact CSS, and v4.9.10 docs/version updates; focused package contract test passed with 28 tests.
+- 2026-07-03: Pre-release validation passed after tightening the VM fake DOM test type: `npm test` passed with 121 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.10`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, `node --check src/web/static/js/app.js` passed, `git diff --check` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed required Web/static/install/release artifacts in `ace-mcp-4.9.10.tgz` and `release/ace-mcp-v4.9.10-win-x64.zip`; exact token literal scan returned no project-file matches.
+
 # v4.9.9 Editable Context Bundle Task Draft
 
 Author: feng.ling

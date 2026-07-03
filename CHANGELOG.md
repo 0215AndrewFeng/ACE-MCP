@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.10] - 2026-07-03
+
+### Web query task templates
+
+- Web 智能问答和代码搜索输入框下方新增常用模板按钮，覆盖查调用链、查影响面、找潜在 bug、补单元测试和梳理业务流程。
+- 模板点击只填充对应输入框并聚焦，不自动触发搜索或问答，保留用户二次编辑空间。
+- 模板行为为纯前端输入体验增强，不改变后端 API、索引、搜索排序、LLM 请求参数或 MCP 工具契约。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.10。
+
 ## [4.9.9] - 2026-07-02
 
 ### Editable context bundle task draft

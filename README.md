@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.9.9`
+当前版本：`v4.9.10`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -26,6 +26,7 @@
 - 懒加载上下文预览：Web 搜索结果和问答来源卡片可点击“更多上下文”，按需读取命中行前后代码，metadata 模式也能继续定位源码
 - IDE / Agent 定位闭环：Web 搜索结果和问答来源卡片支持复制绝对路径、打开 VS Code、打开 IDEA，并复制“发送到 Codex / 发送到 Claude”的交接提示词
 - 结果上下文打包：Web 搜索结果和问答来源卡片支持多选后复制上下文包，并可在复制前填写任务说明或选择任务草稿，用于多文件交接给 Codex/Claude
+- 查询/任务模板：Web 搜索和智能问答输入框提供“查调用链”“查影响面”“找潜在 bug”“补单元测试”“梳理业务流程”等快捷模板
 - 搜索结果命中解释：Web 搜索结果和问答来源卡片展示 `reason`、`score`、路径/符号/片段/关键词命中，直接说明“为什么命中”
 - 项目级搜索画像：汇总文件、代码块、符号、语言、摘要、向量覆盖和最近索引失败，给出召回诊断建议；画像修复结果可见化，展示修复前后变化和失败文件明细
 
@@ -88,17 +89,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.9.9.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.9.10.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.9.9.tgz
+npm install -g ./ace-mcp-4.9.10.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.9.9.tgz
+npm install -g .\ace-mcp-4.9.10.tgz
 ace-mcp-web
 ```
 
@@ -107,13 +108,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.9/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.10/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.9.9 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.9/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.9.10 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.10/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -143,8 +144,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.9.9/ace-mcp-4.9.9.tgz
-npm install -g ./ace-mcp-4.9.9.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.9.10/ace-mcp-4.9.10.tgz
+npm install -g ./ace-mcp-4.9.10.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -168,7 +169,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.9.9-win-x64.zip`，解压后在目录内执行：
+从 Gitee Release 下载 `ace-mcp-v4.9.10-win-x64.zip`，解压后在目录内执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -229,7 +230,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.9.9.tgz
+npm install -g ./ace-mcp-4.9.10.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -265,13 +266,13 @@ npm run security:secrets
 发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.9
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.10
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.9.9
+npm run release:verify-assets -- --version 4.9.10
 ```
 
 ## 本地运行
@@ -567,7 +568,13 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.9.9（当前版本）
+### v4.9.10（当前版本）
+
+- **查询/任务模板**：Web 搜索和智能问答输入框下方新增常用模板按钮，减少重复输入
+- **常用代码阅读任务**：内置“查调用链”“查影响面”“找潜在 bug”“补单元测试”“梳理业务流程”等模板
+- **只填充不执行**：点击模板只写入对应输入框并聚焦，不自动发起搜索或问答，保留用户编辑空间
+
+### v4.9.9
 
 - **上下文包任务草稿**：Web 搜索结果摘要区和 QA 来源卡片的上下文包工具栏新增任务说明输入框
 - **预设任务说明**：可一键填入“解释这段逻辑”“找潜在 bug”“生成修改方案”“补测试”，复制上下文包前仍可手动编辑

@@ -16,6 +16,38 @@ const CONTEXT_BUNDLE_TASK_PRESETS = [
   "生成修改方案",
   "补测试",
 ];
+const QUERY_TASK_TEMPLATES = [
+  {
+    id: "call-chain",
+    label: "查调用链",
+    qa: "这个方法在哪些入口被调用？请按调用链分层说明，并列出关键文件。",
+    search: "symbol:Controller OR symbol:Service",
+  },
+  {
+    id: "impact",
+    label: "查影响面",
+    qa: "修改这段逻辑可能影响哪些模块、接口和调用方？请按风险从高到低列出。",
+    search: "find references impact usage",
+  },
+  {
+    id: "bug-scan",
+    label: "找潜在 bug",
+    qa: "这段逻辑有哪些潜在空指针、边界条件、并发或异常处理问题？请给出修改建议。",
+    search: "catch error null undefined timeout retry",
+  },
+  {
+    id: "tests",
+    label: "补单元测试",
+    qa: "基于这些上下文补单元测试，覆盖正常路径、边界条件和异常路径。",
+    search: "test spec mock assertion",
+  },
+  {
+    id: "flow",
+    label: "梳理业务流程",
+    qa: "请按业务步骤梳理这段代码流程，说明入口、关键判断、下游调用和输出结果。",
+    search: "flow process handler service",
+  },
+];
 
 const resultEl = document.getElementById("result");
 const resultSummaryEl = document.getElementById("result-summary");
@@ -127,6 +159,41 @@ function renderHistory() {
     });
   });
 }
+
+function renderQueryTemplateButtons(kind) {
+  const target = kind === "search" ? "search-query" : "qa-question";
+  return QUERY_TASK_TEMPLATES.map((template) => {
+    const value = kind === "search" ? template.search : template.qa;
+    return `<button type="button" class="query-template-button" data-query-template-target="${escapeHtmlAttribute(target)}" data-query-template-id="${escapeHtmlAttribute(template.id)}" data-query-template-value="${escapeHtmlAttribute(value)}">${escapeHtml(template.label)}</button>`;
+  }).join("");
+}
+
+function applyQueryTemplate(button) {
+  const targetId = button.getAttribute("data-query-template-target") || "";
+  const value = button.getAttribute("data-query-template-value") || "";
+  const input = targetId ? document.getElementById(targetId) : null;
+  if (!input || !value) return;
+  input.value = value;
+  if (typeof input.focus === "function") input.focus();
+}
+
+function bindQueryTemplateActions() {
+  document.querySelectorAll("[data-query-template-value]").forEach((button) => {
+    if (button.dataset.queryTemplateBound === "1") return;
+    button.dataset.queryTemplateBound = "1";
+    button.addEventListener("click", () => applyQueryTemplate(button));
+  });
+}
+
+function mountQueryTemplateButtons() {
+  const qaPanel = document.getElementById("qa-template-buttons");
+  const searchPanel = document.getElementById("search-template-buttons");
+  if (qaPanel) qaPanel.innerHTML = renderQueryTemplateButtons("qa");
+  if (searchPanel) searchPanel.innerHTML = renderQueryTemplateButtons("search");
+  bindQueryTemplateActions();
+}
+
+mountQueryTemplateButtons();
 
 function escapeHtml(text) {
   const div = document.createElement("div");

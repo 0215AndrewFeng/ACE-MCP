@@ -80,6 +80,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .search-history { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .search-history-item { background: #f3f4f6; padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .search-history-item:hover { background: #667eea; color: white; }
+.query-template-panel { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.query-template-button { border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff; color: #334155; cursor: pointer; font-size: 12px; font-weight: 600; min-height: 26px; padding: 4px 8px; }
+.query-template-button:hover { background: #eef2ff; border-color: #a5b4fc; color: #3730a3; }
 
 /* ── Index Options ── */
 .index-options { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
