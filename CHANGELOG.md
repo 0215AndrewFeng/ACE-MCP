@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.9.11] - 2026-07-03
+
+### Runtime data health diagnostics
+
+- `/health` 新增 `dataHealth`，在保留轻量健康检查的同时识别注册项目路径丢失和项目列表读取失败等 degraded/repairable 状态。
+- 项目画像新增 `dataHealth`，当项目统计、向量覆盖或文件列表读取失败时返回可修复状态和建议，而不是直接 500。
+- 数据健康建议覆盖检查项目路径、运行 `ace-mcp --doctor`、重新全量索引和预热向量索引，帮助定位“服务还活着但数据不可用”的问题。
+- README、Windows README、release checklist、ROADMAP、发布契约测试与版本号更新到 v4.9.11。
+
 ## [4.9.10] - 2026-07-03
 
 ### Web query task templates

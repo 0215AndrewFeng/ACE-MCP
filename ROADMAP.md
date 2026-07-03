@@ -67,10 +67,11 @@
 52. ✅ **结果上下文打包**：Web 搜索结果和 QA 来源卡片可多选后复制 Markdown 上下文包，包含项目根目录、绝对路径、引用、片段、命中原因和分数，便于多文件交接给 Codex/Claude（v4.9.8）
 53. ✅ **上下文包任务草稿**：Web 上下文包工具栏新增任务说明输入框和“解释这段逻辑 / 找潜在 bug / 生成修改方案 / 补测试”预设，复制给 Codex/Claude 的 Markdown 顶部带上明确任务意图（v4.9.9）
 54. ✅ **Web 查询/任务模板**：Web 搜索和智能问答输入框新增“查调用链 / 查影响面 / 找潜在 bug / 补单元测试 / 梳理业务流程”模板按钮，点击只填充对应输入框并聚焦，不改变后端请求语义（v4.9.10）
-55. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
-56. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
-57. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
-58. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
+55. ✅ **运行时数据健康诊断**：`/health` 和项目画像暴露 `dataHealth`，识别 DB/项目列表读取失败、注册项目路径丢失、项目画像统计/向量/文件读取失败等 degraded/repairable 状态，并给出全量索引、检查路径或清理重建的修复建议（v4.9.11）
+56. ✅ **Web API 验证统一**：新增 `core/validation/schemas.ts` 单一来源，MCP 工具与 Web 路由共用枚举/边界/默认值；Web 宽松解析（coerce+clamp）仅必填缺失时 400（v4.5.9）
+57. ✅ **JSON.parse 防护**：新增 `safeJsonParse` 工具，套用到 sqliteStore 读 DB 列的 6 处，损坏降级为空值 + warn 日志而非崩溃（v4.5.8）
+58. ✅ **日志格式统一**：RemoteEmbedding 用 console.warn 替代 logger（v4.5.10）
+59. ✅ **关键路径测试覆盖**：测试 33→97，新增 9 个测试文件覆盖 safeJsonParse、搜索打分/工具纯函数、QaCache、共享/宽松校验、VectorCacheStore reconcile、deleteFiles 级联、源码解码助手（v4.5.9）
 
 ## P3 — 长线
 
@@ -100,3 +101,4 @@
 50. ✅ **npm/tgz 全局安装 + Windows 启动脚本**：包改为可发布，新增 `ace-mcp-web` 全局命令、`release:pack`、`scripts/start-web.{mjs,cmd,ps1}`，README 补充 npm/tgz 全局安装与 Windows MCP 配置（v4.6.7）
 51. ✅ **Windows zip 安装包 + 发布清单**：新增 `release:win` 与 `scripts/package-windows.mjs` 生成 `ace-mcp-v4.6.8-win-x64.zip`，补 `install-windows.{cmd,ps1}`、`scripts/README-WINDOWS.md`、`docs/release-checklist.md` 与发布契约测试（v4.6.8）
 52. ✅ **安装自检 + 发布 smoke test**：新增 `--doctor` 检查 Node/npm、better-sqlite3、SQLite FTS5、目录写权限、Web 端口与 LLM/Embedding 配置；新增 `release:smoke` 临时安装 tgz 并验证 `ace-mcp --version`、`--doctor`、`ace-mcp-web` 与 `/health`；Windows zip 安装后自动运行 doctor（v4.6.9）
+53. **Web 最近任务历史 / 草稿恢复**：记录搜索与问答最近历史，保留项目路径、输入、结果数、耗时和实际高级参数；支持一键回填/重跑，以及按项目隔离的输入草稿自动恢复。

@@ -6,6 +6,7 @@ import { AppError } from "../../core/common/errors.js";
 import { readFileSnippet } from "../../core/project/fileSnippet.js";
 import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
+import { buildProjectListDataHealth, buildDataHealthReport, unavailableDataHealthCheck } from "../dataHealth.js";
 import { buildRuntimeStatus, toolCatalog } from "../routeHelpers.js";
 import { parseFileSnippetRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
@@ -27,6 +28,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
       res.json({
         status: "ok",
         ...buildRuntimeStatus(dependencies.runtime),
+        dataHealth: buildProjectListDataHealth(projects),
         watching: dependencies.indexCoordinator.isWatching(),
         projects: {
           total: projects.length,
@@ -46,11 +48,27 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         },
       });
     } catch (error) {
-      // Fallback to basic health if stats fail
       res.json({
         status: "ok",
         ...buildRuntimeStatus(dependencies.runtime),
+        dataHealth: buildDataHealthReport([unavailableDataHealthCheck("PROJECT_LIST_UNAVAILABLE", error)]),
         watching: dependencies.indexCoordinator.isWatching(),
+        projects: {
+          total: 0,
+          ready: 0,
+        },
+        index: {
+          totalFiles: null,
+          totalChunks: null,
+          totalSymbols: null,
+          latestIndexAt: null,
+        },
+        indexing: dependencies.indexCoordinator.getInFlightIndexInfo(),
+        tasks: dependencies.longTaskTracker?.listActive() ?? [],
+        vector: {
+          enabled: dependencies.settings.enableVectorSearch,
+          mode: dependencies.settings.vectorIndexingMode,
+        },
       });
     }
   });

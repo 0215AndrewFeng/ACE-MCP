@@ -363,6 +363,13 @@ function formatStatusTime(value) {
   return date.toLocaleString();
 }
 
+function formatDataHealthStatus(dataHealth) {
+  const labels = { degraded: "降级", ok: "正常", repairable: "可修复" };
+  const status = dataHealth?.status || "ok";
+  const checkCount = Array.isArray(dataHealth?.checks) ? dataHealth.checks.length : 0;
+  return checkCount > 0 ? `${labels[status] || status} (${checkCount})` : (labels[status] || status);
+}
+
 function renderServiceStatus(health) {
   if (serviceVersionEl) serviceVersionEl.textContent = health?.version || "--";
   if (serviceWatchStatusEl) serviceWatchStatusEl.textContent = health?.watching ? "开启" : "关闭";
@@ -375,7 +382,8 @@ function renderServiceStatus(health) {
   if (serviceActiveTasksEl) {
     const indexingCount = Array.isArray(health?.indexing) ? health.indexing.length : 0;
     const taskCount = Array.isArray(health?.tasks) ? health.tasks.length : 0;
-    serviceActiveTasksEl.textContent = indexingCount + taskCount > 0 ? `${indexingCount} 索引 / ${taskCount} 摘要` : "空闲";
+    const activity = indexingCount + taskCount > 0 ? `${indexingCount} 索引 / ${taskCount} 摘要` : "空闲";
+    serviceActiveTasksEl.textContent = `${activity} · 数据${formatDataHealthStatus(health?.dataHealth)}`;
   }
 }
 
@@ -805,8 +813,11 @@ function renderSearchResultExplanations(results) {
 
 function renderProjectProfileSummary(profile) {
   const suggestions = profile?.diagnostics?.suggestions || [];
+  const dataHealthSuggestions = profile?.dataHealth?.suggestions || [];
   const suggestionLabels = {
+    CHECK_PROJECT_PATH: "检查路径",
     RUN_FULL_INDEX: "全量索引",
+    RUN_DOCTOR: "运行自检",
     GENERATE_SUMMARY: "生成摘要",
     WARM_VECTOR_INDEX: "预热向量",
     REINDEX_FOR_SYMBOLS: "重建符号",
@@ -821,6 +832,7 @@ function renderProjectProfileSummary(profile) {
     : "--";
   const cards = [
     { label: "画像状态", value: profile?.diagnostics?.status || "--" },
+    { label: "数据健康", value: formatDataHealthStatus(profile?.dataHealth) },
     { label: "文件", value: String(profile?.counts?.fileCount ?? 0) },
     { label: "代码块", value: String(profile?.counts?.chunkCount ?? 0) },
     { label: "符号", value: String(profile?.counts?.symbolCount ?? 0) },
@@ -838,7 +850,13 @@ function renderProjectProfileSummary(profile) {
       return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}<button type="button" class="btn-secondary btn-small profile-fix-action" data-profile-fix="${escapeHtml(suggestion.code)}">${escapeHtml(label)}</button></span>`;
     }).join("")}</div>`
     : "";
-  return `${cardHtml}${suggestionHtml}`;
+  const dataHealthHtml = dataHealthSuggestions.length > 0
+    ? `<div class="diagnostic-suggestions data-health-suggestions">${dataHealthSuggestions.map((suggestion) => {
+      const label = suggestionLabels[suggestion.code] || suggestion.code;
+      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}</span>`;
+    }).join("")}</div>`
+    : "";
+  return `${cardHtml}${dataHealthHtml}${suggestionHtml}`;
 }
 
 async function refreshProjectProfile(projectRootPath) {

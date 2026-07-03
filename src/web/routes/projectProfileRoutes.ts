@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 
 import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
+import { buildDataHealthReport, unavailableDataHealthCheck, type DataHealthCheck } from "../dataHealth.js";
 import type { WebAppDependencies } from "../types.js";
 
 interface ProjectProfileSuggestion {
@@ -71,14 +72,34 @@ export function registerProjectProfileRoutes(app: Express, dependencies: WebAppD
     try {
       const normalized = normalizeAbsolutePath(projectRootPath);
       const projectRecord = dependencies.store.getProjectByRoot(normalized);
-      const stats = dependencies.store.getProjectStats(normalized);
+      const dataHealthChecks: DataHealthCheck[] = [];
+      let stats;
+      try {
+        stats = dependencies.store.getProjectStats(normalized);
+      } catch (error) {
+        dataHealthChecks.push(unavailableDataHealthCheck("PROJECT_STATS_UNAVAILABLE", error, normalized));
+        stats = null;
+      }
       const summary = await dependencies.summaryGenerator.loadSummary(normalized);
       const modelName = dependencies.embeddingProvider.getModelName();
-      const vectorCoverage = projectRecord
-        ? dependencies.store.getVectorCoverage(projectRecord.project_id, modelName)
-        : { indexedChunkCount: 0, missingChunkCount: 0, totalChunkCount: 0 };
-      const hasVectorIndex = projectRecord ? dependencies.store.hasVectorIndex(projectRecord.project_id, modelName) : false;
-      const files = projectRecord ? dependencies.store.listProjectFiles(projectRecord.project_id) : [];
+      let vectorCoverage = { indexedChunkCount: 0, missingChunkCount: 0, totalChunkCount: 0 };
+      let hasVectorIndex = false;
+      if (projectRecord) {
+        try {
+          vectorCoverage = dependencies.store.getVectorCoverage(projectRecord.project_id, modelName);
+          hasVectorIndex = dependencies.store.hasVectorIndex(projectRecord.project_id, modelName);
+        } catch (error) {
+          dataHealthChecks.push(unavailableDataHealthCheck("PROJECT_VECTOR_UNAVAILABLE", error, normalized));
+        }
+      }
+      let files = [] as ReturnType<WebAppDependencies["store"]["listProjectFiles"]>;
+      if (projectRecord) {
+        try {
+          files = dependencies.store.listProjectFiles(projectRecord.project_id);
+        } catch (error) {
+          dataHealthChecks.push(unavailableDataHealthCheck("PROJECT_FILES_UNAVAILABLE", error, normalized));
+        }
+      }
       const languageCounts = new Map<string, { fileCount: number; lineCount: number }>();
       for (const file of files) {
         const item = languageCounts.get(file.language) ?? { fileCount: 0, lineCount: 0 };
@@ -92,13 +113,16 @@ export function registerProjectProfileRoutes(app: Express, dependencies: WebAppD
       const failedFileCount = stats?.latestIndexEvent?.failedFileCount ?? 0;
       const suggestions = buildSuggestions({
         failedFileCount,
-        indexed: stats !== null,
+        indexed: projectRecord !== undefined,
         missingVectorCount: vectorCoverage.missingChunkCount,
         summaryFound: summary !== null,
         symbolCount: stats?.symbolCount ?? 0,
       });
-      const status = stats === null
-        ? "not_indexed"
+      const dataHealth = buildDataHealthReport(dataHealthChecks);
+      const status = dataHealth.status !== "ok"
+        ? "needs_repair"
+        : projectRecord === undefined
+          ? "not_indexed"
         : suggestions.some((suggestion) => suggestion.severity === "warning")
           ? "needs_attention"
           : "healthy";
@@ -116,7 +140,8 @@ export function registerProjectProfileRoutes(app: Express, dependencies: WebAppD
               status,
               suggestions,
             },
-            indexed: stats !== null,
+            dataHealth,
+            indexed: projectRecord !== undefined,
             languages,
             latestIndexing: stats?.latestIndexEvent ?? null,
             projectId: projectRecord?.project_id ?? null,
@@ -162,7 +187,10 @@ export function registerProjectProfileRoutes(app: Express, dependencies: WebAppD
               modelName,
             },
           },
-          stats ? [] : ["Project has not been indexed yet."],
+          [
+            ...(projectRecord ? [] : ["Project has not been indexed yet."]),
+            ...(dataHealth.status === "ok" ? [] : ["Project stats are temporarily unavailable or incomplete; repair actions are available."]),
+          ],
         ),
       );
     } catch (error: unknown) {

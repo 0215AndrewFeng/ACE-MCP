@@ -178,6 +178,101 @@ test("health exposes active summary long tasks", async () => {
   }
 });
 
+test("health reports runtime data health for missing registered project paths", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => [
+        {
+          languages: ["javascript"],
+          lastIndexAt: "2026-07-03T00:00:00.000Z",
+          lastScanAt: "2026-07-03T00:00:00.000Z",
+          projectRootPath: "/path/that/does/not/exist",
+          status: "ready",
+        },
+      ],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/health`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, "ok");
+    assert.equal(body.dataHealth.status, "repairable");
+    assert.equal(body.dataHealth.checks[0].code, "PROJECT_PATH_MISSING");
+    assert.equal(body.dataHealth.checks[0].projectRootPath, "/path/that/does/not/exist");
+    assert.equal(body.dataHealth.suggestions[0].code, "CHECK_PROJECT_PATH");
+  } finally {
+    await app.close();
+  }
+});
+
+test("health degrades data health when project listing fails", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      listProjects: () => {
+        throw new Error("database is locked");
+      },
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/health`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.status, "ok");
+    assert.equal(body.projects.total, 0);
+    assert.equal(body.dataHealth.status, "degraded");
+    assert.equal(body.dataHealth.checks[0].code, "PROJECT_LIST_UNAVAILABLE");
+    assert.match(body.dataHealth.checks[0].message, /database is locked/);
+    assert.equal(body.dataHealth.suggestions[0].code, "RUN_DOCTOR");
+  } finally {
+    await app.close();
+  }
+});
+
 test("project profile validates project root path", async () => {
   const app = await startWebApp(0, {
     embeddingProvider: { getModelName: () => "test-vector-model" } as never,
@@ -262,6 +357,64 @@ test("project profile reports full-index recommendation for unknown projects", a
       ["RUN_FULL_INDEX"],
     );
     assert.deepEqual(body.notes, ["Project has not been indexed yet."]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("project profile reports repairable data health when indexed project stats fail", async () => {
+  const app = await startWebApp(0, {
+    embeddingProvider: { getModelName: () => "test-vector-model" } as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      getProjectByRoot: () => ({
+        index_version: 1,
+        languages: "[\"javascript\"]",
+        last_index_at: "2026-07-03T00:00:00.000Z",
+        last_scan_at: "2026-07-03T00:00:00.000Z",
+        project_id: "project-1",
+        project_root_path: "/repo",
+        project_type: "mixed",
+        status: "ready",
+      }),
+      getProjectStats: () => {
+        throw new Error("stats table missing");
+      },
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: { loadSummary: async () => null } as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/project-profile?projectRootPath=${encodeURIComponent("/repo")}`);
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.indexed, true);
+    assert.equal(body.data.projectId, "project-1");
+    assert.equal(body.data.diagnostics.status, "needs_repair");
+    assert.equal(body.data.dataHealth.status, "repairable");
+    assert.equal(body.data.dataHealth.checks[0].code, "PROJECT_STATS_UNAVAILABLE");
+    assert.match(body.data.dataHealth.checks[0].message, /stats table missing/);
+    assert.equal(body.data.dataHealth.suggestions[0].code, "RUN_FULL_INDEX");
+    assert.match(body.notes.join("\n"), /Project stats are temporarily unavailable/);
   } finally {
     await app.close();
   }
