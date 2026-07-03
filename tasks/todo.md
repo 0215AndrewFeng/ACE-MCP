@@ -12,7 +12,7 @@ Add lightweight Web templates that fill the search or QA input with common code-
 - [x] Add compact template button groups below Web search and QA inputs with common tasks: call chain, impact analysis, bug scan, test generation, and business flow summary.
 - [x] Implement reusable front-end helpers to render templates, apply template text to the correct textarea, focus the input, and keep Enter/send behavior unchanged.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.10.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -31,6 +31,7 @@ Add lightweight Web templates that fill the search or QA input with common code-
 - 2026-07-03: Started v4.9.10 after user approved Web query/task templates. Scope is front-end input ergonomics only; no backend, indexing, ranking, or MCP API changes planned.
 - 2026-07-03: RED confirmed missing v4.9.10 version contracts and missing Web query/task template containers, helpers, CSS, docs, and click-fill behavior. GREEN added `QUERY_TASK_TEMPLATES`, QA/search template panels, render/apply/bind/mount helpers, compact CSS, and v4.9.10 docs/version updates; focused package contract test passed with 28 tests.
 - 2026-07-03: Pre-release validation passed after tightening the VM fake DOM test type: `npm test` passed with 121 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.10`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, `bash -n scripts/install-macos.sh` passed, `node --check src/web/static/js/app.js` passed, `git diff --check` passed, and `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark. Package content checks confirmed required Web/static/install/release artifacts in `ace-mcp-4.9.10.tgz` and `release/ace-mcp-v4.9.10-win-x64.zip`; exact token literal scan returned no project-file matches.
+- 2026-07-03: Release handoff complete: committed `b042d73`, tagged and pushed `v4.9.10`, pushed `master`, published Gitee Release `v4.9.10` (#732242), uploaded `ace-mcp-4.9.10.tgz` and `ace-mcp-v4.9.10-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.10` on pid `56187`.
 
 # v4.9.9 Editable Context Bundle Task Draft
 
