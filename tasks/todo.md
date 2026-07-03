@@ -12,7 +12,7 @@ Add lightweight runtime data-health diagnostics so ace-mcp can expose degraded b
 - [x] Write failing Web route tests for `/health` `dataHealth`, missing registered project paths, list-project fallback, and project-profile repairable degradation.
 - [x] Implement shared runtime data-health helpers and wire them into `/health` and `/api/project-profile`.
 - [x] Update version strings, README, CHANGELOG, ROADMAP, Windows README, macOS installer, and release checklist to v4.9.11.
-- [ ] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
+- [x] Run focused tests, full validation, release packaging, commit/tag/push, publish Gitee Release, verify assets, restart local service, and record handoff.
 
 ## Validation Plan
 
@@ -30,6 +30,7 @@ Add lightweight runtime data-health diagnostics so ace-mcp can expose degraded b
 
 - 2026-07-03: Started v4.9.11 after user approved application-level runtime self-healing/diagnostics and rejected low-value custom template features. Scope is data-health observability and repair guidance; no index/search ranking/MCP contract changes planned.
 - 2026-07-03: RED confirmed `/health` lacked `dataHealth`, project-list failure returned only a minimal fallback, and project-profile stats failure returned 500. GREEN added shared `dataHealth` helpers, health/project-profile degraded and repairable reports, Web-visible data-health status/suggestions, v4.9.11 docs/version updates, and ROADMAP entry for deferred recent history/draft recovery. Focused Web route tests passed with 19 tests, package/static contract tests passed with 29 tests, `npm test` passed with 125 tests, `npm run build` passed, `node dist/index.js --version` returned `4.9.11`, `node dist/index.js --doctor` reported 9 ok, 1 expected Web port warning, 0 error, and `bash -n scripts/install-macos.sh` passed.
+- 2026-07-03: Release handoff complete: `zsh -ic 'npm run release:check'` passed including tgz/Windows zip generation, secret scan, smoke, and benchmark; package content checks confirmed required Web/static/install/release/data-health artifacts in `ace-mcp-4.9.11.tgz` and `release/ace-mcp-v4.9.11-win-x64.zip`; exact token literal scan returned no project-file matches. Committed `bb25a98`, tagged and pushed `v4.9.11`, pushed `master`, published Gitee Release `v4.9.11` (#732524), uploaded `ace-mcp-4.9.11.tgz` and `ace-mcp-v4.9.11-win-x64.zip`, verified release assets 4/4 HTTP 200, restarted LaunchAgent `com.ace-mcp.server`, and verified `http://127.0.0.1:8787/health` reports version `4.9.11` on pid `65391` with `dataHealth.status=repairable` due to 3 missing registered project paths.
 
 # v4.9.10 Web Query Task Templates
 
