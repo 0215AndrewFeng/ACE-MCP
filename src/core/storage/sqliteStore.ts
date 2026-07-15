@@ -134,6 +134,34 @@ export class SQLiteStore {
     this.vectorStore.removeVectorCacheByPaths(projectId, relativePaths);
   }
 
+  public deleteProject(projectRootPath: string): { deleted: boolean; fileCount: number; projectId?: string; projectRootPath: string } {
+    const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
+    const project = this.getProjectByRoot(normalizedProjectRootPath);
+    if (!project) {
+      return {
+        deleted: false,
+        fileCount: 0,
+        projectRootPath: normalizedProjectRootPath,
+      };
+    }
+
+    const fileCount = (
+      this.db.prepare("SELECT COUNT(*) AS count FROM file WHERE project_id = ?").get(project.project_id) as {
+        count: number;
+      }
+    ).count;
+
+    this.db.prepare("DELETE FROM project WHERE project_id = ?").run(project.project_id);
+    this.vectorStore.clearProjectVectorCache(project.project_id);
+
+    return {
+      deleted: true,
+      fileCount,
+      projectId: project.project_id,
+      projectRootPath: normalizedProjectRootPath,
+    };
+  }
+
   public getProjectByRoot(projectRootPath: string): ProjectRow | undefined {
     const normalizedProjectRootPath = normalizeAbsolutePath(projectRootPath);
     return this.db

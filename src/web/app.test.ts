@@ -228,6 +228,131 @@ test("health reports runtime data health for missing registered project paths", 
   }
 });
 
+test("delete project API removes registered project and clears search cache", async () => {
+  const removed: string[] = [];
+  const cleared: string[] = [];
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {
+      clearSearchCache: (projectId: string) => {
+        cleared.push(projectId);
+      },
+    } as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      deleteProject: (projectRootPath: string) => {
+        removed.push(projectRootPath);
+        return {
+          deleted: true,
+          fileCount: 2,
+          projectId: "project-1",
+          projectRootPath,
+        };
+      },
+      getProjectByRoot: (projectRootPath: string) => ({
+        index_version: 3,
+        languages: "[]",
+        last_index_at: null,
+        last_scan_at: null,
+        project_id: "project-1",
+        project_root_path: projectRootPath,
+        project_type: "unknown",
+        status: "ready",
+      }),
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${app.port}/api/projects?projectRootPath=${encodeURIComponent("/repo")}`,
+      { method: "DELETE" },
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.deleted, true);
+    assert.equal(body.data.fileCount, 2);
+    assert.equal(body.data.projectId, "project-1");
+    assert.deepEqual(removed, ["/repo"]);
+    assert.deepEqual(cleared, ["project-1"]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("delete project API is idempotent for unknown projects", async () => {
+  const cleared: string[] = [];
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {
+      clearSearchCache: (projectId: string) => {
+        cleared.push(projectId);
+      },
+    } as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      deleteProject: (projectRootPath: string) => ({
+        deleted: false,
+        fileCount: 0,
+        projectRootPath,
+      }),
+      getProjectByRoot: () => undefined,
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/projects`, {
+      body: JSON.stringify({ projectRootPath: "/missing" }),
+      headers: { "Content-Type": "application/json" },
+      method: "DELETE",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.deleted, false);
+    assert.equal(body.notes[0], "Project has not been indexed yet.");
+    assert.deepEqual(cleared, []);
+  } finally {
+    await app.close();
+  }
+});
+
 test("health degrades data health when project listing fails", async () => {
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,

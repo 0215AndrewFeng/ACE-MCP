@@ -1,3 +1,31 @@
+# Project Removal API
+
+Author: feng.ling
+
+## Goal
+
+Add an official Web API to remove a registered project and its indexed data, then use it to clean missing-path data-health warnings without direct SQLite edits.
+
+## Plan
+
+- [x] Inspect existing Web delete-project behavior and clear_project_index scope.
+- [x] Add storage-level project deletion and Web API route.
+- [x] Update the Web delete button to call the API before local list cleanup.
+- [x] Add focused tests for API behavior and front-end contract.
+- [x] Run validation, restart the local service, and remove the three missing registered projects.
+
+## Validation Plan
+
+- Focused Web route tests: `node --import tsx --test src/web/app.test.ts`.
+- Static package/front-end contract: `node --import tsx --test src/config/packageManifest.test.ts`.
+- TypeScript build: `npm run build`.
+- Runtime cleanup check: `/health` no longer reports the three `PROJECT_PATH_MISSING` entries.
+
+## Comments
+
+- 2026-07-10: Existing `clear_project_index` clears files/chunks/vectors but leaves the project row, so it cannot resolve `/health` missing-path warnings. Existing Web delete button only removes LocalStorage entries.
+- 2026-07-10: Added `DELETE /api/projects`, rebuilt and restarted LaunchAgent service, then removed the three missing registered projects. `/health` now reports `dataHealth.status=ok` and project total decreased from 29 to 26.
+
 # v4.9.11 Runtime Data Health
 
 Author: feng.ling

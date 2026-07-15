@@ -111,6 +111,22 @@ export class VectorCacheStore {
     this.vectorCacheOrder.length = 0;
   }
 
+  public clearProjectVectorCache(projectId: string): void {
+    this.clearVectorCache(projectId);
+    try {
+      if (!fs.existsSync(this.hnswCacheDir)) {
+        return;
+      }
+      for (const entry of fs.readdirSync(this.hnswCacheDir)) {
+        if (entry.startsWith(`${projectId}_`) && entry.endsWith(".hnsw")) {
+          fs.unlinkSync(path.join(this.hnswCacheDir, entry));
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to clear HNSW cache for ${projectId}: ${error}`);
+    }
+  }
+
   private evictVectorCache(): void {
     while (this.vectorCache.size > this.vectorCacheMaxProjects && this.vectorCacheOrder.length > 0) {
       const oldest = this.vectorCacheOrder.shift()!;

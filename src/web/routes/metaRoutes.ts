@@ -102,6 +102,35 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
     res.json({ projects: dependencies.store.listProjects() });
   });
 
+  app.delete("/api/projects", (req: Request, res: Response) => {
+    const projectRootPath =
+      typeof req.query.projectRootPath === "string"
+        ? req.query.projectRootPath
+        : typeof req.body?.projectRootPath === "string"
+          ? req.body.projectRootPath
+          : "";
+    if (!projectRootPath.trim()) {
+      res.status(400).json({ error: "projectRootPath is required", code: "VALIDATION_ERROR" });
+      return;
+    }
+
+    const normalized = normalizeAbsolutePath(projectRootPath);
+    const project = dependencies.store.getProjectByRoot(normalized);
+    const result = dependencies.store.deleteProject(normalized);
+    if (project) {
+      dependencies.searchService.clearSearchCache(project.project_id);
+    }
+
+    res.json(
+      buildEnvelope(
+        { projectRootPath: normalized },
+        result,
+        {},
+        result.deleted ? [] : ["Project has not been indexed yet."],
+      ),
+    );
+  });
+
   app.get("/api/project-stats", (req: Request, res: Response) => {
     const projectRootPath = req.query.projectRootPath as string;
     if (!projectRootPath) {

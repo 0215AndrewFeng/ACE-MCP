@@ -593,6 +593,21 @@ test("web search and QA results expose copy actions and explanation toggles", ()
   assert.match(roadmap, /搜索结果可操作化/);
 });
 
+test("web project delete control removes registered project through the API", () => {
+  const html = readFileSync(path.join(rootDir, "src/web/static/index.html"), "utf8");
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+
+  assert.match(html, /id="delete-project"/);
+  assert.match(html, /移除项目登记并清理索引数据/);
+  assert.match(appJs, /async function deleteRegisteredProject\(projectPath\)/);
+  assert.match(appJs, /request\("DELETE", "\/api\/projects\?projectRootPath=" \+ encodeURIComponent\(projectPath\)\)/);
+  assert.match(appJs, /确定要移除此项目登记并清理索引数据吗/);
+  assert.match(appJs, /await deleteRegisteredProject\(projectPath\)/);
+  assert.match(appJs, /await loadProjects\(\)/);
+  assert.match(appJs, /已移除项目登记并清理索引数据/);
+  assert.doesNotMatch(appJs, /索引数据会保留在磁盘上/);
+});
+
 test("web search and QA results expose IDE and agent jump actions", () => {
   const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
   const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");

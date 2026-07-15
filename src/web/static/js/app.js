@@ -113,6 +113,10 @@ function removeStoredProject(projectPath) {
   saveStoredProjects(projects);
 }
 
+async function deleteRegisteredProject(projectPath) {
+  return request("DELETE", "/api/projects?projectRootPath=" + encodeURIComponent(projectPath));
+}
+
 function getSelectedProject() {
   return localStorage.getItem(SELECTED_PROJECT_KEY) || '';
 }
@@ -1615,21 +1619,36 @@ document.getElementById("add-project")?.addEventListener("click", async () => {
 
 // ── v4.2.6: Delete Project button ────────────────────────────────────────────
 document.getElementById("delete-project")?.addEventListener("click", async () => {
+  const deleteBtn = document.getElementById("delete-project");
   const projectPath = projectRootInput.value?.trim();
   if (!projectPath) {
     alert("请先选择或输入项目路径");
     return;
   }
 
-  if (!confirm(`确定要从列表中移除此项目吗？\n\n${projectPath}\n\n注意：这只会从下拉列表中移除，索引数据会保留在磁盘上。`)) {
+  if (!confirm(`确定要移除此项目登记并清理索引数据吗？\n\n${projectPath}\n\n之后如需搜索，需要重新添加并索引。`)) {
     return;
   }
 
-  removeStoredProject(projectPath);
-  projectRootInput.value = '';
-  setSelectedProject('');
-  renderProjectSelect();
-  alert("已从列表中移除");
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+  }
+  try {
+    const result = await deleteRegisteredProject(projectPath);
+    removeStoredProject(projectPath);
+    projectRootInput.value = '';
+    setSelectedProject('');
+    await loadProjects();
+    renderProjectSelect();
+    render(result);
+    alert(result?.data?.deleted ? "已移除项目登记并清理索引数据" : "项目未登记，已从本地列表移除");
+  } catch (err) {
+    alert("移除失败: " + (err.message || err));
+  } finally {
+    if (deleteBtn) {
+      deleteBtn.disabled = false;
+    }
+  }
 });
 
 // Ask Codebase (RAG)

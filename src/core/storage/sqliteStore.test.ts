@@ -63,3 +63,26 @@ test("SQLiteStore.deleteFiles cascades file-owned rows and leaves project stats 
     await env.cleanup();
   }
 });
+
+test("SQLiteStore.deleteProject removes registration and cascades indexed rows", async () => {
+  const env = await createTestProjectEnvironment({
+    "package.json": "{\"type\":\"module\"}",
+    "src/a.ts": "export const alpha = 1;\n",
+    "src/b.ts": "export const beta = 2;\n",
+  });
+
+  try {
+    const indexResult = await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    const result = env.store.deleteProject(env.projectRootPath);
+
+    assert.equal(result.deleted, true);
+    assert.equal(result.fileCount, 2);
+    assert.equal(result.projectId, indexResult.projectId);
+    assert.equal(env.store.getProjectByRoot(env.projectRootPath), undefined);
+    assert.equal(env.store.getProjectStats(env.projectRootPath), null);
+    assert.equal(env.store.listProjects().some((project) => project.projectRootPath === env.projectRootPath), false);
+    assert.deepEqual(env.store.listProjectFiles(indexResult.projectId), []);
+  } finally {
+    await env.cleanup();
+  }
+});
