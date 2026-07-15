@@ -1,0 +1,41 @@
+src/web/static/index.html
+  s_f263ab43e9e9da::t_8ebf5167793412 35
+src/web/routes/metaRoutes.ts
+  s_f263ab43e9e9da::t_1eb64ebef4872b 105-133
+src/web/static/js/app.js
+  s_f263ab43e9e9da::t_e30730015fc8f7 116-119,1622,1629,1633-1651
+tasks/lessons.md
+  s_f263ab43e9e9da::t_f17e122be2e52a 42
+tasks/todo.md
+  s_f263ab43e9e9da::t_7d28f7ca474e15 12-14
+  s_f263ab43e9e9da::t_2a78343d16204e 15,27
+  s_f263ab43e9e9da::t_c8a2707da0ccb4 1-11,16-26,28
+src/core/storage/sqliteStore.ts
+  s_f263ab43e9e9da::t_b70b2cff678961 155
+  s_f263ab43e9e9da::t_73fc7ec393e149 137-154,156-164
+src/config/packageManifest.test.ts
+  s_f263ab43e9e9da::t_d02abf34ad241c 596-610
+src/core/storage/sqliteStore.test.ts
+  s_f263ab43e9e9da::t_a1e4b5471c8978 66-88
+src/web/app.test.ts
+  s_f263ab43e9e9da::t_ba82640654061a 231-348,350-355
+  s_f263ab43e9e9da::t_88bb72d559814d 349
+src/core/storage/vectorCacheStore.ts
+  s_f263ab43e9e9da::t_eb9e74dfaf2cd9 114-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d3fd679784d3c337e588170817a01ce51f953b23",
+  "prompts": {},
+  "sessions": {
+    "s_f263ab43e9e9da": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3520-6013-7e52-ac18-3196c22a34c0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
