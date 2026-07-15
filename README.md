@@ -6,6 +6,8 @@
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
+架构图见 [`ace-mcp-architecture.html`](./ace-mcp-architecture.html)。
+
 仓库地址：[Gitee](https://gitee.com/AndrewFengCode/ace-mcp)
 
 ## 核心功能
