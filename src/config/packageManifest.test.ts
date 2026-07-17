@@ -42,6 +42,7 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.ok(pkg.files.includes("CHANGELOG.md"));
   assert.ok(pkg.files.includes("!dist/**/*.test.*"));
   assert.ok(pkg.files.includes("!dist/test/**"));
+  assert.equal(pkg.scripts.build, "tsc -p tsconfig.json && node scripts/copy-web-static.mjs");
   assert.equal(pkg.scripts["release:pack"], "npm run build && npm pack --cache .npm-cache");
   assert.equal(pkg.scripts["release:win"], "npm run build && node scripts/package-windows.mjs");
   assert.equal(pkg.scripts["release:smoke"], "node scripts/smoke-release.mjs");
@@ -58,7 +59,7 @@ test("package manifest is ready for npm and tgz global installation", () => {
 test("CLI bin entrypoint is directly executable after global npm install", () => {
   const entrypoint = readFileSync(path.join(rootDir, "src/index.ts"), "utf8");
 
-  assert.equal(entrypoint.startsWith("#!/usr/bin/env node\n"), true);
+  assert.match(entrypoint, /^#!\/usr\/bin\/env node\r?\n/);
 });
 
 test("local runtime directories are ignored from release worktree noise", () => {
@@ -84,51 +85,59 @@ test("global install helper scripts are packaged for Windows and cross-platform 
   assert.match(mjs, /child\.kill/);
 });
 
-test("Windows zip release tooling is packaged with install scripts", () => {
+test("Windows zip release tooling builds a self-contained runtime", () => {
   const packageScriptPath = path.join(rootDir, "scripts/package-windows.mjs");
+  const copyStaticScriptPath = path.join(rootDir, "scripts/copy-web-static.mjs");
   const smokeScriptPath = path.join(rootDir, "scripts/smoke-release.mjs");
   const benchmarkScriptPath = path.join(rootDir, "scripts/benchmark-search.mjs");
   const verifyAssetsScriptPath = path.join(rootDir, "scripts/verify-release-assets.mjs");
   const checkSecretsScriptPath = path.join(rootDir, "scripts/check-secrets.mjs");
   const publishScriptPath = path.join(rootDir, "scripts/publish-gitee-release.mjs");
   const reindexScriptPath = path.join(rootDir, "scripts/reindex-projects.mjs");
-  const cmdInstallPath = path.join(rootDir, "scripts/install-windows.cmd");
-  const psInstallPath = path.join(rootDir, "scripts/install-windows.ps1");
 
   assert.equal(existsSync(packageScriptPath), true);
+  assert.equal(existsSync(copyStaticScriptPath), true);
   assert.equal(existsSync(smokeScriptPath), true);
   assert.equal(existsSync(benchmarkScriptPath), true);
   assert.equal(existsSync(verifyAssetsScriptPath), true);
   assert.equal(existsSync(checkSecretsScriptPath), true);
   assert.equal(existsSync(publishScriptPath), true);
   assert.equal(existsSync(reindexScriptPath), true);
-  assert.equal(existsSync(cmdInstallPath), true);
-  assert.equal(existsSync(psInstallPath), true);
 
   const packageScript = readFileSync(packageScriptPath, "utf8");
+  const copyStaticScript = readFileSync(copyStaticScriptPath, "utf8");
   const smokeScript = readFileSync(smokeScriptPath, "utf8");
   const benchmarkScript = readFileSync(benchmarkScriptPath, "utf8");
   const verifyAssetsScript = readFileSync(verifyAssetsScriptPath, "utf8");
   const checkSecretsScript = readFileSync(checkSecretsScriptPath, "utf8");
   const publishScript = readFileSync(publishScriptPath, "utf8");
   const reindexScript = readFileSync(reindexScriptPath, "utf8");
-  const cmdInstall = readFileSync(cmdInstallPath, "utf8");
-  const psInstall = readFileSync(psInstallPath, "utf8");
 
   assert.match(packageScript, /ace-mcp-v\$\{version\}-win-x64/);
   assert.match(packageScript, /\$\{packageName\}\.zip/);
   assert.match(packageScript, /README-WINDOWS\.md/);
+  assert.match(packageScript, /process\.execPath/);
+  assert.match(packageScript, /runtime["', ]+node\.exe/);
+  assert.match(packageScript, /node_modules/);
+  assert.match(packageScript, /npm prune --omit=dev/);
+  assert.match(packageScript, /nodeMajor !== 22/);
+  assert.match(packageScript, /better_sqlite3\.node/);
+  assert.match(packageScript, /bundled better-sqlite3 probe/);
+  assert.match(packageScript, /ace-mcp\.cmd/);
+  assert.match(packageScript, /ace-mcp-web\.cmd/);
+  assert.match(packageScript, /no installation or npm download is required/);
   assert.match(packageScript, /install\.ps1/);
   assert.match(packageScript, /start-web\.cmd/);
-  assert.match(packageScript, /scripts\/smoke-release\.mjs/);
-  assert.match(packageScript, /scripts\/benchmark-search\.mjs/);
-  assert.match(packageScript, /scripts\/verify-release-assets\.mjs/);
-  assert.match(packageScript, /scripts\/check-secrets\.mjs/);
-  assert.match(packageScript, /scripts\/publish-gitee-release\.mjs/);
   assert.match(packageScript, /scripts\/reindex-projects\.mjs/);
+  assert.match(copyStaticScript, /cpSync/);
+  assert.match(copyStaticScript, /src["', ]+web["', ]+static/);
+  assert.match(copyStaticScript, /dist["', ]+web["', ]+static/);
   assert.match(smokeScript, /npm install/);
   assert.match(smokeScript, /ace-mcp --version/);
   assert.match(smokeScript, /ace-mcp-web/);
+  assert.match(smokeScript, /Windows ace-mcp --doctor without Node\/npm on PATH/);
+  assert.match(smokeScript, /self-contained Windows ace-mcp-web/);
+  assert.match(smokeScript, /better_sqlite3\.node/);
   assert.match(smokeScript, /\/health/);
   assert.match(smokeScript, /ace-mcp-smoke-/);
   assert.match(smokeScript, /waitForExit/);
@@ -168,12 +177,6 @@ test("Windows zip release tooling is packaged with install scripts", () => {
   assert.match(reindexScript, /confirmParentDirectory/);
   assert.match(reindexScript, /const taskId = body\.data\?\.taskId/);
   assert.match(reindexScript, /\/api\/tasks\/\$\{encodeURIComponent\(taskId\)\}/);
-  assert.match(cmdInstall, /npm install --omit=dev/);
-  assert.match(cmdInstall, /better-sqlite3/);
-  assert.match(cmdInstall, /--doctor/);
-  assert.match(psInstall, /npm install --omit=dev/);
-  assert.match(psInstall, /ExecutionPolicy/);
-  assert.match(psInstall, /--doctor/);
 });
 
 test("macOS quick install script and docs are packaged for one-command setup", () => {
@@ -184,7 +187,7 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.equal(existsSync(installScriptPath), true);
 
   const installScript = readFileSync(installScriptPath, "utf8");
-  assert.equal(installScript.startsWith("#!/usr/bin/env bash\n"), true);
+  assert.match(installScript, /^#!\/usr\/bin\/env bash\r?\n/);
   assert.match(installScript, /set -euo pipefail/);
   assert.match(installScript, /ACE_MCP_VERSION/);
   assert.match(installScript, /curl -fL/);
@@ -271,11 +274,11 @@ test("Windows README documents zip installation and MCP client command paths", (
 
   assert.match(windowsReadme, /ace-mcp-v4\.9\.11-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
-  assert.match(windowsReadme, /install\.ps1/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
   assert.match(windowsReadme, /better-sqlite3/);
-  assert.match(windowsReadme, /ExecutionPolicy/);
+  assert.match(windowsReadme, /Node\.js.*npm.*Visual Studio Build Tools/);
+  assert.match(windowsReadme, /doctor\.cmd/);
 });
 
 test("release checklist records the v4.9.11 verification gates", () => {

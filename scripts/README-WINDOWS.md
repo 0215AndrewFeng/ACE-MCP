@@ -1,40 +1,20 @@
-# ace-mcp Windows 安装说明
+# ace-mcp Windows 使用说明
 
 适用包名：`ace-mcp-v4.9.11-win-x64.zip`。
 
-## 环境要求
+## 系统要求
 
 - Windows 10/11 x64
-- Node.js 18.18.0 或更高版本，推荐 Node.js 20/22 LTS
-- npm 9+
+- 不需要预装 Node.js、npm 或 Visual Studio Build Tools
+- 首次运行和日常使用均不需要从 npm 或 GitHub 下载依赖
 
-`better-sqlite3` 是原生依赖。优先使用 Node.js LTS 版本可直接复用预编译包；如果 npm 触发源码编译，需要安装 Visual Studio Build Tools，并勾选 `Desktop development with C++`。
-
-## Zip 安装
-
-1. 解压 `ace-mcp-v4.9.11-win-x64.zip`。
-2. 在解压目录打开 PowerShell。
-3. 执行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-cmd 也可以执行：
-
-```cmd
-install.cmd
-```
-
-安装脚本会在依赖安装后自动运行 `node dist\index.js --doctor`，检查 Node/npm、`better-sqlite3`、SQLite FTS5、目录写权限和端口占用。
+发布包已包含经过验证的 Node.js 22 运行时、生产依赖和 `better-sqlite3` Windows 原生二进制。
 
 ## 启动 Web 面板
 
-默认端口：
-
-```cmd
-start-web.cmd
-```
+1. 解压 `ace-mcp-v4.9.11-win-x64.zip`。
+2. 双击 `start-web.cmd`。
+3. 访问 <http://127.0.0.1:8787/>。
 
 指定端口：
 
@@ -42,33 +22,65 @@ start-web.cmd
 start-web.cmd 9000
 ```
 
-PowerShell：
+PowerShell 也可以运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start-web.ps1 9000
+.\start-web.ps1 9000
 ```
 
-启动后访问 `http://127.0.0.1:8787/`。
+关闭启动窗口会停止服务。运行 `doctor.cmd` 可以检查 SQLite、数据目录、配置和端口状态。旧版本的自动化流程仍可调用 `install.cmd`，该入口现在只执行本地自检，不会联网安装依赖。
+
+## MCP 客户端配置
+
+将 `command` 设置为解压目录中 `ace-mcp.cmd` 的绝对路径：
+
+```json
+{
+  "mcpServers": {
+    "ace-mcp": {
+      "command": "C:\\Tools\\ace-mcp-v4.9.11-win-x64\\ace-mcp.cmd"
+    }
+  }
+}
+```
+
+不需要再配置 `node` 命令或 `dist/index.js` 参数。移动解压目录后，需要同步更新 MCP 客户端中的绝对路径。
+
+## 命令行入口
+
+```cmd
+ace-mcp.cmd --version
+ace-mcp.cmd --doctor
+ace-mcp-web.cmd
+ace-mcp-web.cmd 9000
+```
 
 ## 全库维护重索引
 
-Zip 包内包含 `scripts\reindex-projects.mjs`。Web 服务启动后，可先预览计划：
+启动 Web 服务后，可以预览维护计划：
 
-```powershell
-node scripts\reindex-projects.mjs --dry-run
+```cmd
+runtime\node.exe scripts\reindex-projects.mjs --dry-run
 ```
 
-确认后逐项目 full index，并可附带生成摘要：
+确认后逐项目执行 full index，并可附带生成摘要：
 
-```powershell
-node scripts\reindex-projects.mjs --summary
+```cmd
+runtime\node.exe scripts\reindex-projects.mjs --summary
 ```
 
-脚本默认跳过不存在路径和包含多个已登记子项目的聚合父目录，避免误扫大目录。
+## 包内结构
 
-## npm/tgz 全局安装
+- `runtime\node.exe`：与原生依赖 ABI 匹配的 Node.js 22 运行时
+- `node_modules\`：构建阶段裁剪过的生产依赖
+- `dist\`：ace-mcp 服务和 Web 静态资源
+- `ace-mcp.cmd`：MCP/CLI 入口
+- `start-web.cmd`：Web 面板入口
+- `doctor.cmd`：离线安装自检
 
-如果使用 npm 或 tgz 全局安装：
+## npm/tgz 安装
+
+需要参与开发或自行管理 Node.js 环境时，仍可使用 npm/tgz：
 
 ```powershell
 npm install -g ace-mcp
@@ -76,58 +88,11 @@ ace-mcp --version
 ace-mcp-web
 ```
 
-本地 tgz：
-
-```powershell
-npm install -g .\ace-mcp-4.9.11.tgz
-ace-mcp-web
-```
-
-## MCP 客户端配置
-
-全局安装后可直接配置：
-
-```json
-{
-  "mcpServers": {
-    "ace-mcp": {
-      "command": "ace-mcp"
-    }
-  }
-}
-```
-
-如果 MCP 宿主无法读取 PATH，使用 npm shim 绝对路径：
-
-```json
-{
-  "mcpServers": {
-    "ace-mcp": {
-      "command": "C:\\Users\\<用户名>\\AppData\\Roaming\\npm\\ace-mcp.cmd"
-    }
-  }
-}
-```
-
-Zip 解压运行时：
-
-```json
-{
-  "mcpServers": {
-    "ace-mcp": {
-      "command": "node",
-      "args": [
-        "C:\\path\\to\\ace-mcp-v4.9.11-win-x64\\dist\\index.js"
-      ]
-    }
-  }
-}
-```
+Windows 普通用户优先使用自包含 ZIP，避免 Node 版本和原生依赖下载问题。
 
 ## 常见问题
 
-- 先运行 `ace-mcp --doctor` 或在 zip 解压目录运行 `node dist\index.js --doctor`，按输出的 `Next steps` 处理。
-- PowerShell 拒绝执行脚本：使用 `powershell -ExecutionPolicy Bypass -File .\install.ps1`。
-- `better-sqlite3` 安装失败：先切换到 Node.js 20/22 LTS；仍失败时安装 Visual Studio Build Tools 的 C++ 工作负载。
-- Web 面板打不开：检查 doctor 的 `Web port` 项，或改用 `start-web.cmd 9000`。
-- `ace-mcp` 命令找不到：在 MCP 客户端里改用 `C:\Users\<用户名>\AppData\Roaming\npm\ace-mcp.cmd`。
+- Web 面板打不开：运行 `doctor.cmd` 检查默认端口，或执行 `start-web.cmd 9000`。
+- MCP 客户端启动失败：确认 `command` 指向当前解压目录中的 `ace-mcp.cmd` 绝对路径。
+- 安全软件提示未知脚本：入口脚本只调用同目录的 `runtime\node.exe` 和 `dist\index.js`，不会下载或安装系统组件。
+- `ask_codebase` 或摘要功能不可用：在环境变量或 `~/.ace-mcp/settings.toml` 中配置 LLM API；本地索引和搜索不依赖 LLM。

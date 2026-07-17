@@ -69,11 +69,16 @@ function createCheck(status: DoctorStatus, id: string, name: string, message: st
 }
 
 async function checkNpm(env: NodeJS.ProcessEnv, cwd: string): Promise<DoctorCheck> {
+  if (env.ACE_MCP_BUNDLED_RUNTIME === "1") {
+    return createCheck("ok", "npm", "npm", "not required by the bundled runtime");
+  }
+
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   try {
     const result = await execFileAsync(npmCommand, ["--version"], {
       cwd,
       env,
+      shell: process.platform === "win32",
       timeout: 5000,
       windowsHide: true,
     });
@@ -81,11 +86,11 @@ async function checkNpm(env: NodeJS.ProcessEnv, cwd: string): Promise<DoctorChec
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return createCheck(
-      "error",
+      "warn",
       "npm",
       "npm",
-      `npm is not available: ${message}`,
-      "Install Node.js with npm enabled, then run ace-mcp --doctor again.",
+      `npm is not available; runtime features are unaffected: ${message}`,
+      "Install npm only when upgrading or developing from source.",
     );
   }
 }

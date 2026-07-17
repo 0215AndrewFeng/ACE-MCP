@@ -2,6 +2,15 @@
 
 本项目的重要版本变更记录如下。
 
+## Unreleased
+
+### Self-contained Windows package
+
+- Windows x64 ZIP 直接包含 Node.js 22、裁剪后的生产依赖和与运行时 ABI 匹配的 `better-sqlite3` 原生二进制，用户解压后即可启动，无需 Node/npm/Visual Studio Build Tools。
+- `ace-mcp.cmd`、`ace-mcp-web.cmd`、`start-web.cmd` 和 `doctor.cmd` 全部使用包内运行时；旧 `install.cmd` 兼容入口改为纯离线自检。
+- 构建阶段的 Unix `cp` 改为跨平台 Node 文件复制脚本，原生 Windows 环境可以直接执行 `npm run build`。
+- `release:smoke` 新增无 Node/npm PATH 的 Windows ZIP 启动验证；doctor 将 npm 缺失降级为不影响运行时的警告。
+
 ## [4.9.11] - 2026-07-03
 
 ### Runtime data health diagnostics

@@ -17,6 +17,7 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const tempRoot = mkdtempSync(path.join(os.tmpdir(), "ace-mcp-smoke-"));
 const prefixDir = path.join(tempRoot, "prefix");
 const homeDir = path.join(tempRoot, "home");
+const windowsExtractDir = path.join(tempRoot, "windows");
 const env = {
   ...process.env,
   ACE_MCP_LOG_LEVEL: "error",
@@ -57,6 +58,27 @@ function getBinPath(name) {
     return path.join(prefixDir, `${name}.cmd`);
   }
   return path.join(prefixDir, "bin", name);
+}
+
+function getBinInvocation(command, args) {
+  if (process.platform !== "win32" || path.extname(command).toLowerCase() !== ".cmd") {
+    return { args, command };
+  }
+
+  return {
+    args: ["/d", "/c", "call", command, ...args],
+    command: process.env.ComSpec || "cmd.exe",
+  };
+}
+
+function runBin(label, command, args, options = {}) {
+  const invocation = getBinInvocation(command, args);
+  return run(label, invocation.command, invocation.args, options);
+}
+
+function spawnBin(command, args, options) {
+  const invocation = getBinInvocation(command, args);
+  return spawn(invocation.command, invocation.args, options);
 }
 
 function getFreePort() {
@@ -149,11 +171,53 @@ async function stopChild(child) {
     return;
   }
 
-  child.kill("SIGTERM");
+  if (process.platform === "win32" && child.pid) {
+    const systemRoot = process.env.SystemRoot || "C:\\Windows";
+    spawnSync(path.join(systemRoot, "System32", "taskkill.exe"), ["/pid", String(child.pid), "/t", "/f"], {
+      windowsHide: true,
+    });
+  } else {
+    child.kill("SIGTERM");
+  }
   await waitForExit(child, 5000);
 }
 
+async function smokeWeb(label, command, cwd, childEnv) {
+  const port = await getFreePort();
+  const logs = { stderr: "", stdout: "" };
+  const child = spawnBin(command, [String(port)], {
+    cwd,
+    env: childEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  child.stdout?.setEncoding("utf8");
+  child.stderr?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk) => {
+    logs.stdout += chunk;
+  });
+  child.stderr?.on("data", (chunk) => {
+    logs.stderr += chunk;
+  });
+  child.on("error", (error) => {
+    logs.stderr += error.message;
+  });
+
+  try {
+    await waitForHealth(port, 20000, () => `${label}\n${logs.stdout}\n${logs.stderr}`.trim());
+  } finally {
+    await stopChild(child);
+  }
+
+  return port;
+}
+
 async function main() {
+  if (process.platform !== "win32") {
+    fail("release:smoke must run on Windows because the release includes a self-contained Windows runtime.");
+  }
+
   if (!existsSync(tgzPath)) {
     fail(`Missing ${path.basename(tgzPath)}. Run npm run release:pack first.`);
   }
@@ -164,8 +228,9 @@ async function main() {
 
   mkdirSync(prefixDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
+  mkdirSync(windowsExtractDir, { recursive: true });
 
-  run("npm install", npmCommand, [
+  runBin("npm install", npmCommand, [
     "install",
     "-g",
     "--prefix",
@@ -186,42 +251,52 @@ async function main() {
     fail(`Missing installed ace-mcp-web binary at ${aceMcpWebBin}`);
   }
 
-  const reportedVersion = run("ace-mcp --version", aceMcpBin, ["--version"]);
+  const reportedVersion = runBin("ace-mcp --version", aceMcpBin, ["--version"]);
   if (reportedVersion !== version) {
     fail(`ace-mcp --version returned ${reportedVersion}, expected ${version}`);
   }
 
-  run("ace-mcp --doctor", aceMcpBin, ["--doctor"]);
+  runBin("ace-mcp --doctor", aceMcpBin, ["--doctor"]);
+  const npmPort = await smokeWeb("npm ace-mcp-web", aceMcpWebBin, tempRoot, env);
 
-  const port = await getFreePort();
-  const logs = { stderr: "", stdout: "" };
-  const child = spawn(aceMcpWebBin, [String(port)], {
-    cwd: tempRoot,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  run("extract Windows zip", "tar.exe", ["-xf", winZipPath, "-C", windowsExtractDir]);
+  const windowsPackageDir = path.join(windowsExtractDir, `ace-mcp-v${version}-win-x64`);
+  const windowsAceMcp = path.join(windowsPackageDir, "ace-mcp.cmd");
+  const windowsAceMcpWeb = path.join(windowsPackageDir, "ace-mcp-web.cmd");
+  const bundledNode = path.join(windowsPackageDir, "runtime", "node.exe");
+  const bundledBinding = path.join(windowsPackageDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
 
-  child.stdout?.setEncoding("utf8");
-  child.stderr?.setEncoding("utf8");
-  child.stdout?.on("data", (chunk) => {
-    logs.stdout += chunk;
-  });
-  child.stderr?.on("data", (chunk) => {
-    logs.stderr += chunk;
-  });
-
-  child.on("error", (error) => {
-    logs.stderr += error.message;
-  });
-
-  try {
-    await waitForHealth(port, 20000, () => `${logs.stdout}\n${logs.stderr}`.trim());
-  } finally {
-    await stopChild(child);
+  for (const requiredPath of [windowsAceMcp, windowsAceMcpWeb, bundledNode, bundledBinding]) {
+    if (!existsSync(requiredPath)) {
+      fail(`Missing self-contained Windows file: ${requiredPath}`);
+    }
   }
 
-  console.log(`release smoke ok: ace-mcp ${version}, ace-mcp-web /health on ${port}`);
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  const isolatedWindowsEnv = {
+    ...env,
+    ACE_MCP_BUNDLED_RUNTIME: "1",
+    PATH: `${path.join(systemRoot, "System32")};${systemRoot}`,
+  };
+  const windowsVersion = runBin("Windows ace-mcp --version", windowsAceMcp, ["--version"], {
+    cwd: windowsPackageDir,
+    env: isolatedWindowsEnv,
+  });
+  if (windowsVersion !== version) {
+    fail(`Windows ace-mcp --version returned ${windowsVersion}, expected ${version}`);
+  }
+  runBin("Windows ace-mcp --doctor without Node/npm on PATH", windowsAceMcp, ["--doctor"], {
+    cwd: windowsPackageDir,
+    env: isolatedWindowsEnv,
+  });
+  const windowsPort = await smokeWeb(
+    "self-contained Windows ace-mcp-web",
+    windowsAceMcpWeb,
+    windowsPackageDir,
+    isolatedWindowsEnv,
+  );
+
+  console.log(`release smoke ok: ace-mcp ${version}, npm /health on ${npmPort}, self-contained Windows /health on ${windowsPort}`);
 }
 
 main()

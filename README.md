@@ -63,7 +63,7 @@
 
 - Node.js `>= 18.18.0`
 - npm `>= 9`
-- Windows 建议使用 Node.js 20/22 LTS。`better-sqlite3` 是原生依赖，过新的 Node 版本可能触发本地编译。
+- Windows 普通用户建议使用自包含 ZIP，不需要预装 Node.js、npm 或 Visual Studio Build Tools。npm/tgz 安装适合需要自行管理 Node 环境的开发者。
 
 ## 推荐安装方式
 
@@ -171,18 +171,24 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.9.11-win-x64.zip`，解压后在目录内执行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-.\start-web.cmd
-```
-
-cmd：
+从 Gitee Release 下载 `ace-mcp-v4.9.11-win-x64.zip`，解压后直接双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
-install.cmd
 start-web.cmd
+```
+
+发布包已经包含 Node.js 22、生产依赖和 `better-sqlite3` Windows 原生二进制。首次启动不执行 `npm install`，不需要联网下载依赖，也不需要 Visual Studio C++ 工具链。可以先运行 `doctor.cmd` 做离线自检；旧流程中的 `install.cmd` 仍可使用，但现在只执行自检。
+
+MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再配置系统 `node`：
+
+```json
+{
+  "mcpServers": {
+    "ace-mcp": {
+      "command": "C:\\Tools\\ace-mcp-v4.9.11-win-x64\\ace-mcp.cmd"
+    }
+  }
+}
 ```
 
 详细说明见 [`scripts/README-WINDOWS.md`](./scripts/README-WINDOWS.md)。
@@ -207,14 +213,21 @@ git clone https://github.com/0215AndrewFeng/ACE-MCP.git
 
 ### Windows 启动脚本
 
-全局安装后优先使用：
+自包含 ZIP 解压后使用：
+
+```cmd
+start-web.cmd
+start-web.cmd 9000
+```
+
+npm/tgz 全局安装后使用：
 
 ```powershell
 ace-mcp-web
 ace-mcp-web 9000
 ```
 
-源码目录或解包后的 tgz 中也提供脚本：
+源码目录中也提供脚本：
 
 ```cmd
 scripts\start-web.cmd
@@ -243,13 +256,15 @@ Windows zip：
 npm run release:win
 ```
 
+`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP。
+
 安装包 smoke test：
 
 ```bash
 npm run release:smoke
 ```
 
-`release:smoke` 会把当前 tgz 安装到临时目录，验证 `ace-mcp --version`、`ace-mcp --doctor` 和 `ace-mcp-web` 的 `/health`。
+`release:smoke` 会验证两条链路：临时全局安装当前 tgz；以及在 PATH 不包含 Node/npm 的隔离环境中解压 Windows ZIP，验证 `ace-mcp --version`、`--doctor` 和 Web `/health`。
 
 搜索 benchmark smoke：
 

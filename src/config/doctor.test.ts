@@ -66,3 +66,58 @@ test("formatDoctorReport renders check names, statuses, and next steps", () => {
   assert.match(report, /Next steps/);
   assert.match(report, /ACE_MCP_LLM_API_URL/);
 });
+
+test("missing npm is a runtime warning rather than an installation error", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-doctor-no-npm-"));
+
+  try {
+    const result = await runDoctorChecks({
+      cwd: tempDir,
+      env: { PATH: "" },
+      settings: {
+        dataDir: path.join(tempDir, "data"),
+        databasePath: path.join(tempDir, "data/index.db"),
+        embeddingApiKey: "",
+        embeddingApiUrl: "",
+        embeddingProvider: "memory",
+        llmApiKey: "",
+        llmApiUrl: "",
+        logDir: path.join(tempDir, "log"),
+        settingsFilePath: path.join(tempDir, "settings.toml"),
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.summary.error, 0);
+    assert.ok(result.checks.some((check) => check.id === "npm" && check.status === "warn"));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("bundled runtime does not require npm", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-doctor-bundled-"));
+
+  try {
+    const result = await runDoctorChecks({
+      cwd: tempDir,
+      env: { ACE_MCP_BUNDLED_RUNTIME: "1", PATH: "" },
+      settings: {
+        dataDir: path.join(tempDir, "data"),
+        databasePath: path.join(tempDir, "data/index.db"),
+        embeddingApiKey: "",
+        embeddingApiUrl: "",
+        embeddingProvider: "memory",
+        llmApiKey: "",
+        llmApiUrl: "",
+        logDir: path.join(tempDir, "log"),
+        settingsFilePath: path.join(tempDir, "settings.toml"),
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(result.checks.some((check) => check.id === "npm" && check.status === "ok" && /not required/.test(check.message)));
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});

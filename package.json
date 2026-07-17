@@ -17,7 +17,7 @@
     "ace-mcp-web": "scripts/start-web.mjs"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp -r src/web/static dist/web/",
+    "build": "tsc -p tsconfig.json && node scripts/copy-web-static.mjs",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "start:web": "node dist/index.js --web-port 8787",
