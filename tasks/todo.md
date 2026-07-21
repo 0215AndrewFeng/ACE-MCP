@@ -21,8 +21,8 @@ Make automatic index updates reliable for multiple registered projects by adding
 - [x] Update current version contracts and release notes to `4.10.1`.
 - [x] Run all release gates available on the current host and record the Windows-only gap.
 - [x] Complete independent pre-commit review and security scan.
-- [ ] Commit, create annotated `v4.10.1`, and push `master` plus the tag to `origin`.
-- [ ] Replace the local LaunchAgent process and verify runtime version `4.10.1`.
+- [x] Commit, create annotated `v4.10.1`, and push `master` plus the tag to `origin`.
+- [x] Replace the local LaunchAgent process and verify runtime version `4.10.1`.
 
 ## Validation Plan
 
@@ -41,6 +41,7 @@ Make automatic index updates reliable for multiple registered projects by adding
 - 2026-07-21: v4.10.1 release gates passed on Darwin arm64: 156/156 tests, TypeScript build, built CLI version, doctor (9 ok/1 expected occupied-port warning), macOS installer syntax, tgz packaging with 12/12 required artifacts, secret scan, benchmark (`searchP95Ms=53`, `healthP95Ms=6`), and diff checks. The self-contained Windows ZIP and `release:smoke` remain Windows x64 + Node 22-only and cannot be produced or validated on this host.
 - 2026-07-21: First independent pre-commit review failed because explicit stdio indexing could still start a watcher from the post-index recovery path. RED reproduced one unexpected watcher start; GREEN now requires `automaticUpdatesStarted` and adds a real-index lifecycle regression test. Coordinator tests pass 23/23; full revalidation and second review follow.
 - 2026-07-21: Final revalidation passed 157/157 tests, TypeScript build, rebuilt tgz, secret scan, and benchmark (`searchP95Ms=53`, `healthP95Ms=5`). A fresh independent review passed with no security concerns or logic errors; numeric configuration bounds and empty watch-stop path validation remain nonblocking follow-ups.
+- 2026-07-21: Release commit `9b22fde` was created with verified author/committer metadata, annotated tag `v4.10.1` points to that commit, and both `origin/master` and the tag were pushed to Gitee. The local LaunchAgent was replaced with PID 3911; settled `/health` reports `version=4.10.1`, 45 active watchers, and no active indexing. Gitee Release assets were not published because the required 4.10.1 Windows x64 package cannot be built on this Darwin host.
 
 # Project Removal API
 
