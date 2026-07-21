@@ -16,6 +16,7 @@ type RawSettings = Partial<
     | "excludePatterns"
     | "indexFreshness"
     | "indexFreshnessSeconds"
+    | "indexConcurrency"
     | "enableLlmReranker"
     | "llmRerankerMaxCandidates"
     | "llmApiKey"
@@ -32,6 +33,9 @@ type RawSettings = Partial<
     | "textExtensions"
     | "vectorCacheMaxProjects"
     | "vectorIndexingMode"
+    | "watchDebounceMs"
+    | "watchMaxWaitMs"
+    | "watchReconcileSeconds"
     | "qaMaxSourcesDefault"
     | "qaMaxSourcesMax"
     | "qaMaxContextTokens"
@@ -64,8 +68,12 @@ const DEFAULT_PUBLIC_SETTINGS = {
   maxLinesPerChunk: 220,
   textExtensions: [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"],
   vectorIndexingMode: "lazy",
+  indexConcurrency: 1,
   indexFreshness: "stale",
   indexFreshnessSeconds: 30,
+  watchDebounceMs: 2000,
+  watchMaxWaitMs: 10_000,
+  watchReconcileSeconds: 600,
   searchCacheTtlMs: 60_000,
   searchCacheMaxSize: 100,
   vectorCacheMaxProjects: 10,
@@ -251,6 +259,14 @@ export async function loadSettings(): Promise<Settings> {
       envIndexFreshness ?? fileSettings.indexFreshness ?? DEFAULT_PUBLIC_SETTINGS.indexFreshness,
     indexFreshnessSeconds:
       Number(process.env.ACE_MCP_INDEX_FRESHNESS_SECONDS ?? fileSettings.indexFreshnessSeconds ?? DEFAULT_PUBLIC_SETTINGS.indexFreshnessSeconds),
+    indexConcurrency:
+      Number(process.env.ACE_MCP_INDEX_CONCURRENCY ?? fileSettings.indexConcurrency ?? DEFAULT_PUBLIC_SETTINGS.indexConcurrency),
+    watchDebounceMs:
+      Number(process.env.ACE_MCP_WATCH_DEBOUNCE_MS ?? fileSettings.watchDebounceMs ?? DEFAULT_PUBLIC_SETTINGS.watchDebounceMs),
+    watchMaxWaitMs:
+      Number(process.env.ACE_MCP_WATCH_MAX_WAIT_MS ?? fileSettings.watchMaxWaitMs ?? DEFAULT_PUBLIC_SETTINGS.watchMaxWaitMs),
+    watchReconcileSeconds:
+      Number(process.env.ACE_MCP_WATCH_RECONCILE_SECONDS ?? fileSettings.watchReconcileSeconds ?? DEFAULT_PUBLIC_SETTINGS.watchReconcileSeconds),
     searchCacheTtlMs:
       Number(process.env.ACE_MCP_SEARCH_CACHE_TTL_MS ?? fileSettings.searchCacheTtlMs ?? DEFAULT_PUBLIC_SETTINGS.searchCacheTtlMs),
     searchCacheMaxSize:

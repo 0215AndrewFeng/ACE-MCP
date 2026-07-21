@@ -6,6 +6,7 @@ import type { Settings } from "../core/common/types.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { createEmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
+import type { WatchFactory } from "../core/indexing/indexCoordinator.js";
 import { Logger } from "../core/common/logger.js";
 import { SearchService } from "../core/search/searchService.js";
 import { SQLiteStore } from "../core/storage/sqliteStore.js";
@@ -20,6 +21,8 @@ export interface TestProjectEnvironment {
   store: SQLiteStore;
   tempDir: string;
 }
+
+const testWatchFactory: WatchFactory = () => ({ close() {} });
 
 async function writeProjectFiles(projectRootPath: string, files: Record<string, string>): Promise<void> {
   for (const [relativePath, content] of Object.entries(files)) {
@@ -61,6 +64,10 @@ export async function createTestProjectEnvironment(files: Record<string, string>
     vectorIndexingMode: "lazy",
     indexFreshness: "always",
     indexFreshnessSeconds: 30,
+    indexConcurrency: 1,
+    watchDebounceMs: 2000,
+    watchMaxWaitMs: 10_000,
+    watchReconcileSeconds: 600,
     searchCacheTtlMs: 60_000,
     searchCacheMaxSize: 100,
     vectorCacheMaxProjects: 10,
@@ -93,7 +100,7 @@ export async function createTestProjectEnvironment(files: Record<string, string>
       await rm(tempDir, { force: true, recursive: true });
     },
     embeddingProvider: provider,
-    indexCoordinator: new IndexCoordinator(settings, store, logger, provider),
+    indexCoordinator: new IndexCoordinator(settings, store, logger, provider, testWatchFactory),
     projectRootPath,
     searchService,
     settings,

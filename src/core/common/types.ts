@@ -36,6 +36,10 @@ export interface Settings {
   vectorIndexingMode: VectorIndexingMode;
   indexFreshness: IndexFreshnessPolicy;
   indexFreshnessSeconds: number;
+  watchDebounceMs: number;
+  watchMaxWaitMs: number;
+  watchReconcileSeconds: number;
+  indexConcurrency: number;
   searchCacheTtlMs: number;
   searchCacheMaxSize: number;
   vectorCacheMaxProjects: number;

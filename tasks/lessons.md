@@ -1,5 +1,11 @@
 # Lessons
 
+- 2026-07-21: Automatic indexing needs per-project watcher/timer state plus a change generation. An index may clear dirty only when the same watcher generation is still current; otherwise enqueue a follow-up pass after the active project index.
+- 2026-07-21: Startup index catch-up must use the complete registered-project list and remain independent of recursive `fs.watch` support. File events provide low latency, while sequential reconciliation provides eventual consistency on unsupported platforms and across downtime.
+- 2026-07-21: Filter watcher noise using indexed extensions and simple excluded directory names, but retain null filenames, rename events, and Git/project control files as reconciliation signals so filtering cannot hide structural changes.
+- 2026-07-21: Automatic project maintenance must have one process owner. In this installation the explicit `--web-port` Web/LaunchAgent runtime owns watchers and reconciliation; stdio MCP children only index on demand, otherwise multiple clients contend on the shared SQLite database and can starve HTTP health checks.
+- 2026-07-21: Enforce the automatic-maintenance owner at every watcher creation path. Guarding only the process entrypoint is insufficient if a successful explicit index can start a watcher from inside `IndexCoordinator`.
+
 - 2026-06-24: `tasks/` was absent at the start of the v4.7.0 work. Create and maintain `tasks/todo.md` and `tasks/lessons.md` before implementation when the project instructions require task tracking.
 - 2026-06-24: For worker-thread changes in this NodeNext/tsx project, verify both source (`node --import tsx`) and built dist paths. Source tests may need an IPC child process because Worker plus Node 24's native TS strip does not handle project TS syntax like parameter properties reliably.
 - 2026-06-24: Long-lived workers must have an explicit close path or idle shutdown. Otherwise one-shot commands/tests can pass assertions but keep the process alive.

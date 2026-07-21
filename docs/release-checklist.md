@@ -1,6 +1,6 @@
 # ace-mcp Release Checklist
 
-## v4.9.11
+## v4.10.1
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。
 2. 运行质量门禁：
@@ -48,7 +48,7 @@ npm run release:benchmark
 7. 检查包内容：
 
 ```bash
-tar -tf ace-mcp-4.9.11.tgz > /tmp/ace-mcp-tgz-files.txt
+tar -tf ace-mcp-4.10.1.tgz > /tmp/ace-mcp-tgz-files.txt
 rg -Fx "package/dist/index.js" /tmp/ace-mcp-tgz-files.txt
 rg -Fx "package/dist/web/static/js/app.js" /tmp/ace-mcp-tgz-files.txt
 rg -Fx "package/dist/web/static/css/main.css" /tmp/ace-mcp-tgz-files.txt
@@ -62,38 +62,38 @@ rg -Fx "package/scripts/smoke-release.mjs" /tmp/ace-mcp-tgz-files.txt
 rg -Fx "package/scripts/benchmark-search.mjs" /tmp/ace-mcp-tgz-files.txt
 rg -Fx "package/scripts/reindex-projects.mjs" /tmp/ace-mcp-tgz-files.txt
 
-unzip -Z1 release/ace-mcp-v4.9.11-win-x64.zip > /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/dist/index.js" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/dist/web/static/js/app.js" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/dist/web/static/css/main.css" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/runtime/node.exe" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/node_modules/better-sqlite3/build/Release/better_sqlite3.node" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/ace-mcp.cmd" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/ace-mcp-web.cmd" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/start-web.cmd" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/doctor.cmd" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/README-WINDOWS.md" /tmp/ace-mcp-win-files.txt
-rg -Fx "ace-mcp-v4.9.11-win-x64/scripts/reindex-projects.mjs" /tmp/ace-mcp-win-files.txt
+unzip -Z1 release/ace-mcp-v4.10.1-win-x64.zip > /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/dist/index.js" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/dist/web/static/js/app.js" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/dist/web/static/css/main.css" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/runtime/node.exe" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/node_modules/better-sqlite3/build/Release/better_sqlite3.node" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/ace-mcp.cmd" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/ace-mcp-web.cmd" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/start-web.cmd" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/doctor.cmd" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/README-WINDOWS.md" /tmp/ace-mcp-win-files.txt
+rg -Fx "ace-mcp-v4.10.1-win-x64/scripts/reindex-projects.mjs" /tmp/ace-mcp-win-files.txt
 ```
 
 8. 提交、打 tag 并推送：
 
 ```bash
 git add .
-git commit -m "feat: release v4.9.11 runtime data health"
-git tag -a v4.9.11 -m "v4.9.11"
+git commit -m "feat: release v4.10.1 automatic index updates"
+git tag -a v4.10.1 -m "v4.10.1"
 git push origin master
-git push origin v4.9.11
+git push origin v4.10.1
 ```
 
 9. 使用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并自动验证真实下载链路：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.11
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.1
 ```
 
 `release:publish` 默认会在上传后运行 `release:verify-assets`。如需单独复验：
 
 ```bash
-npm run release:verify-assets -- --version 4.9.11
+npm run release:verify-assets -- --version 4.10.1
 ```

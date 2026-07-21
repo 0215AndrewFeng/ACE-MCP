@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 
 import type { Settings } from "../core/common/types.js";
+import { InMemoryEmbeddingProvider } from "../core/search/embedding.js";
 import { createTestProjectEnvironment } from "../test/helpers.js";
 import { LongTaskTracker } from "../core/tasks/longTaskTracker.js";
 import { startWebApp } from "./app.js";
@@ -11,6 +14,14 @@ function blockFor(ms: number): void {
   while (Date.now() - startedAt < ms) {
     // Deliberately simulate a synchronous SQLite read blocked behind a writer.
   }
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 async function assertTaskStatus(port: number, taskId: string, expectedStatus: string): Promise<void> {
@@ -62,6 +73,107 @@ test("startWebApp serves health and validation responses", async () => {
     assert.equal(invalid.status, 400);
     assert.equal((await invalid.json()).code, "VALIDATION_ERROR");
   } finally {
+    await app.close();
+    await env.cleanup();
+  }
+});
+
+test("health and config expose automatic index update state", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  env.indexCoordinator.startWatching(env.projectRootPath);
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: env.indexCoordinator,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const [healthResponse, configResponse] = await Promise.all([
+      fetch(`http://127.0.0.1:${app.port}/health`),
+      fetch(`http://127.0.0.1:${app.port}/api/config`),
+    ]);
+    const health = await healthResponse.json();
+    const config = await configResponse.json();
+
+    assert.equal(health.watching, true);
+    assert.equal(health.watchers.length, 1);
+    assert.equal(health.watchers[0].projectRootPath, env.projectRootPath);
+    assert.equal(config.autoWatch, false);
+    assert.equal(config.indexConcurrency, 1);
+    assert.equal(config.watchDebounceMs, 2000);
+    assert.equal(config.watchMaxWaitMs, 10_000);
+    assert.equal(config.watchReconcileSeconds, 600);
+  } finally {
+    env.indexCoordinator.stopWatching();
+    await app.close();
+    await env.cleanup();
+  }
+});
+
+test("watch API stops one project without stopping another", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const secondProject = path.join(env.tempDir, "second-project");
+  await mkdir(secondProject);
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: env.indexCoordinator,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    for (const projectRootPath of [env.projectRootPath, secondProject]) {
+      const response = await fetch(`http://127.0.0.1:${app.port}/api/watch/start`, {
+        body: JSON.stringify({ projectRootPath }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      assert.equal(response.status, 200);
+    }
+
+    const stopResponse = await fetch(`http://127.0.0.1:${app.port}/api/watch/stop`, {
+      body: JSON.stringify({ projectRootPath: env.projectRootPath }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    assert.equal(stopResponse.status, 200);
+
+    const statusResponse = await fetch(`http://127.0.0.1:${app.port}/api/watch`);
+    const status = await statusResponse.json();
+    assert.equal(status.watching, true);
+    assert.deepEqual(
+      status.watchers.map((watcher: { projectRootPath: string }) => watcher.projectRootPath),
+      [secondProject],
+    );
+  } finally {
+    env.indexCoordinator.stopWatching();
     await app.close();
     await env.cleanup();
   }
@@ -231,11 +343,16 @@ test("health reports runtime data health for missing registered project paths", 
 test("delete project API removes registered project and clears search cache", async () => {
   const removed: string[] = [];
   const cleared: string[] = [];
+  const stopped: string[] = [];
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,
     indexCoordinator: {
       getInFlightIndexInfo: () => [],
       isWatching: () => false,
+      withProjectIndexPaused: async (projectRootPath: string, operation: () => unknown) => {
+        stopped.push(projectRootPath);
+        return operation();
+      },
     } as never,
     llmClient: {} as never,
     logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
@@ -293,6 +410,7 @@ test("delete project API removes registered project and clears search cache", as
     assert.equal(body.data.projectId, "project-1");
     assert.deepEqual(removed, ["/repo"]);
     assert.deepEqual(cleared, ["project-1"]);
+    assert.deepEqual(stopped, ["/repo"]);
   } finally {
     await app.close();
   }
@@ -300,11 +418,16 @@ test("delete project API removes registered project and clears search cache", as
 
 test("delete project API is idempotent for unknown projects", async () => {
   const cleared: string[] = [];
+  const stopped: string[] = [];
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,
     indexCoordinator: {
       getInFlightIndexInfo: () => [],
       isWatching: () => false,
+      withProjectIndexPaused: async (projectRootPath: string, operation: () => unknown) => {
+        stopped.push(projectRootPath);
+        return operation();
+      },
     } as never,
     llmClient: {} as never,
     logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
@@ -348,8 +471,77 @@ test("delete project API is idempotent for unknown projects", async () => {
     assert.equal(body.data.deleted, false);
     assert.equal(body.notes[0], "Project has not been indexed yet.");
     assert.deepEqual(cleared, []);
+    assert.deepEqual(stopped, ["/missing"]);
   } finally {
     await app.close();
+  }
+});
+
+test("delete project waits for active indexing before removing data", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+
+  class PausedEmbeddingProvider extends InMemoryEmbeddingProvider {
+    public override async embedBatch(texts: string[]): Promise<number[][]> {
+      embeddingStarted.resolve();
+      await releaseEmbedding.promise;
+      return super.embedBatch(texts);
+    }
+  }
+
+  const provider = new PausedEmbeddingProvider();
+  const env = await createTestProjectEnvironment(
+    { "source.ts": "export const value = 1;" },
+    provider,
+  );
+  env.settings.autoWatch = true;
+  env.settings.vectorIndexingMode = "eager";
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: env.indexCoordinator,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: {} as never,
+  });
+  let indexing: Promise<unknown> | undefined;
+
+  try {
+    indexing = env.indexCoordinator.indexProject(env.projectRootPath, "incremental");
+    await embeddingStarted.promise;
+
+    let deletionSettled = false;
+    const deletion = fetch(
+      `http://127.0.0.1:${app.port}/api/projects?projectRootPath=${encodeURIComponent(env.projectRootPath)}`,
+      { method: "DELETE" },
+    ).finally(() => {
+      deletionSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(deletionSettled, false);
+
+    releaseEmbedding.resolve();
+    await indexing;
+    const response = await deletion;
+
+    assert.equal(response.status, 200);
+    assert.equal(env.store.getProjectByRoot(env.projectRootPath), undefined);
+    assert.equal(env.indexCoordinator.isWatching(env.projectRootPath), false);
+  } finally {
+    releaseEmbedding.resolve();
+    await Promise.allSettled(indexing ? [indexing] : []);
+    env.indexCoordinator.stopAutomaticUpdates?.();
+    await app.close();
+    await env.cleanup();
   }
 });
 

@@ -1,6 +1,6 @@
 # ace-mcp Windows 使用说明
 
-适用包名：`ace-mcp-v4.9.11-win-x64.zip`。
+适用包名：`ace-mcp-v4.10.1-win-x64.zip`。
 
 ## 系统要求
 
@@ -12,7 +12,7 @@
 
 ## 启动 Web 面板
 
-1. 解压 `ace-mcp-v4.9.11-win-x64.zip`。
+1. 解压 `ace-mcp-v4.10.1-win-x64.zip`。
 2. 双击 `start-web.cmd`。
 3. 访问 <http://127.0.0.1:8787/>。
 
@@ -38,7 +38,7 @@ PowerShell 也可以运行：
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.9.11-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.1-win-x64\\ace-mcp.cmd"
     }
   }
 }

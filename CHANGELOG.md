@@ -4,6 +4,23 @@
 
 ## Unreleased
 
+## [4.10.1] - 2026-07-21
+
+### Reliable automatic index updates
+
+- 文件监听从单一全局 watcher 改为按项目独立管理，支持同时监听多个已注册项目并按项目启停。
+- watcher 使用 debounce、最大等待和 generation 追赶机制；索引期间再次发生变更时会串行补跑，避免复用旧 in-flight 结果后错误清除 dirty 状态。
+- 新增全局索引并发上限，默认一次只执行一个项目索引，降低 SQLite 写锁、CPU 和 embedding 资源竞争。
+- 常驻服务启动后先为有效注册项目建立 watcher，再后台串行执行增量 catch-up，并按周期校准；递归文件监听不可用时仍保留校准能力。
+- 自动维护只由显式 `--web-port` 的 Web/守护进程承担；普通 stdio MCP 进程继续按请求增量索引，避免多个客户端进程同时监听并争抢 SQLite 写锁。
+- `/health` 和 `GET /api/watch` 暴露每项目 watcher 状态，`/api/config` 暴露自动更新参数；删除项目会同步停止对应 watcher。
+
+### Project lifecycle and documentation
+
+- 新增正式的项目删除 API，在删除已注册项目时协调进行中的索引、watcher 和搜索缓存，避免删除后被后台任务重新注册。
+- Web 项目管理使用后端删除 API 清理索引数据，不再只移除浏览器本地记录。
+- 新增独立架构图，集中展示 MCP、Web、索引、搜索、存储和外部模型之间的运行关系。
+
 ### Self-contained Windows package
 
 - Windows x64 ZIP 直接包含 Node.js 22、裁剪后的生产依赖和与运行时 ABI 匹配的 `better-sqlite3` 原生二进制，用户解压后即可启动，无需 Node/npm/Visual Studio Build Tools。

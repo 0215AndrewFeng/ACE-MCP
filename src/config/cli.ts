@@ -16,6 +16,10 @@ function parsePort(value: string | undefined): number | undefined {
 
 export type AutostartAction = "enable" | "disable" | "status";
 
+export function shouldStartAutomaticUpdates(options: Pick<CliOptions, "webPort">): boolean {
+  return options.webPort !== undefined;
+}
+
 export function parseCliArgs(argv: string[]): CliOptions & { autostart?: AutostartAction } {
   let webPort: number | undefined;
   let help = false;

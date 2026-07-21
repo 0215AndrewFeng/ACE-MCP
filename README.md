@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.9.11`
+当前版本：`v4.10.1`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -15,7 +15,7 @@
 ### 代码搜索
 
 - 本地项目扫描与 `.gitignore` 过滤
-- 增量索引，文件监听自动重新索引（2500ms 防抖）
+- 增量索引，多项目文件监听自动重新索引（默认 2000ms 防抖、10000ms 最大等待）
 - `SQLite + FTS5` 全文检索
 - 语义召回（本地语义词扩展 + 远程 Embedding API 支持）
 - 懒加载向量索引与项目级向量缓存
@@ -91,17 +91,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 Gitee Release 下载 `ace-mcp-4.9.11.tgz` 后安装：
+从 Gitee Release 下载 `ace-mcp-4.10.1.tgz` 后安装：
 
 ```bash
-npm install -g ./ace-mcp-4.9.11.tgz
+npm install -g ./ace-mcp-4.10.1.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.9.11.tgz
+npm install -g .\ace-mcp-4.10.1.tgz
 ace-mcp-web
 ```
 
@@ -110,13 +110,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.11/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.1/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.9.11 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.9.11/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.10.1 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.1/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -146,8 +146,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.9.11/ace-mcp-4.9.11.tgz
-npm install -g ./ace-mcp-4.9.11.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.1/ace-mcp-4.10.1.tgz
+npm install -g ./ace-mcp-4.10.1.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -171,7 +171,7 @@ npm install
 
 ### Windows zip 安装
 
-从 Gitee Release 下载 `ace-mcp-v4.9.11-win-x64.zip`，解压后直接双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
+从 Gitee Release 下载 `ace-mcp-v4.10.1-win-x64.zip`，解压后直接双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
 start-web.cmd
@@ -185,7 +185,7 @@ MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再�
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.9.11-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.1-win-x64\\ace-mcp.cmd"
     }
   }
 }
@@ -245,7 +245,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.9.11.tgz
+npm install -g ./ace-mcp-4.10.1.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -283,13 +283,13 @@ npm run security:secrets
 发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.9.11
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.1
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.9.11
+npm run release:verify-assets -- --version 4.10.1
 ```
 
 ## 本地运行
@@ -478,12 +478,18 @@ autoWatch = true
 batchSize = 32
 defaultTopK = 8
 enableVectorSearch = true
+indexConcurrency = 1
+indexFreshness = "stale"
+indexFreshnessSeconds = 30
 maxFileSizeKb = 1024
 maxLinesPerChunk = 220
 logLevel = "info"
 textExtensions = [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"]
 excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "obj", "__pycache__", ".venv"]
 vectorIndexingMode = "lazy"
+watchDebounceMs = 2000
+watchMaxWaitMs = 10000
+watchReconcileSeconds = 600
 
 # LLM 配置（支持 OpenAI 兼容接口）
 llmApiUrl = "https://api.deepseek.com/v1/chat/completions"
@@ -492,6 +498,8 @@ llmModel = "deepseek-reasoner"
 llmMaxTokens = 4096
 llmTemperature = 0.0
 ```
+
+自动文件监听与周期校准由显式传入 `--web-port` 的 Web/守护进程统一承担。普通 stdio MCP 进程仍会在工具请求时执行增量索引，但不会重复建立全项目 watcher，从而避免多个 MCP 客户端同时争抢 SQLite 写锁。
 
 也支持环境变量覆盖：
 
@@ -505,6 +513,12 @@ llmTemperature = 0.0
 - `ACE_MCP_EXCLUDE_PATTERNS`
 - `ACE_MCP_VECTOR_INDEXING_MODE`
 - `ACE_MCP_AUTO_WATCH`
+- `ACE_MCP_INDEX_CONCURRENCY`
+- `ACE_MCP_INDEX_FRESHNESS`
+- `ACE_MCP_INDEX_FRESHNESS_SECONDS`
+- `ACE_MCP_WATCH_DEBOUNCE_MS`
+- `ACE_MCP_WATCH_MAX_WAIT_MS`
+- `ACE_MCP_WATCH_RECONCILE_SECONDS`
 - `ACE_MCP_LLM_API_URL`
 - `ACE_MCP_LLM_API_KEY`
 - `ACE_MCP_LLM_MODEL`
@@ -564,11 +578,14 @@ Web 面板提供完整的可视化调试体验：
 - `GET /health` - 健康检查
 - `GET /api/runtime` - 运行时信息
 - `GET /api/config` - 配置信息
+- `GET /api/watch` - 每项目文件监听与 dirty 状态
 - `GET /api/tools` - 工具列表
 - `GET /api/projects` - 已索引项目
 - `GET /api/project-stats` - 项目统计
 - `GET /api/project-profile` - 项目级搜索画像与召回诊断
 - `POST /api/index-project` - 提交后台索引任务
+- `POST /api/watch/start` - 启动指定项目文件监听
+- `POST /api/watch/stop` - 停止指定项目监听；不传项目路径时停止全部
 - `POST /api/search-context` - 代码搜索
 - `POST /api/find-definition` - 定义查找
 - `POST /api/find-references` - 引用查找
@@ -585,7 +602,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.9.11（当前版本）
+### v4.10.1（当前版本）
+
+- **可靠的多项目自动索引**：每项目独立 watcher、debounce/max-wait、generation 追赶、全局并发限制、启动 catch-up 和周期校准共同保证变更不丢失
+- **单一自动维护进程**：仅显式 `--web-port` 的 Web/守护进程承担 watcher 和校准，普通 stdio MCP 进程按请求增量索引，避免 SQLite 多进程争锁
+- **项目删除闭环**：删除 API 会等待活动索引并同步停止 watcher、清理数据和搜索缓存，旧后台任务不能复活已删除项目
+- **Windows 自包含包**：ZIP 内置 Node.js 22、生产依赖和 `better-sqlite3` 原生二进制，无需 Node/npm/Visual Studio Build Tools
+
+### v4.9.11
 
 - **运行时数据健康诊断**：`/health` 和项目画像新增 `dataHealth`，区分 `ok`、`degraded`、`repairable`
 - **坏状态可见**：注册项目目录丢失、项目列表读取失败、统计/向量/文件读取异常会返回明确检查项和建议，不再只表现为“服务活着但不好用”

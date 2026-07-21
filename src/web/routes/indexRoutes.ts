@@ -261,14 +261,37 @@ export function registerIndexRoutes(app: Express, dependencies: WebAppDependenci
         return;
       }
       dependencies.indexCoordinator.startWatching(String(projectRootPath));
-      res.json({ projectRootPath: normalizeAbsolutePath(String(projectRootPath)), watching: true });
+      const normalized = normalizeAbsolutePath(String(projectRootPath));
+      res.json({
+        projectRootPath: normalized,
+        watching: dependencies.indexCoordinator.isWatching(normalized),
+        watchers: dependencies.indexCoordinator.getWatchStatuses(),
+      });
     } catch (error: unknown) {
       const statusCode = error instanceof AppError ? error.statusCode : 500; res.status(statusCode).json({ error: error instanceof Error ? error.message : String(error), code: error instanceof AppError ? error.code : "INTERNAL_ERROR" });
     }
   });
 
-  app.post("/api/watch/stop", (_req: Request, res: Response) => {
-    dependencies.indexCoordinator.stopWatching();
-    res.json({ watching: false });
+  app.post("/api/watch/stop", (req: Request, res: Response) => {
+    const projectRootPath = typeof req.body?.projectRootPath === "string"
+      ? normalizeAbsolutePath(req.body.projectRootPath)
+      : undefined;
+    if (projectRootPath) {
+      dependencies.indexCoordinator.stopWatching(projectRootPath);
+    } else {
+      dependencies.indexCoordinator.stopAutomaticUpdates();
+    }
+    res.json({
+      projectRootPath: projectRootPath ?? null,
+      watching: dependencies.indexCoordinator.isWatching(),
+      watchers: dependencies.indexCoordinator.getWatchStatuses(),
+    });
+  });
+
+  app.get("/api/watch", (_req: Request, res: Response) => {
+    res.json({
+      watching: dependencies.indexCoordinator.isWatching(),
+      watchers: dependencies.indexCoordinator.getWatchStatuses(),
+    });
   });
 }

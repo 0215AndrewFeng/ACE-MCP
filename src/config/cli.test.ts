@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { formatHelpText, parseCliArgs } from "./cli.js";
+import { formatHelpText, parseCliArgs, shouldStartAutomaticUpdates } from "./cli.js";
 
 test("parseCliArgs parses web, warm, eval, doctor, version, and autostart flags", () => {
   const parsed = parseCliArgs([
@@ -26,6 +26,11 @@ test("parseCliArgs parses web, warm, eval, doctor, version, and autostart flags"
 test("parseCliArgs rejects invalid ports and missing eval paths", () => {
   assert.throws(() => parseCliArgs(["--web-port", "70000"]), /Invalid --web-port/);
   assert.throws(() => parseCliArgs(["--eval", "--warm"]), /Missing --eval value/);
+});
+
+test("automatic updates are owned only by an explicit Web runtime", () => {
+  assert.equal(shouldStartAutomaticUpdates(parseCliArgs([])), false);
+  assert.equal(shouldStartAutomaticUpdates(parseCliArgs(["--web-port", "8787"])), true);
 });
 
 test("formatHelpText documents v4 CLI quality gates", () => {

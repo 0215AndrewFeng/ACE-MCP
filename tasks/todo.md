@@ -1,3 +1,47 @@
+# v4.10.1 Automatic Incremental Index Updates
+
+Author: feng.ling
+
+## Goal
+
+Make automatic index updates reliable for multiple registered projects by adding per-project file watchers, lossless change scheduling, globally bounded indexing, startup catch-up, periodic reconciliation, and observable Web status.
+
+## Plan
+
+- [x] Write failing tests for multi-project watch lifecycle and per-project status.
+- [x] Write failing tests proving changes observed during indexing schedule a follow-up pass.
+- [x] Implement per-project watcher state, debounce/max-wait scheduling, and globally bounded indexing.
+- [x] Register known projects on startup, run background catch-up, and periodically reconcile watched projects.
+- [x] Expose watcher configuration/status through Web APIs and update documentation.
+- [x] Run focused tests, full `npm test`, and `npm run build`.
+
+## Release Plan
+
+- [x] Audit version carriers, release workflow, branch, remote, and tag availability.
+- [x] Update current version contracts and release notes to `4.10.1`.
+- [x] Run all release gates available on the current host and record the Windows-only gap.
+- [x] Complete independent pre-commit review and security scan.
+- [ ] Commit, create annotated `v4.10.1`, and push `master` plus the tag to `origin`.
+- [ ] Replace the local LaunchAgent process and verify runtime version `4.10.1`.
+
+## Validation Plan
+
+- Focused coordinator tests: `node --import tsx --test src/core/indexing/indexCoordinator.test.ts`.
+- Focused Web/runtime tests: `node --import tsx --test src/web/app.test.ts src/config/packageManifest.test.ts`.
+- Full unit/regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+
+## Comments
+
+- 2026-07-21: Existing `autoWatch` uses one global watcher/controller/debounce timer, so only the first indexed project is watched. Startup warmup restores freshness but does not watch or catch up changes made while the service was stopped.
+- 2026-07-21: RED/GREEN coverage now proves multi-project lifecycle, follow-up indexing after mid-run changes, generation-safe dirty clearing, global concurrency, startup catch-up ordering, recursive-watch fallback, Web status/config, and delete cleanup. Focused coordinator, Web, settings, and package contract tests pass; full validation remains.
+- 2026-07-21: Initial implementation validation passed: coordinator 22/22, Web 24/24, settings/package 32/32, full `npm test` 155/155, `npm run build`, and `git diff --check`.
+- 2026-07-21: Runtime replacement exposed multiple stdio MCP processes starting the same automatic maintenance loop and contending on SQLite. Added a Web-runtime ownership guard with RED/GREEN CLI and package contracts; live replacement and end-to-end watcher verification follow the rebuild.
+- 2026-07-21: Runtime handoff complete on LaunchAgent PID 18425. Final `npm test` passed 156/156 and `npm run build` passed. A real TypeScript probe advanced the ace-mcp watcher from generation 0 to 1 and was stored with one chunk; deleting it during subsequent indexing advanced generation to 2, settled cleanly, recorded `deleted_files=1`, and removed the file row. All 45 valid project watchers were restored after the probe.
+- 2026-07-21: v4.10.1 release gates passed on Darwin arm64: 156/156 tests, TypeScript build, built CLI version, doctor (9 ok/1 expected occupied-port warning), macOS installer syntax, tgz packaging with 12/12 required artifacts, secret scan, benchmark (`searchP95Ms=53`, `healthP95Ms=6`), and diff checks. The self-contained Windows ZIP and `release:smoke` remain Windows x64 + Node 22-only and cannot be produced or validated on this host.
+- 2026-07-21: First independent pre-commit review failed because explicit stdio indexing could still start a watcher from the post-index recovery path. RED reproduced one unexpected watcher start; GREEN now requires `automaticUpdatesStarted` and adds a real-index lifecycle regression test. Coordinator tests pass 23/23; full revalidation and second review follow.
+- 2026-07-21: Final revalidation passed 157/157 tests, TypeScript build, rebuilt tgz, secret scan, and benchmark (`searchP95Ms=53`, `healthP95Ms=5`). A fresh independent review passed with no security concerns or logic errors; numeric configuration bounds and empty watch-stop path validation remain nonblocking follow-ups.
+
 # Project Removal API
 
 Author: feng.ling

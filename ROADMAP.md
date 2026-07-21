@@ -102,4 +102,6 @@
 51. ✅ **Windows zip 安装包 + 发布清单**：新增 `release:win` 与 `scripts/package-windows.mjs` 生成 `ace-mcp-v4.6.8-win-x64.zip`，补 `install-windows.{cmd,ps1}`、`scripts/README-WINDOWS.md`、`docs/release-checklist.md` 与发布契约测试（v4.6.8）
 52. ✅ **安装自检 + 发布 smoke test**：新增 `--doctor` 检查 Node/npm、better-sqlite3、SQLite FTS5、目录写权限、Web 端口与 LLM/Embedding 配置；新增 `release:smoke` 临时安装 tgz 并验证 `ace-mcp --version`、`--doctor`、`ace-mcp-web` 与 `/health`；Windows zip 安装后自动运行 doctor（v4.6.9）
 53. **Web 最近任务历史 / 草稿恢复**：记录搜索与问答最近历史，保留项目路径、输入、结果数、耗时和实际高级参数；支持一键回填/重跑，以及按项目隔离的输入草稿自动恢复。
-54. ✅ **Windows 自包含绿色包**：ZIP 内置 Node.js 22、生产依赖和 `better-sqlite3` 原生二进制，提供无需 Node/npm/VS Build Tools 的 CLI、MCP、Web 与 doctor 入口；发布 smoke 在无 Node/npm PATH 下验证完整启动链路。
+54. ✅ **Windows 自包含绿色包**：ZIP 内置 Node.js 22、生产依赖和 `better-sqlite3` 原生二进制，提供无需 Node/npm/VS Build Tools 的 CLI、MCP、Web 与 doctor 入口；发布 smoke 在无 Node/npm PATH 下验证完整启动链路（v4.10.1）
+55. ✅ **可靠的多项目自动索引**：每项目 watcher、debounce/max-wait、generation 追赶、全局并发限制、启动 catch-up 和周期校准协同工作；Web/守护进程是唯一自动维护 owner，stdio MCP 仅按请求索引（v4.10.1）
+56. ✅ **项目删除 API**：删除已注册项目时等待活动索引、停止 watcher、抑制后台复活并清理搜索缓存，Web 项目管理使用同一后端闭环（v4.10.1）

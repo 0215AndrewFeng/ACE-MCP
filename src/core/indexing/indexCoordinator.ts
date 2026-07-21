@@ -1,5 +1,6 @@
 import { watch } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import iconv from "iconv-lite";
@@ -63,6 +64,70 @@ export interface InFlightIndexInfo {
   queuedRequests: number;
   status: "running";
 }
+
+export interface ProjectWatchStatus {
+  dirty: boolean;
+  failureCount: number;
+  generation: number;
+  lastError: string | null;
+  lastEventAt: string | null;
+  lastSuccessAt: string | null;
+  projectRootPath: string;
+  watching: boolean;
+}
+
+interface ProjectWatchState {
+  active: boolean;
+  abortController: AbortController;
+  debounceTimer?: NodeJS.Timeout;
+  dirty: boolean;
+  failureCount: number;
+  generation: number;
+  lastError?: string;
+  lastEventAt?: string;
+  lastSuccessAt?: string;
+  maxWaitTimer?: NodeJS.Timeout;
+  processing: boolean;
+  rerunRequested: boolean;
+  retryTimer?: NodeJS.Timeout;
+  watcher?: WatchHandle;
+}
+
+type WatchListener = (eventType: string, filename: string | Buffer | null) => void;
+interface WatchHandle {
+  close(): void;
+  on?: (event: "error", listener: (error: Error) => void) => unknown;
+}
+export type WatchFactory = (
+  projectRootPath: string,
+  listener: WatchListener,
+) => WatchHandle;
+export type ProjectDirectoryInspector = (
+  projectRootPath: string,
+) => Promise<{ isDirectory(): boolean } | null>;
+
+const defaultWatchFactory: WatchFactory = (projectRootPath, listener) => {
+  const watcher = watch(projectRootPath, { recursive: true }, listener);
+  return {
+    close: () => watcher.close(),
+    on: (event, errorListener) => watcher.on(event, errorListener),
+  };
+};
+const defaultProjectDirectoryInspector: ProjectDirectoryInspector = (projectRootPath) =>
+  stat(projectRootPath).catch(() => null);
+
+const PROJECT_CONTROL_FILES = new Set([
+  ".gitignore",
+  "build.gradle",
+  "build.gradle.kts",
+  "package.json",
+  "pom.xml",
+  "pyproject.toml",
+  "requirements.txt",
+  "settings.gradle",
+  "settings.gradle.kts",
+]);
+const PROJECT_CONTROL_EXTENSIONS = new Set([".csproj", ".sln"]);
 
 /**
  * v4.3.1: Extended result type for batch processing
@@ -130,10 +195,17 @@ export function decodeSourceBuffer(buffer: Buffer): DecodedSource {
 }
 
 export class IndexCoordinator {
-  private watching = false;
-  private watchAbortController?: AbortController;
-  private indexingLock = false;
-  private debounceTimer?: NodeJS.Timeout;
+  private activeIndexRuns = 0;
+  private readonly automaticProjectRoots = new Set<string>();
+  private automaticWatchAllowed = true;
+  private automaticUpdatesStarted = false;
+  private readonly pendingIndexSlots: Array<() => void> = [];
+  private readonly pausedProjectRoots = new Set<string>();
+  private reconcileRequested = false;
+  private reconciliationPromise?: Promise<void>;
+  private reconciliationTimer?: NodeJS.Timeout;
+  private readonly suppressedProjectRoots = new Set<string>();
+  private readonly watchers = new Map<string, ProjectWatchState>();
 
   /** Per-project last successful index timestamp (epoch ms) */
   private lastIndexedAtMs = new Map<string, number>();
@@ -181,10 +253,191 @@ export class IndexCoordinator {
     private readonly store: SQLiteStore,
     private readonly logger: Logger,
     private readonly embeddingProvider: EmbeddingProvider,
+    private readonly watchFactory: WatchFactory = defaultWatchFactory,
+    private readonly projectDirectoryInspector: ProjectDirectoryInspector = defaultProjectDirectoryInspector,
   ) {}
 
-  public isWatching(): boolean {
-    return this.watching;
+  public isWatching(projectRootPath?: string): boolean {
+    if (projectRootPath === undefined) {
+      return [...this.watchers.values()].some((state) => state.active);
+    }
+    return this.watchers.get(normalizeAbsolutePath(projectRootPath))?.active ?? false;
+  }
+
+  public getWatchStatuses(): ProjectWatchStatus[] {
+    return [...this.watchers.entries()]
+      .map(([projectRootPath, state]) => ({
+        dirty: state.dirty,
+        failureCount: state.failureCount,
+        generation: state.generation,
+        lastError: state.lastError ?? null,
+        lastEventAt: state.lastEventAt ?? null,
+        lastSuccessAt: state.lastSuccessAt ?? null,
+        projectRootPath,
+        watching: state.active,
+      }))
+      .sort((left, right) => left.projectRootPath.localeCompare(right.projectRootPath));
+  }
+
+  public async startAutomaticUpdates(): Promise<void> {
+    if (!this.settings.autoWatch || this.automaticUpdatesStarted) {
+      return;
+    }
+
+    this.automaticWatchAllowed = true;
+    this.automaticUpdatesStarted = true;
+    let projects: ReturnType<SQLiteStore["listProjects"]>;
+    try {
+      projects = this.store.listProjects();
+    } catch (error) {
+      this.automaticWatchAllowed = false;
+      this.automaticUpdatesStarted = false;
+      throw error;
+    }
+    for (const project of projects) {
+      if (!this.automaticUpdatesStarted) {
+        return;
+      }
+
+      const projectRootPath = normalizeAbsolutePath(project.projectRootPath);
+      if (this.pausedProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath)) {
+        continue;
+      }
+      const rootStats = await this.projectDirectoryInspector(projectRootPath);
+      if (!this.automaticUpdatesStarted) {
+        return;
+      }
+      if (this.pausedProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath)) {
+        continue;
+      }
+      if (!rootStats?.isDirectory()) {
+        this.logger.warn("automatic index watch skipped", {
+          projectRootPath,
+          reason: "project root is missing",
+        });
+        continue;
+      }
+
+      this.automaticProjectRoots.add(projectRootPath);
+      this.startWatchingSafely(projectRootPath, "startup");
+    }
+
+    void this.reconcileWatchedProjects("startup");
+
+    const reconcileMs = Math.max(0, this.settings.watchReconcileSeconds ?? 600) * 1000;
+    if (reconcileMs > 0) {
+      this.reconciliationTimer = setInterval(() => {
+        void this.reconcileWatchedProjects("periodic");
+      }, reconcileMs);
+      this.reconciliationTimer.unref();
+    }
+  }
+
+  public stopAutomaticUpdates(): void {
+    this.automaticWatchAllowed = false;
+    this.automaticUpdatesStarted = false;
+    this.reconcileRequested = false;
+    clearInterval(this.reconciliationTimer);
+    this.reconciliationTimer = undefined;
+    this.stopWatching();
+    this.automaticProjectRoots.clear();
+  }
+
+  public reconcileWatchedProjects(reason = "manual"): Promise<void> {
+    if (this.reconciliationPromise) {
+      if (reason === "manual") {
+        this.reconcileRequested = true;
+      }
+      return this.reconciliationPromise;
+    }
+
+    const run = async (): Promise<void> => {
+      do {
+        this.reconcileRequested = false;
+        const projectRoots = reason === "manual"
+          ? this.getWatchStatuses().map((status) => status.projectRootPath)
+          : [...this.automaticProjectRoots].sort();
+        for (const projectRootPath of projectRoots) {
+          if (reason !== "manual" && !this.automaticUpdatesStarted) {
+            return;
+          }
+          if (
+            reason !== "manual" &&
+            (!this.automaticProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath))
+          ) {
+            continue;
+          }
+          try {
+            await this.indexProject(projectRootPath, "incremental", undefined, "automatic");
+          } catch (error) {
+            const state = this.watchers.get(projectRootPath);
+            const message = error instanceof Error ? error.message : String(error);
+            if (state) {
+              state.dirty = true;
+              state.failureCount += 1;
+              state.lastError = message;
+              this.watcherDirty.set(projectRootPath, true);
+            }
+            this.logger.warn("automatic index reconciliation failed", {
+              error: message,
+              projectRootPath,
+              reason,
+            });
+          }
+        }
+      } while (this.reconcileRequested && (reason === "manual" || this.automaticUpdatesStarted));
+    };
+
+    const promise = run().finally(() => {
+      if (this.reconciliationPromise === promise) {
+        this.reconciliationPromise = undefined;
+      }
+    });
+    this.reconciliationPromise = promise;
+    return promise;
+  }
+
+  public async withProjectIndexPaused<T>(
+    projectRootPath: string,
+    operation: () => Promise<T> | T,
+  ): Promise<T> {
+    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    const wasAutomatic = this.automaticProjectRoots.has(normalizedRoot);
+    const wasSuppressed = this.suppressedProjectRoots.has(normalizedRoot);
+    const wasWatching = this.isWatching(normalizedRoot);
+    let completed = false;
+    this.pausedProjectRoots.add(normalizedRoot);
+    this.stopWatching(normalizedRoot);
+
+    try {
+      while (true) {
+        const queueTail = this.projectQueue.get(normalizedRoot);
+        if (!queueTail) {
+          break;
+        }
+        await this.withTimeout(
+          queueTail,
+          60_000,
+          "timed out waiting for project indexing to stop",
+        );
+      }
+      const result = await operation();
+      completed = true;
+      return result;
+    } finally {
+      this.pausedProjectRoots.delete(normalizedRoot);
+      if (!completed) {
+        if (!wasSuppressed) {
+          this.suppressedProjectRoots.delete(normalizedRoot);
+        }
+        if (wasAutomatic) {
+          this.automaticProjectRoots.add(normalizedRoot);
+        }
+        if (wasWatching) {
+          this.startWatching(normalizedRoot);
+        }
+      }
+    }
   }
 
   /**
@@ -290,57 +543,299 @@ export class IndexCoordinator {
     }
   }
 
-  public startWatching(projectRootPath: string): void {
-    if (this.watching) {
+  public startWatching(projectRootPath: string, automatic = false): void {
+    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    if (this.pausedProjectRoots.has(normalizedRoot)) {
+      throw new AppError(
+        "PROJECT_INDEX_PAUSED",
+        `Project indexing is temporarily paused: ${normalizedRoot}`,
+        { retryable: true, statusCode: 409 },
+      );
+    }
+    if (automatic && this.suppressedProjectRoots.has(normalizedRoot)) {
+      return;
+    }
+    if (!automatic) {
+      this.suppressedProjectRoots.delete(normalizedRoot);
+    }
+    const existingState = this.watchers.get(normalizedRoot);
+    if (existingState?.active) {
       this.logger.warn("file watch already active", { projectRootPath });
       return;
     }
+    if (existingState) {
+      this.clearWatchTimers(existingState);
+      this.watchers.delete(normalizedRoot);
+    }
 
-    const normalizedRoot = normalizeAbsolutePath(projectRootPath);
     const abortController = new AbortController();
-    this.watchAbortController = abortController;
+    const state: ProjectWatchState = {
+      active: true,
+      abortController,
+      dirty: false,
+      failureCount: 0,
+      generation: 0,
+      processing: false,
+      rerunRequested: false,
+    };
 
-    const watcher = watch(normalizedRoot, { recursive: true }, (_event, _filename) => {
+    const watcher = this.watchFactory(normalizedRoot, (_event, _filename) => {
       if (abortController.signal.aborted) {
+        return;
+      }
+      if (!this.shouldProcessWatchEvent(_event, _filename)) {
         return;
       }
 
       // Mark project dirty so ensureFreshIndex knows the cache is stale
+      state.dirty = true;
+      state.generation += 1;
+      state.lastEventAt = new Date().toISOString();
       this.watcherDirty.set(normalizedRoot, true);
-
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = setTimeout(() => {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        // v4.3.6: Use queue-based indexProject - no need for indexingLock
-        // The queue will serialize concurrent requests automatically
-        this.indexProject(normalizedRoot, "incremental")
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
-            this.logger.warn("watch-triggered index failed", {
-              error: message,
-              projectRootPath: normalizedRoot,
-            });
-          });
-      }, 2500);
+      this.scheduleWatchedIndex(normalizedRoot, state);
     });
 
     abortController.signal.addEventListener("abort", () => watcher.close());
-    this.watching = true;
+    state.watcher = watcher;
+    this.watchers.set(normalizedRoot, state);
+    watcher.on?.("error", (error) => {
+      if (abortController.signal.aborted || this.watchers.get(normalizedRoot) !== state) {
+        return;
+      }
+      state.active = false;
+      state.dirty = true;
+      state.failureCount += 1;
+      state.generation += 1;
+      state.lastError = error.message;
+      this.watcherDirty.set(normalizedRoot, true);
+      this.logger.warn("file watch failed", {
+        error: error.message,
+        projectRootPath: normalizedRoot,
+      });
+      this.clearWatchTimers(state);
+      state.abortController.abort();
+      void this.recoverFailedWatcher(normalizedRoot, state);
+    });
+    if (this.automaticUpdatesStarted) {
+      this.automaticProjectRoots.add(normalizedRoot);
+    }
     this.logger.info("file watch started", { projectRootPath: normalizedRoot });
   }
 
-  public stopWatching(): void {
-    if (!this.watching) {
+  private shouldProcessWatchEvent(eventType: string, filename: string | Buffer | null): boolean {
+    if (filename === null) {
+      return true;
+    }
+
+    const relativePath = String(filename).replaceAll("\\", "/").replace(/^\.\/+/, "");
+    if (!relativePath) {
+      return true;
+    }
+    if (
+      relativePath === ".git/HEAD" ||
+      relativePath === ".git/index" ||
+      relativePath.startsWith(".git/refs/")
+    ) {
+      return true;
+    }
+
+    const simpleExcludedDirectories = new Set(
+      (this.settings.excludePatterns ?? []).filter((pattern) => !/[!*?[\]\\/]/.test(pattern)),
+    );
+    const pathSegments = relativePath.split("/");
+    if (pathSegments.some((segment) => simpleExcludedDirectories.has(segment))) {
+      return false;
+    }
+
+    if (eventType === "rename") {
+      return true;
+    }
+
+    const basename = path.posix.basename(relativePath).toLowerCase();
+    const extension = path.posix.extname(basename);
+    if (!extension || PROJECT_CONTROL_FILES.has(basename) || PROJECT_CONTROL_EXTENSIONS.has(extension)) {
+      return true;
+    }
+    return (
+      !this.settings.textExtensions ||
+      this.settings.textExtensions.some((candidate) => candidate.toLowerCase() === extension)
+    );
+  }
+
+  private startWatchingSafely(projectRootPath: string, reason: "index" | "recovery" | "startup"): void {
+    try {
+      this.startWatching(projectRootPath, true);
+    } catch (error) {
+      this.logger.warn("automatic index watch failed", {
+        error: error instanceof Error ? error.message : String(error),
+        projectRootPath,
+        reason,
+      });
+    }
+  }
+
+  private async recoverFailedWatcher(projectRootPath: string, state: ProjectWatchState): Promise<void> {
+    const queueTail = this.projectQueue.get(projectRootPath);
+    if (queueTail) {
+      await queueTail;
+    }
+    if (
+      this.watchers.get(projectRootPath) !== state ||
+      this.pausedProjectRoots.has(projectRootPath) ||
+      this.suppressedProjectRoots.has(projectRootPath) ||
+      !this.automaticWatchAllowed
+    ) {
       return;
     }
 
-    clearTimeout(this.debounceTimer);
-    this.watchAbortController?.abort();
-    this.watching = false;
-    this.logger.info("file watch stopped");
+    try {
+      await this.indexProject(projectRootPath, "incremental", undefined, "automatic");
+      if (this.watchers.get(projectRootPath) === state && !state.active) {
+        this.startWatchingSafely(projectRootPath, "recovery");
+      }
+    } catch (error) {
+      state.failureCount += 1;
+      state.lastError = error instanceof Error ? error.message : String(error);
+      this.logger.warn("file watch recovery failed", {
+        error: state.lastError,
+        projectRootPath,
+      });
+    }
+  }
+
+  public stopWatching(projectRootPath?: string): void {
+    const roots = projectRootPath === undefined
+      ? [...new Set([...this.watchers.keys(), ...this.automaticProjectRoots])]
+      : [normalizeAbsolutePath(projectRootPath)];
+
+    for (const root of roots) {
+      this.suppressedProjectRoots.add(root);
+      if (projectRootPath !== undefined) {
+        this.automaticProjectRoots.delete(root);
+      }
+      const state = this.watchers.get(root);
+      if (!state) {
+        continue;
+      }
+      this.clearWatchTimers(state);
+      state.abortController.abort();
+      this.watchers.delete(root);
+      this.logger.info("file watch stopped", { projectRootPath: root });
+    }
+  }
+
+  private scheduleWatchedIndex(
+    projectRootPath: string,
+    state: ProjectWatchState,
+    delayMs = Math.max(0, this.settings.watchDebounceMs ?? 2500),
+  ): void {
+    clearTimeout(state.debounceTimer);
+    state.debounceTimer = setTimeout(() => {
+      state.debounceTimer = undefined;
+      this.triggerWatchedIndex(projectRootPath, state);
+    }, delayMs);
+
+    if (!state.maxWaitTimer) {
+      const maxWaitMs = Math.max(delayMs, this.settings.watchMaxWaitMs ?? 10_000);
+      state.maxWaitTimer = setTimeout(() => {
+        state.maxWaitTimer = undefined;
+        clearTimeout(state.debounceTimer);
+        state.debounceTimer = undefined;
+        this.triggerWatchedIndex(projectRootPath, state);
+      }, maxWaitMs);
+    }
+  }
+
+  private triggerWatchedIndex(projectRootPath: string, state: ProjectWatchState): void {
+    if (state.abortController.signal.aborted || this.watchers.get(projectRootPath) !== state) {
+      return;
+    }
+
+    clearTimeout(state.maxWaitTimer);
+    state.maxWaitTimer = undefined;
+    if (state.processing) {
+      state.rerunRequested = true;
+      return;
+    }
+
+    state.processing = true;
+    void this.processWatchedChanges(projectRootPath, state);
+  }
+
+  private async processWatchedChanges(projectRootPath: string, state: ProjectWatchState): Promise<void> {
+    try {
+      while (!state.abortController.signal.aborted && this.watchers.get(projectRootPath) === state && state.dirty) {
+        state.rerunRequested = false;
+
+        const existingIndex = this.inFlightIndex.get(projectRootPath);
+        if (existingIndex) {
+          await existingIndex.catch(() => undefined);
+        }
+        if (state.abortController.signal.aborted || this.watchers.get(projectRootPath) !== state) {
+          return;
+        }
+
+        const generation = state.generation;
+        try {
+          await this.indexProject(projectRootPath, "incremental", undefined, "automatic");
+          state.failureCount = 0;
+          state.lastError = undefined;
+          state.lastSuccessAt = new Date().toISOString();
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          state.failureCount += 1;
+          state.lastError = message;
+          this.logger.warn("watch-triggered index failed", {
+            error: message,
+            projectRootPath,
+          });
+          this.scheduleWatchRetry(projectRootPath, state);
+          return;
+        }
+
+        if (state.generation === generation && !state.rerunRequested) {
+          state.dirty = false;
+          this.watcherDirty.set(projectRootPath, false);
+        } else {
+          state.dirty = true;
+          this.watcherDirty.set(projectRootPath, true);
+          clearTimeout(state.debounceTimer);
+          state.debounceTimer = undefined;
+          clearTimeout(state.maxWaitTimer);
+          state.maxWaitTimer = undefined;
+        }
+      }
+    } finally {
+      state.processing = false;
+      if (
+        state.dirty &&
+        !state.retryTimer &&
+        !state.abortController.signal.aborted &&
+        this.watchers.get(projectRootPath) === state
+      ) {
+        this.scheduleWatchedIndex(projectRootPath, state, 0);
+      }
+    }
+  }
+
+  private scheduleWatchRetry(projectRootPath: string, state: ProjectWatchState): void {
+    if (state.retryTimer || state.abortController.signal.aborted) {
+      return;
+    }
+    const retryDelayMs = Math.min(60_000, 1_000 * 2 ** Math.min(state.failureCount - 1, 6));
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = undefined;
+      this.triggerWatchedIndex(projectRootPath, state);
+    }, retryDelayMs);
+  }
+
+  private clearWatchTimers(state: ProjectWatchState): void {
+    clearTimeout(state.debounceTimer);
+    clearTimeout(state.maxWaitTimer);
+    clearTimeout(state.retryTimer);
+    state.debounceTimer = undefined;
+    state.maxWaitTimer = undefined;
+    state.retryTimer = undefined;
   }
 
   /**
@@ -353,8 +848,25 @@ export class IndexCoordinator {
     projectRootPath: string,
     mode: "full" | "incremental" = "incremental",
     onProgress?: IndexProgressCallback,
+    origin: "automatic" | "explicit" = "explicit",
   ): Promise<IndexProjectResult> {
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    if (this.pausedProjectRoots.has(normalizedRoot)) {
+      throw new AppError(
+        "PROJECT_INDEX_PAUSED",
+        `Project indexing is temporarily paused: ${normalizedRoot}`,
+        { retryable: true, statusCode: 409 },
+      );
+    }
+    if (origin === "explicit") {
+      this.suppressedProjectRoots.delete(normalizedRoot);
+    } else if (this.suppressedProjectRoots.has(normalizedRoot)) {
+      throw new AppError(
+        "PROJECT_INDEX_SUPPRESSED",
+        `Automatic project indexing is stopped: ${normalizedRoot}`,
+        { retryable: false, statusCode: 409 },
+      );
+    }
 
     // Check if there's already an in-flight index for this project
     // Note: If onProgress is provided, we still need to run a new index to provide progress
@@ -377,7 +889,9 @@ export class IndexCoordinator {
 
     // Queue behind any previous request
     const prev = this.projectQueue.get(normalizedRoot) ?? Promise.resolve();
-    const indexPromise = prev.then(() => this.runIndexProject(normalizedRoot, mode, onProgress));
+    const indexPromise = prev.then(() =>
+      this.withGlobalIndexSlot(() => this.runIndexProject(normalizedRoot, mode, onProgress)),
+    );
 
     // Track both queue and in-flight state
     const queuePromise = indexPromise.catch((err) => {
@@ -389,9 +903,11 @@ export class IndexCoordinator {
 
     // Clean up when done
     void indexPromise.finally(() => {
-      this.inFlightIndex.delete(normalizedRoot);
-      this.inFlightStartTimes.delete(normalizedRoot);
-      this.inFlightDedupedRequests.delete(normalizedRoot);
+      if (this.inFlightIndex.get(normalizedRoot) === indexPromise) {
+        this.inFlightIndex.delete(normalizedRoot);
+        this.inFlightStartTimes.delete(normalizedRoot);
+        this.inFlightDedupedRequests.delete(normalizedRoot);
+      }
       // Only delete from queue if this is still the latest promise
       if (this.projectQueue.get(normalizedRoot) === queuePromise) {
         this.projectQueue.delete(normalizedRoot);
@@ -399,6 +915,28 @@ export class IndexCoordinator {
     }).catch(() => {});
 
     return indexPromise;
+  }
+
+  private async withGlobalIndexSlot<T>(operation: () => Promise<T>): Promise<T> {
+    const concurrency = Math.max(1, Math.floor(this.settings.indexConcurrency ?? 1));
+    if (this.activeIndexRuns >= concurrency) {
+      await new Promise<void>((resolve) => {
+        this.pendingIndexSlots.push(resolve);
+      });
+    } else {
+      this.activeIndexRuns += 1;
+    }
+
+    try {
+      return await operation();
+    } finally {
+      const next = this.pendingIndexSlots.shift();
+      if (next) {
+        next();
+      } else {
+        this.activeIndexRuns -= 1;
+      }
+    }
   }
 
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -420,6 +958,8 @@ export class IndexCoordinator {
     onProgress?: IndexProgressCallback,
   ): Promise<IndexProjectResult> {
     const startedAtMs = performance.now();
+    const watchStateAtStart = this.watchers.get(normalizedRoot);
+    const watchGenerationAtStart = watchStateAtStart?.generation;
     const rootStats = await stat(normalizedRoot).catch(() => null);
     if (!rootStats?.isDirectory()) {
       throw new AppError("INVALID_PROJECT_ROOT", `Project root does not exist or is not a directory: ${normalizedRoot}`);
@@ -729,13 +1269,43 @@ export class IndexCoordinator {
       vectorSearchEnabled: this.settings.enableVectorSearch,
     });
 
-    if (this.settings.autoWatch && !this.watching) {
-      this.startWatching(normalizedRoot);
+    if (
+      this.automaticUpdatesStarted &&
+      !this.pausedProjectRoots.has(normalizedRoot) &&
+      !this.suppressedProjectRoots.has(normalizedRoot)
+    ) {
+      this.automaticProjectRoots.add(normalizedRoot);
     }
 
     // Update freshness tracking
     this.lastIndexedAtMs.set(normalizedRoot, performance.now());
-    this.watcherDirty.set(normalizedRoot, false);
+    const currentWatchState = this.watchers.get(normalizedRoot);
+    if (currentWatchState) {
+      const caughtUp = watchStateAtStart
+        ? currentWatchState === watchStateAtStart && currentWatchState.generation === watchGenerationAtStart
+        : currentWatchState.generation === 0;
+      currentWatchState.failureCount = 0;
+      currentWatchState.lastError = undefined;
+      currentWatchState.lastSuccessAt = new Date().toISOString();
+      currentWatchState.dirty = !caughtUp;
+      this.watcherDirty.set(normalizedRoot, !caughtUp);
+      if (caughtUp) {
+        this.clearWatchTimers(currentWatchState);
+      }
+    } else {
+      this.watcherDirty.set(normalizedRoot, false);
+    }
+
+    if (
+      this.settings.autoWatch &&
+      this.automaticUpdatesStarted &&
+      this.automaticWatchAllowed &&
+      !this.pausedProjectRoots.has(normalizedRoot) &&
+      !this.suppressedProjectRoots.has(normalizedRoot) &&
+      !this.isWatching(normalizedRoot)
+    ) {
+      this.startWatchingSafely(normalizedRoot, "index");
+    }
 
     const result: IndexProjectResult = {
       changedFiles,

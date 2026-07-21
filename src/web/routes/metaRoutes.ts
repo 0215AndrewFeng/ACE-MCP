@@ -30,6 +30,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         ...buildRuntimeStatus(dependencies.runtime),
         dataHealth: buildProjectListDataHealth(projects),
         watching: dependencies.indexCoordinator.isWatching(),
+        watchers: dependencies.indexCoordinator.getWatchStatuses?.() ?? [],
         projects: {
           total: projects.length,
           ready: readyProjects.length,
@@ -53,6 +54,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         ...buildRuntimeStatus(dependencies.runtime),
         dataHealth: buildDataHealthReport([unavailableDataHealthCheck("PROJECT_LIST_UNAVAILABLE", error)]),
         watching: dependencies.indexCoordinator.isWatching(),
+        watchers: dependencies.indexCoordinator.getWatchStatuses?.() ?? [],
         projects: {
           total: 0,
           ready: 0,
@@ -80,6 +82,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
 
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json({
+      autoWatch: dependencies.settings.autoWatch,
       batchSize: dependencies.settings.batchSize,
       dataDir: dependencies.settings.dataDir,
       databasePath: dependencies.settings.databasePath,
@@ -89,8 +92,12 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
       logFilePath: dependencies.settings.logFilePath,
       maxFileSizeKb: dependencies.settings.maxFileSizeKb,
       maxLinesPerChunk: dependencies.settings.maxLinesPerChunk,
+      indexConcurrency: dependencies.settings.indexConcurrency,
       textExtensions: dependencies.settings.textExtensions,
       vectorIndexingMode: dependencies.settings.vectorIndexingMode,
+      watchDebounceMs: dependencies.settings.watchDebounceMs,
+      watchMaxWaitMs: dependencies.settings.watchMaxWaitMs,
+      watchReconcileSeconds: dependencies.settings.watchReconcileSeconds,
     });
   });
 
@@ -102,7 +109,7 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
     res.json({ projects: dependencies.store.listProjects() });
   });
 
-  app.delete("/api/projects", (req: Request, res: Response) => {
+  app.delete("/api/projects", async (req: Request, res: Response) => {
     const projectRootPath =
       typeof req.query.projectRootPath === "string"
         ? req.query.projectRootPath
@@ -115,20 +122,34 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
     }
 
     const normalized = normalizeAbsolutePath(projectRootPath);
-    const project = dependencies.store.getProjectByRoot(normalized);
-    const result = dependencies.store.deleteProject(normalized);
-    if (project) {
-      dependencies.searchService.clearSearchCache(project.project_id);
-    }
+    try {
+      const result = await dependencies.indexCoordinator.withProjectIndexPaused(
+        normalized,
+        () => {
+          const project = dependencies.store.getProjectByRoot(normalized);
+          const result = dependencies.store.deleteProject(normalized);
+          if (project) {
+            dependencies.searchService.clearSearchCache(project.project_id);
+          }
+          return result;
+        },
+      );
 
-    res.json(
-      buildEnvelope(
-        { projectRootPath: normalized },
-        result,
-        {},
-        result.deleted ? [] : ["Project has not been indexed yet."],
-      ),
-    );
+      res.json(
+        buildEnvelope(
+          { projectRootPath: normalized },
+          result,
+          {},
+          result.deleted ? [] : ["Project has not been indexed yet."],
+        ),
+      );
+    } catch (error) {
+      const statusCode = error instanceof AppError ? error.statusCode : 500;
+      res.status(statusCode).json({
+        error: error instanceof Error ? error.message : String(error),
+        code: error instanceof AppError ? error.code : "INTERNAL_ERROR",
+      });
+    }
   });
 
   app.get("/api/project-stats", (req: Request, res: Response) => {
