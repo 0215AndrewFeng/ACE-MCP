@@ -2,7 +2,7 @@
 
 本项目的重要版本变更记录如下。
 
-## [4.10.3] - Unreleased
+## [4.10.3] - 2026-07-24
 
 ### Fair and bounded project routing
 
@@ -32,7 +32,7 @@
 ### During-index benchmark and release status
 
 - `release:benchmark` 现在以 `--smoke --during-index` 运行；必须观察到 active indexing，且只在 active 窗口收集至少 20 个 `/health` 和 20 个 `/api/projects/resolve` 样本，并对 p95 与请求超时执行失败门禁。
-- package/runtime/macOS installer 和发布契约更新到 4.10.3。当前条目仍为 Unreleased；commit、tag、push、Gitee Release 和真实下载验证尚未完成。
+- package/runtime/macOS installer 和发布契约更新到 4.10.3；source commit、tag 和 `master` 已推送，Gitee Release、真实下载验证及 Windows 自包含产物仍待补齐。
 - Windows 自包含 ZIP 仍需稍后在 Windows x64 + Node.js 22 主机上构建、运行原生依赖与 smoke 验证；Darwin 主机不宣称该产物已完成。
 
 ## [4.10.2] - 2026-07-22

@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.10.3`（发布准备中）
+当前版本：`v4.10.3`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -97,7 +97,7 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-v4.10.3 tag 和 Gitee Release 完成后，下载 `ace-mcp-4.10.3.tgz` 安装：
+v4.10.3 Gitee Release 发布后，下载 `ace-mcp-4.10.3.tgz` 安装：
 
 ```bash
 npm install -g ./ace-mcp-4.10.3.tgz
@@ -616,14 +616,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.10.3（发布准备中）
+### v4.10.3（当前版本）
 
 - **父子项目自动维护**：拥有两个及以上已登记后代项目的聚合父目录不再参与自动 catch-up、watcher 校准和周期索引，具体子项目分别维护；显式索引父目录仍可执行
 - **Git clean fast path**：可靠 clean Git 项目的周期校准可在 HEAD 未变化且 watcher 状态干净时跳过昂贵文件收集；启动、dirty、失败和不可靠状态保守回退
 - **独立索引 worker**：索引侧 SQLite 写入及符号图/语义操作移出主事件循环，解析批次主动 yield；关闭时停止接收新索引并等待活动与排队任务收敛
 - **`--warm` readiness 修正**：启用 `--warm` 时在 readiness 前完成暖机和向量缓存预载，并通过 Coordinator 管理的 SQLite worker 补齐 semantic FTS；LaunchAgent 默认不启用 `--warm`，正常启动路径不增加该等待
 - **phase 诊断与 during-index 门禁**：`/health` 区分 active/queued phase 并展示队列/阶段耗时；benchmark 仅在观察到 active indexing 时采集至少 20 组 health/resolve 样本并执行 p95/超时门禁
-- **平台状态**：macOS/tgz 发布载体按 4.10.3 准备；Windows 自包含 ZIP 必须稍后在 Windows x64 + Node.js 22 主机构建和验证，本节不表示 tag、push 或 Release 已完成
+- **平台状态**：4.10.3 source tag 与 `master` 已推送；macOS/tgz 已完成本地打包验证，Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证，Gitee Release 资产尚未发布
 
 ### v4.10.2
 

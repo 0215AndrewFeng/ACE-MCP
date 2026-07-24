@@ -542,21 +542,25 @@ test("release checklist records the v4.10.3 verification gates", () => {
   assert.match(checklist, /git tag -a v4\.10\.3/);
 });
 
-test("v4.10.3 release docs describe index responsiveness without claiming unfinished Windows artifacts", () => {
+test("v4.10.3 release docs record the source tag without claiming unfinished Windows artifacts", () => {
   const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
   const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
   const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(readme, /当前版本：`v4\.10\.3`（发布准备中）/);
+  assert.match(readme, /当前版本：`v4\.10\.3`/);
+  assert.match(readme, /### v4\.10\.3（当前版本）/);
+  assert.match(readme, /source tag.*`master` 已推送/);
+  assert.doesNotMatch(readme, /v4\.10\.3（发布准备中）/);
   assert.match(readme, /聚合父目录/);
   assert.match(readme, /Git clean fast path/);
   assert.match(readme, /独立索引 worker/);
   assert.match(readme, /phase/);
   assert.match(readme, /--during-index/);
 
-  assert.match(changelog, /## \[4\.10\.3\] - Unreleased/);
+  assert.match(changelog, /## \[4\.10\.3\] - 2026-07-24/);
+  assert.match(changelog, /source commit、tag 和 `master` 已推送/);
   assert.match(changelog, /## \[4\.10\.2\] - 2026-07-22/);
   assert.match(changelog, /Git clean fast path/);
   assert.match(changelog, /Independent index worker/);
