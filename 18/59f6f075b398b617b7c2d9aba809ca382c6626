@@ -1,0 +1,25 @@
+src/config/packageManifest.test.ts
+  s_128760b987caba::t_3c2f45fc757e08 545,552-555,562-563
+tasks/todo.md
+  s_128760b987caba::t_825d8d8d35695e 77,80
+README.md
+  s_128760b987caba::t_825d8d8d35695e 5,100,619,626
+CHANGELOG.md
+  s_128760b987caba::t_825d8d8d35695e 5,35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "1859f6f075b398b617b7c2d9aba809ca382c6626",
+  "prompts": {},
+  "sessions": {
+    "s_128760b987caba": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8261-3459-7ec2-be48-66adf7bf5778",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
