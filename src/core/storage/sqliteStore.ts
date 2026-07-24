@@ -19,6 +19,7 @@ import type {
   IndexedFileRecord,
   Language,
   ProjectListItem,
+  ProjectRouteMatch,
   ProjectInfo,
   ProjectStats,
   ProjectStatus,
@@ -30,7 +31,17 @@ import type {
   VectorEntry,
 } from "../common/types.js";
 import type { Logger } from "../common/logger.js";
-import type { CallGraphRow, IndexEventPayload, IndexEventRow, ProjectRow, SearchRow, SymbolRow } from "./sqliteStoreTypes.js";
+import type {
+  CallGraphRow,
+  FinalizeProjectIndexPayload,
+  FinalizeProjectIndexResult,
+  IndexEventPayload,
+  IndexEventRow,
+  PrepareProjectIndexResult,
+  ProjectRow,
+  SearchRow,
+  SymbolRow,
+} from "./sqliteStoreTypes.js";
 import {
   buildSearchFilterClause,
   matchesSearchFilters,
@@ -40,6 +51,65 @@ import {
   safeJsonParse,
 } from "./sqliteStoreHelpers.js";
 import { VectorCacheStore, VECTOR_CACHE_MAX_PROJECTS } from "./vectorCacheStore.js";
+
+const MAX_PROJECT_ROUTE_MATCHES_PER_PROJECT = 20;
+const MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH = 4_096;
+const PROJECT_ROUTE_MATCH_START = "\u0001";
+const PROJECT_ROUTE_MATCH_END = "\u0002";
+const PROJECT_ROUTE_TERM_SPLIT_PATTERN = /[.$/\\#-]+/u;
+
+function boundProjectRouteMatchText(value: string): string {
+  let bounded = value;
+  if (bounded.length > MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH) {
+    const matchStart = bounded.indexOf(PROJECT_ROUTE_MATCH_START);
+    const matchEndMarker = matchStart >= 0 ? bounded.indexOf(PROJECT_ROUTE_MATCH_END, matchStart + 1) : -1;
+    if (matchStart >= 0 && matchEndMarker >= matchStart) {
+      const matchEnd = matchEndMarker + PROJECT_ROUTE_MATCH_END.length;
+      const matchLength = matchEnd - matchStart;
+      const contextBefore = Math.max(0, Math.floor((MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH - matchLength) / 2));
+      const sliceStart = Math.max(
+        0,
+        Math.min(matchStart - contextBefore, bounded.length - MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH),
+      );
+      bounded = bounded.slice(sliceStart, sliceStart + MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH);
+    } else {
+      bounded = bounded.slice(0, MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH);
+    }
+  }
+
+  return bounded
+    .replaceAll(PROJECT_ROUTE_MATCH_START, "")
+    .replaceAll(PROJECT_ROUTE_MATCH_END, "")
+    .slice(0, MAX_PROJECT_ROUTE_MATCH_TEXT_LENGTH);
+}
+
+function highlightedRouteSpans(values: string[]): string[] {
+  const spans: string[] = [];
+  for (const value of values) {
+    let cursor = 0;
+    while (cursor < value.length) {
+      const start = value.indexOf(PROJECT_ROUTE_MATCH_START, cursor);
+      if (start < 0) {
+        break;
+      }
+      const end = value.indexOf(PROJECT_ROUTE_MATCH_END, start + PROJECT_ROUTE_MATCH_START.length);
+      if (end < 0) {
+        break;
+      }
+      spans.push(value.slice(start + PROJECT_ROUTE_MATCH_START.length, end).normalize("NFKC").toLowerCase());
+      cursor = end + PROJECT_ROUTE_MATCH_END.length;
+    }
+  }
+  return spans;
+}
+
+function matchedHighlightedRouteTerms(routeTerms: string[], highlightedValues: string[]): string[] {
+  const spans = highlightedRouteSpans(highlightedValues);
+  return routeTerms.filter((routeTerm) => {
+    const parts = routeTerm.split(PROJECT_ROUTE_TERM_SPLIT_PATTERN).filter(Boolean);
+    return parts.length > 0 && parts.every((part) => spans.some((span) => span.startsWith(part)));
+  });
+}
 
 export class SQLiteStore {
   private readonly db: Database.Database;
@@ -499,6 +569,18 @@ export class SQLiteStore {
     }));
   }
 
+  public prepareProjectIndex(
+    projectId: string,
+    project: ProjectInfo,
+    timestamp: string,
+  ): PrepareProjectIndexResult {
+    const prepare = this.db.transaction(() => {
+      this.upsertProject(projectId, project, "indexing", timestamp);
+      return { existingFiles: this.listProjectFiles(projectId) };
+    });
+    return prepare.immediate();
+  }
+
   public getFilePreviewResults(projectId: string, relativePaths: string[]): SearchResult[] {
     if (relativePaths.length === 0) {
       return [];
@@ -655,6 +737,23 @@ export class SQLiteStore {
         mode: "lazy",
       },
       };
+  }
+
+  public latestIndexEventHasFailures(projectId: string): boolean | null {
+    const row = this.db
+      .prepare(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM index_event_failure f
+           WHERE f.event_id = e.event_id
+         ) AS has_failures
+         FROM index_event e
+         WHERE e.project_id = ?
+         ORDER BY e.created_at DESC, e.event_id DESC
+         LIMIT 1`,
+      )
+      .get(projectId) as { has_failures: number } | undefined;
+    return row ? row.has_failures === 1 : null;
   }
 
   private listProjectSymbols(projectId: string): SymbolRow[] {
@@ -1721,6 +1820,148 @@ export class SQLiteStore {
     }));
   }
 
+  public searchProjectRoutes(
+    ftsQuery: string | null,
+    exactSymbols: string[],
+    limit: number,
+    excludedProjectRootPaths: string[] = [],
+    routeTerms: string[] = [],
+  ): ProjectRouteMatch[] {
+    const normalizedLimit = Math.max(1, Math.min(limit, 500));
+    const matches: ProjectRouteMatch[] = [];
+    const normalizedSymbols = [...new Set(exactSymbols.map((symbol) => symbol.normalize("NFKC").trim().toLowerCase()).filter(Boolean))]
+      .slice(0, 16);
+    const excludedRoots = [...new Set(
+      excludedProjectRootPaths.map((projectRootPath) => normalizeAbsolutePath(projectRootPath)),
+    )];
+    const exclusionClause = excludedRoots.length > 0
+      ? `AND p.project_root_path NOT IN (${excludedRoots.map(() => "?").join(", ")})`
+      : "";
+
+    if (normalizedSymbols.length > 0) {
+      const placeholders = normalizedSymbols.map(() => "?").join(", ");
+      const rows = this.db
+        .prepare(
+          `SELECT
+             p.project_id,
+             p.project_root_path,
+             MIN(f.relative_path) AS relative_path,
+             s.name,
+             MIN(s.signature) AS signature
+           FROM symbol s
+           JOIN file f ON f.file_id = s.file_id
+           JOIN project p ON p.project_id = f.project_id
+           WHERE p.status = 'ready'
+             AND LOWER(s.name) IN (${placeholders})
+             ${exclusionClause}
+           GROUP BY p.project_id, p.project_root_path, s.name
+           ORDER BY s.name ASC, p.project_root_path ASC
+           LIMIT ?`,
+        )
+        .all(...normalizedSymbols, ...excludedRoots, normalizedLimit) as Array<{
+          name: string;
+          project_id: string;
+          project_root_path: string;
+          relative_path: string;
+          signature: string;
+        }>;
+
+      matches.push(...rows.map((row) => ({
+        filePath: row.relative_path,
+        matchedTerms: routeTerms.filter((routeTerm) => routeTerm === row.name.normalize("NFKC").toLowerCase()),
+        matchText: boundProjectRouteMatchText(`${row.name} ${row.signature}`),
+        projectId: row.project_id,
+        projectRootPath: row.project_root_path,
+        rank: 1,
+        source: "symbol" as const,
+        symbol: row.name,
+      })));
+    }
+
+    const remainingLimit = normalizedLimit - matches.length;
+    if (ftsQuery && remainingLimit > 0) {
+      // Keep bounded routes as the outer loop so SQLite applies rowid + MATCH before generating snippets.
+      const rows = this.db
+        .prepare(
+          `WITH project_ranked_routes AS (
+             SELECT
+               p.project_id,
+               p.project_root_path,
+               chunk_fts.rowid AS fts_rowid,
+               chunk_fts.rank AS raw_score,
+               ROW_NUMBER() OVER (
+                 PARTITION BY p.project_id
+                 ORDER BY chunk_fts.rank ASC, chunk_fts.rowid ASC
+               ) AS project_rank
+             FROM chunk_fts
+             JOIN chunk c ON c.chunk_id = chunk_fts.chunk_id
+             JOIN file f ON f.file_id = c.file_id
+             JOIN project p ON p.project_id = f.project_id
+             WHERE p.status = 'ready'
+               ${exclusionClause}
+               AND chunk_fts MATCH ?
+           ),
+           bounded_routes AS MATERIALIZED (
+             SELECT
+               project_id,
+               project_root_path,
+               fts_rowid,
+               raw_score,
+               project_rank
+             FROM project_ranked_routes
+             WHERE project_rank <= ?
+             ORDER BY project_rank ASC, raw_score ASC, project_root_path ASC, fts_rowid ASC
+             LIMIT ?
+           )
+           SELECT
+             routes.project_id,
+             routes.project_root_path,
+             chunk_fts.relative_path,
+             snippet(chunk_fts, -1, char(1), char(2), ' ... ', 32) AS match_text,
+             highlight(chunk_fts, 1, char(1), char(2)) AS highlighted_path,
+             highlight(chunk_fts, 3, char(1), char(2)) AS highlighted_content,
+             highlight(chunk_fts, 4, char(1), char(2)) AS highlighted_symbols,
+             routes.raw_score
+           FROM bounded_routes routes
+           CROSS JOIN chunk_fts
+           WHERE chunk_fts.rowid = routes.fts_rowid
+             AND chunk_fts MATCH ?
+           ORDER BY routes.project_rank ASC, routes.raw_score ASC, routes.project_root_path ASC, chunk_fts.relative_path ASC`,
+        )
+        .all(
+          ...excludedRoots,
+          ftsQuery,
+          MAX_PROJECT_ROUTE_MATCHES_PER_PROJECT,
+          remainingLimit,
+          ftsQuery,
+        ) as Array<{
+          highlighted_content: string;
+          highlighted_path: string;
+          highlighted_symbols: string;
+          match_text: string;
+          project_id: string;
+          project_root_path: string;
+          raw_score: number;
+          relative_path: string;
+        }>;
+
+      matches.push(...rows.map((row, index) => ({
+        filePath: row.relative_path,
+        matchedTerms: matchedHighlightedRouteTerms(
+          routeTerms,
+          [row.highlighted_path, row.highlighted_content, row.highlighted_symbols],
+        ),
+        matchText: boundProjectRouteMatchText(row.match_text),
+        projectId: row.project_id,
+        projectRootPath: row.project_root_path,
+        rank: index + 1,
+        source: "lexical" as const,
+      })));
+    }
+
+    return matches;
+  }
+
   public upsertProject(projectId: string, project: ProjectInfo, status: ProjectStatus, timestamp: string): void {
     const existing = this.getProjectByRoot(project.rootPath);
     const version = existing?.index_version ?? 1;
@@ -1773,6 +2014,102 @@ export class SQLiteStore {
       .prepare("SELECT index_version FROM project WHERE project_id = ?")
       .get(projectId) as { index_version: number } | undefined;
     return row?.index_version ?? 0;
+  }
+
+  public finalizeProjectIndex(
+    projectId: string,
+    payload: FinalizeProjectIndexPayload,
+  ): FinalizeProjectIndexResult {
+    const finalize = this.db.transaction(() => {
+      const completedAt = payload.status === "ready" ? payload.timestamp : null;
+      const completedCommit = payload.status === "ready" ? payload.lastIndexedCommit ?? null : null;
+      if (payload.bumpIndexVersion) {
+        this.db
+          .prepare(
+            `UPDATE project
+             SET last_scan_at = ?,
+                 last_index_at = COALESCE(?, last_index_at),
+                 status = ?,
+                 index_version = index_version + 1,
+                 last_indexed_commit = COALESCE(?, last_indexed_commit)
+             WHERE project_id = ?`,
+          )
+          .run(payload.timestamp, completedAt, payload.status, completedCommit, projectId);
+      } else {
+        this.db
+          .prepare(
+            `UPDATE project
+             SET last_scan_at = ?,
+                 last_index_at = COALESCE(?, last_index_at),
+                 status = ?,
+                 last_indexed_commit = COALESCE(?, last_indexed_commit)
+             WHERE project_id = ?`,
+          )
+          .run(payload.timestamp, completedAt, payload.status, completedCommit, projectId);
+      }
+
+      const versionRow = this.db
+        .prepare("SELECT index_version FROM project WHERE project_id = ?")
+        .get(projectId) as { index_version: number } | undefined;
+      const eventId = buildStableId([
+        projectId,
+        payload.event.createdAt,
+        String(payload.event.indexedFiles),
+        String(payload.event.scannedFiles),
+        String(payload.event.failedFiles.length),
+      ]);
+      this.db
+        .prepare(
+          `INSERT INTO index_event (
+             event_id, project_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, metadata_json, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          eventId,
+          projectId,
+          payload.event.indexedFiles,
+          payload.event.changedFiles,
+          payload.event.deletedFiles,
+          payload.event.chunkCount,
+          payload.event.scannedFiles,
+          JSON.stringify({ ...payload.event.metadata, timings: payload.timing.baseTimings }),
+          payload.event.createdAt,
+        );
+
+      const insertFailure = this.db.prepare(
+        `INSERT INTO index_event_failure (failure_id, event_id, file_path, message)
+         VALUES (?, ?, ?, ?)`,
+      );
+      for (const failure of payload.event.failedFiles) {
+        insertFailure.run(
+          buildStableId([eventId, failure.filePath, failure.message]),
+          eventId,
+          failure.filePath,
+          failure.message,
+        );
+      }
+
+      const timingCapturedAtMs = Date.now();
+      const finalizeWriteMs = Math.max(1, timingCapturedAtMs - payload.timing.finalizeWriteStartedAtMs);
+      const timings: IndexTimingStats = {
+        ...payload.timing.baseTimings,
+        finalizeMs: Math.max(1, timingCapturedAtMs - payload.timing.finalizeStartedAtMs),
+        indexMs: Math.max(payload.timing.baseTimings.indexMs, timingCapturedAtMs - payload.timing.indexStartedAtMs),
+        maxWriteBatchMs: Math.max(payload.timing.baseTimings.maxWriteBatchMs ?? 0, finalizeWriteMs),
+        totalMs: Math.max(payload.timing.baseTimings.totalMs, timingCapturedAtMs - payload.timing.totalStartedAtMs),
+        writeMs: (payload.timing.baseTimings.writeMs ?? 0) + finalizeWriteMs,
+      };
+      this.db
+        .prepare("UPDATE index_event SET metadata_json = ? WHERE event_id = ?")
+        .run(JSON.stringify({ ...payload.event.metadata, timings }), eventId);
+
+      return {
+        indexVersion: versionRow?.index_version ?? 0,
+        timings,
+      };
+    });
+
+    return finalize();
   }
 
   /**
@@ -2135,6 +2472,10 @@ export class SQLiteStore {
 
   public reconcileVectorCacheAfterIndex(projectId: string, affectedPaths: string[], newIndexVersion: number): void {
     this.vectorStore.reconcileVectorCacheAfterIndex(projectId, affectedPaths, newIndexVersion);
+  }
+
+  public clearProjectVectorCache(projectId: string, retainedIndexVersion?: number): void {
+    this.vectorStore.clearProjectVectorCache(projectId, retainedIndexVersion);
   }
 
   public hasVectorIndex(projectId: string, modelName?: string): boolean {

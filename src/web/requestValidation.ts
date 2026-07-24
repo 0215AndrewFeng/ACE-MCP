@@ -5,7 +5,11 @@ import {
   INDEX_MODES,
   MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
+  MAX_QUERY_LENGTH,
   QA_CONTEXT_MODES,
+  PROJECT_ROUTE_TOPK_DEFAULT,
+  PROJECT_ROUTE_TOPK_MAX,
+  PROJECT_ROUTE_TOPK_MIN,
   SEARCH_MODES,
   SEARCH_RESULT_MODES,
   TOPK_MAX,
@@ -61,6 +65,11 @@ export interface SearchContextRequest {
   resultMode: (typeof SEARCH_RESULT_MODES)[number];
   filters: SearchFilters;
   enableReranker: boolean;
+}
+
+export interface ProjectResolveRequest {
+  query: string;
+  topK: number;
 }
 
 export interface SymbolLookupRequest {
@@ -130,6 +139,27 @@ export function parseSearchContextRequest(body: any, settings: Settings): ParseR
       resultMode: enumOrDefault(body.resultMode, SEARCH_RESULT_MODES, "full"),
       filters: parseFilters(body),
       enableReranker: body.enableReranker === true,
+    },
+  };
+}
+
+export function parseProjectResolveRequest(body: any): ParseResult<ProjectResolveRequest> {
+  body = body ?? {};
+  const query = nonEmptyString(body.query)?.trim();
+  if (!query) return { ok: false, error: "query is required" };
+  if (query.length > MAX_QUERY_LENGTH) {
+    return { ok: false, error: `query must contain at most ${MAX_QUERY_LENGTH} characters` };
+  }
+  return {
+    ok: true,
+    value: {
+      query,
+      topK: clampInteger(
+        body.topK,
+        PROJECT_ROUTE_TOPK_MIN,
+        PROJECT_ROUTE_TOPK_MAX,
+        PROJECT_ROUTE_TOPK_DEFAULT,
+      ),
     },
   };
 }

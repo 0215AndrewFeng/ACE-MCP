@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -44,6 +44,100 @@ test("SQLiteStore records indexed files, chunks, symbols, and latest index metad
   }
 });
 
+test("SQLiteStore prepares project state with its existing file snapshot", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+
+  try {
+    const indexed = await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    const prepared = (env.store as SQLiteStore & {
+      prepareProjectIndex: typeof env.store.prepareProjectIndex;
+    }).prepareProjectIndex(indexed.projectId, indexed.project, new Date().toISOString());
+
+    assert.deepEqual(prepared.existingFiles.map((file) => file.relativePath), ["src/index.ts"]);
+    assert.equal(env.store.getProjectByRoot(env.projectRootPath)?.status, "indexing");
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("SQLiteStore rolls back project preparation when the file snapshot fails", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+
+  try {
+    const indexed = await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    env.store.listProjectFiles = () => {
+      throw new Error("snapshot failed");
+    };
+
+    assert.throws(
+      () => (env.store as SQLiteStore & {
+        prepareProjectIndex: typeof env.store.prepareProjectIndex;
+      }).prepareProjectIndex(indexed.projectId, indexed.project, new Date().toISOString()),
+      /snapshot failed/,
+    );
+    assert.equal(env.store.getProjectByRoot(env.projectRootPath)?.status, "ready");
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("SQLiteStore atomically persists failed project state with its index event", async () => {
+  const env = await createTestProjectEnvironment({});
+  const projectId = "atomic-failure-project";
+  const timestamp = "2026-07-23T02:00:00.000Z";
+  const project = {
+    languages: ["javascript" as const],
+    markers: ["package.json"],
+    projectType: "single-language" as const,
+    rootPath: path.join(env.tempDir, "atomic-project"),
+  };
+  const now = Date.now();
+  const payload = {
+    bumpIndexVersion: true,
+    event: {
+      changedFiles: 1,
+      chunkCount: 0,
+      createdAt: timestamp,
+      deletedFiles: 0,
+      failedFiles: [{ filePath: "src/broken.ts", message: "parse failed" }],
+      indexedFiles: 0,
+      metadata: {
+        vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" as const },
+      },
+      scannedFiles: 1,
+    },
+    status: "error" as const,
+    timestamp,
+    timing: {
+      baseTimings: { collectMs: 1, detectMs: 1, indexMs: 2, totalMs: 3, vectorMs: 0, writeMs: 0 },
+      finalizeStartedAtMs: now,
+      finalizeWriteStartedAtMs: now,
+      indexStartedAtMs: now - 2,
+      totalStartedAtMs: now - 3,
+    },
+  };
+
+  try {
+    env.store.upsertProject(projectId, project, "indexing", timestamp);
+    const result = env.store.finalizeProjectIndex(projectId, payload);
+
+    assert.equal(env.store.getProjectByRoot(project.rootPath)?.status, "error");
+    assert.equal(env.store.getLatestIndexEvent(projectId)?.failedFileCount, 1);
+    assert.deepEqual(env.store.getLatestIndexEvent(projectId)?.timings, result.timings);
+
+    env.store.upsertProject(projectId, project, "indexing", timestamp);
+    assert.throws(() => env.store.finalizeProjectIndex(projectId, payload));
+    assert.equal(env.store.getProjectByRoot(project.rootPath)?.status, "indexing");
+    assert.equal(env.store.getLatestIndexEvent(projectId)?.failedFileCount, 1);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("SQLiteStore.deleteFiles cascades file-owned rows and leaves project stats consistent", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",
@@ -82,6 +176,43 @@ test("SQLiteStore.deleteProject removes registration and cascades indexed rows",
     assert.equal(env.store.getProjectStats(env.projectRootPath), null);
     assert.equal(env.store.listProjects().some((project) => project.projectRootPath === env.projectRootPath), false);
     assert.deepEqual(env.store.listProjectFiles(indexResult.projectId), []);
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("SQLiteStore project routing excludes roots before applying one total result limit", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/SharedThing.ts": "export class SharedThing { routeKeyword(): void {} }\n",
+  });
+  const secondProject = path.join(env.tempDir, "second-project");
+
+  try {
+    await mkdir(path.join(secondProject, "src"), { recursive: true });
+    await writeFile(
+      path.join(secondProject, "src/SharedThing.ts"),
+      "export class SharedThing { routeKeyword(): void {} }\n",
+      "utf8",
+    );
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    await env.indexCoordinator.indexProject(secondProject, "full");
+
+    const allMatches = env.store.searchProjectRoutes(
+      "sharedthing* OR routekeyword*",
+      ["SharedThing"],
+      4,
+    );
+    const matches = env.store.searchProjectRoutes(
+      "sharedthing* OR routekeyword*",
+      ["SharedThing"],
+      3,
+      [env.projectRootPath],
+    );
+
+    assert.equal(allMatches.filter((match) => match.source === "symbol").every((match) => match.rank === 1), true);
+    assert.ok(matches.length > 0);
+    assert.ok(matches.length <= 3);
+    assert.equal(matches.every((match) => match.projectRootPath === secondProject), true);
   } finally {
     await env.cleanup();
   }

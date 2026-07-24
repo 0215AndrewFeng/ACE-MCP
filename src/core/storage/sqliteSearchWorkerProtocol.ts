@@ -1,6 +1,17 @@
-import type { SearchFilters, SearchResult } from "../common/types.js";
+import type { ProjectRouteMatch, SearchFilters, SearchResult } from "../common/types.js";
 
 export type SQLiteSearchWorkerRequest =
+  | {
+      id: number;
+      method: "searchProjectRoutes";
+      payload: {
+        excludedProjectRootPaths: string[];
+        exactSymbols: string[];
+        ftsQuery: string | null;
+        limit: number;
+        routeTerms: string[];
+      };
+    }
   | {
       id: number;
       method: "getFilePreviewResults";
@@ -64,7 +75,7 @@ export type SQLiteSearchWorkerResponse =
   | {
       id: number;
       ok: true;
-      result: SearchResult[];
+      result: ProjectRouteMatch[] | SearchResult[];
     }
   | {
       error: {

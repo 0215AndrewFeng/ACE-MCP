@@ -7,10 +7,16 @@ export type ProjectStatus = "ready" | "indexing" | "error";
 export type VectorIndexingMode = "lazy" | "eager";
 export type IndexFreshnessPolicy = "always" | "stale" | "manual";
 export type ContextMode = "chunk" | "merged-file" | "full-file";
+export type ProjectRouteDecision = "single" | "multiple" | "abstain";
+export type ProjectRouteMatchSource = "lexical" | "symbol";
 export const DEFAULT_INCLUDE_CONTEXT_LINES = 0;
 export const MAX_INCLUDE_CONTEXT_LINES = 500;
 export const DEFAULT_CALL_GRAPH_DEPTH = 1;
 export const MAX_CALL_GRAPH_DEPTH = 5;
+export const MAX_QUERY_LENGTH = 4_096;
+export const MAX_PROJECT_ROUTE_IDENTIFIERS = 16;
+export const MAX_PROJECT_ROUTE_TERMS = 32;
+export const MAX_PROJECT_ROUTE_TERM_LENGTH = 120;
 
 export type EmbeddingProviderType = "memory" | "remote";
 
@@ -371,6 +377,20 @@ export interface ProjectStats {
 export interface IndexTimingStats {
   collectMs: number;
   detectMs: number;
+  /** Time spent preparing persisted file state after project detection. */
+  prepareMs?: number;
+  /** Time spent parsing source files and building their in-memory index records. */
+  parseMs?: number;
+  /** Time spent writing file-index and vector batches to SQLite. */
+  writeMs?: number;
+  /** Slowest individual SQLite file-index or vector batch. */
+  maxWriteBatchMs?: number;
+  /** Time spent resolving the symbol graph after file writes. */
+  symbolGraphMs?: number;
+  /** Time spent ensuring the semantic FTS index. */
+  semanticMs?: number;
+  /** Time spent committing project metadata and reconciling the vector cache. */
+  finalizeMs?: number;
   indexMs: number;
   totalMs: number;
   vectorMs: number;
@@ -388,6 +408,40 @@ export interface ProjectListItem {
   lastScanAt: string | null;
   projectRootPath: string;
   status: ProjectStatus;
+}
+
+export interface ProjectRouteMatch {
+  filePath: string;
+  matchedTerms?: string[];
+  matchText: string;
+  projectId: string;
+  projectRootPath: string;
+  rank: number;
+  source: ProjectRouteMatchSource;
+  symbol?: string;
+}
+
+export interface ProjectRouteEvidence {
+  filePath: string;
+  matchedTerms: string[];
+  source: ProjectRouteMatchSource;
+  symbol?: string;
+}
+
+export interface ProjectRouteCandidate {
+  confidence: number;
+  evidence: ProjectRouteEvidence[];
+  matchedTerms: string[];
+  projectRootPath: string;
+  score: number;
+}
+
+export interface ProjectRouteResolution {
+  candidates: ProjectRouteCandidate[];
+  decision: ProjectRouteDecision;
+  durationMs: number;
+  query: string;
+  selectedProjectRootPaths: string[];
 }
 
 // Vector embedding types

@@ -6,9 +6,11 @@ import { z } from "zod";
 import type { Settings } from "../common/types.js";
 import {
   MAX_INCLUDE_CONTEXT_LINES,
+  MAX_QUERY_LENGTH,
   SEARCH_FILTER_LANGUAGES,
   TOPK_MAX,
   askCodebaseShape,
+  resolveProjectsShape,
   searchContextShape,
 } from "./schemas.js";
 
@@ -61,4 +63,12 @@ test("askCodebaseShape constrains QA source and context limits", () => {
 
 test("shared language enum includes markdown for all request layers", () => {
   assert.ok(SEARCH_FILTER_LANGUAGES.includes("markdown"));
+});
+
+test("resolveProjectsShape keeps enough candidates to represent ambiguity", () => {
+  const schema = z.object(resolveProjectsShape);
+
+  assert.equal(schema.parse({ query: "FlowSwitcher" }).topK, 3);
+  assert.throws(() => schema.parse({ query: "FlowSwitcher", topK: 1 }), /Number must be greater than or equal/);
+  assert.throws(() => schema.parse({ query: "x".repeat(MAX_QUERY_LENGTH + 1) }), /String must contain at most/);
 });

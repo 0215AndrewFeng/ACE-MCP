@@ -78,6 +78,80 @@ test("startWebApp serves health and validation responses", async () => {
   }
 });
 
+test("project resolve API validates the query and returns router decisions without indexing", async () => {
+  const env = await createTestProjectEnvironment({});
+  const resolution = {
+    candidates: [
+      {
+        confidence: 0.88,
+        evidence: [{ filePath: "src/FlowSwitcher.ts", matchedTerms: ["flowswitcher"], source: "symbol" }],
+        matchedTerms: ["flowswitcher"],
+        projectRootPath: "/work/change-service",
+        score: 1.3,
+      },
+    ],
+    decision: "single" as const,
+    durationMs: 7,
+    query: "FlowSwitcher",
+    selectedProjectRootPaths: ["/work/change-service"],
+  };
+  const app = await startWebApp(0, {
+    embeddingProvider: env.embeddingProvider,
+    indexCoordinator: {
+      ensureFreshIndex: () => {
+        throw new Error("project resolution must not index every project");
+      },
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    projectRouter: {
+      resolve: async (query: string, options: { topK: number }) => {
+        assert.equal(query, "FlowSwitcher");
+        assert.equal(options.topK, 2);
+        return resolution;
+      },
+    } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: env.searchService,
+    settings: env.settings,
+    store: env.store,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const invalid = await fetch(`http://127.0.0.1:${app.port}/api/projects/resolve`, {
+      body: JSON.stringify({ query: "   " }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal((await invalid.json()).code, "VALIDATION_ERROR");
+
+    const response = await fetch(`http://127.0.0.1:${app.port}/api/projects/resolve`, {
+      body: JSON.stringify({ query: "FlowSwitcher", topK: 2 }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.data, resolution);
+    assert.deepEqual(body.request, { query: "FlowSwitcher", topK: 2 });
+    assert.equal(body.stats.routing.candidateCount, 1);
+  } finally {
+    await app.close();
+    await env.cleanup();
+  }
+});
+
 test("health and config expose automatic index update state", async () => {
   const env = await createTestProjectEnvironment({
     "src/index.ts": "export const value = 1;\n",
@@ -185,11 +259,18 @@ test("health does not wait for per-project SQLite stats", async () => {
     indexCoordinator: {
       getInFlightIndexInfo: () => [
         {
+          current: 8,
           dedupedRequests: 3,
           elapsedMs: 12_000,
+          lastProgressAt: "2026-06-24T00:00:12.000Z",
+          origin: "automatic",
+          phase: "parse",
+          phaseElapsedMs: 250,
           projectRootPath: "/repo",
+          queueMs: 15,
           queuedRequests: 1,
           status: "running",
+          total: 20,
         },
       ],
       isWatching: () => true,
@@ -237,6 +318,13 @@ test("health does not wait for per-project SQLite stats", async () => {
     assert.equal(body.projects.total, 1);
     assert.equal(body.projects.ready, 1);
     assert.equal(body.indexing[0].dedupedRequests, 3);
+    assert.equal(body.indexing[0].phase, "parse");
+    assert.equal(body.indexing[0].phaseElapsedMs, 250);
+    assert.equal(body.indexing[0].current, 8);
+    assert.equal(body.indexing[0].total, 20);
+    assert.equal(body.indexing[0].lastProgressAt, "2026-06-24T00:00:12.000Z");
+    assert.equal(body.indexing[0].origin, "automatic");
+    assert.equal(body.indexing[0].queueMs, 15);
     assert.equal(body.indexing[0].queuedRequests, 1);
     assert.equal(body.indexing[0].status, "running");
     assert.ok(elapsedMs < 100, `health took ${elapsedMs}ms`);
@@ -349,6 +437,7 @@ test("delete project API removes registered project and clears search cache", as
     indexCoordinator: {
       getInFlightIndexInfo: () => [],
       isWatching: () => false,
+      refreshAutomaticProjectOwnership: async () => {},
       withProjectIndexPaused: async (projectRootPath: string, operation: () => unknown) => {
         stopped.push(projectRootPath);
         return operation();
@@ -411,6 +500,140 @@ test("delete project API removes registered project and clears search cache", as
     assert.deepEqual(removed, ["/repo"]);
     assert.deepEqual(cleared, ["project-1"]);
     assert.deepEqual(stopped, ["/repo"]);
+  } finally {
+    await app.close();
+  }
+});
+
+test("delete project API waits for automatic ownership refresh", async () => {
+  const refreshStarted = deferred<void>();
+  const releaseRefresh = deferred<void>();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+      refreshAutomaticProjectOwnership: async () => {
+        refreshStarted.resolve();
+        await releaseRefresh.promise;
+      },
+      withProjectIndexPaused: async (_projectRootPath: string, operation: () => unknown) => operation(),
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: { clearSearchCache() {} } as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      deleteProject: (projectRootPath: string) => ({
+        deleted: true,
+        fileCount: 1,
+        projectId: "project-1",
+        projectRootPath,
+      }),
+      getProjectByRoot: (projectRootPath: string) => ({
+        project_id: "project-1",
+        project_root_path: projectRootPath,
+      }),
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    let deletionSettled = false;
+    const deletion = fetch(
+      `http://127.0.0.1:${app.port}/api/projects?projectRootPath=${encodeURIComponent("/repo")}`,
+      { method: "DELETE" },
+    ).finally(() => {
+      deletionSettled = true;
+    });
+
+    const refreshObserved = await Promise.race([
+      refreshStarted.promise.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 100)),
+    ]);
+    assert.equal(refreshObserved, true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(deletionSettled, false);
+
+    releaseRefresh.resolve();
+    const response = await deletion;
+    assert.equal(response.status, 200);
+  } finally {
+    releaseRefresh.resolve();
+    await app.close();
+  }
+});
+
+test("delete project API reports success when ownership refresh fails after deletion", async () => {
+  const warnings: string[] = [];
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+      refreshAutomaticProjectOwnership: async () => {
+        throw new Error("refresh unavailable");
+      },
+      withProjectIndexPaused: async (_projectRootPath: string, operation: () => unknown) => operation(),
+    } as never,
+    llmClient: {} as never,
+    logger: {
+      debug() {},
+      error() {},
+      info() {},
+      warn(message: string) {
+        warnings.push(message);
+      },
+    } as never,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: { clearSearchCache() {} } as never,
+    settings: {
+      enableVectorSearch: true,
+      vectorIndexingMode: "lazy",
+    } as Settings,
+    store: {
+      deleteProject: (projectRootPath: string) => ({
+        deleted: true,
+        fileCount: 1,
+        projectId: "project-1",
+        projectRootPath,
+      }),
+      getProjectByRoot: (projectRootPath: string) => ({
+        project_id: "project-1",
+        project_root_path: projectRootPath,
+      }),
+      listProjects: () => [],
+    } as never,
+    summaryGenerator: {} as never,
+  });
+
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${app.port}/api/projects?projectRootPath=${encodeURIComponent("/repo")}`,
+      { method: "DELETE" },
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.data.deleted, true);
+    assert.ok(warnings.includes("automatic project refresh failed after deletion"));
   } finally {
     await app.close();
   }

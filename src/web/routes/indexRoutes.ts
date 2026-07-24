@@ -3,22 +3,16 @@ import type { Express, Request, Response } from "express";
 import { AppError } from "../../core/common/errors.js";
 import { type IndexProgressEvent } from "../../core/indexing/indexCoordinator.js";
 import { normalizeAbsolutePath } from "../../core/project/pathNormalizer.js";
+import { findNestedProjectPaths } from "../../core/project/projectHierarchy.js";
 import { buildEnvelope } from "../../server/tools/responseEnvelope.js";
 import { parseIndexProjectRequest } from "../requestValidation.js";
 import type { WebAppDependencies } from "../types.js";
 
-function isPathInside(parentPath: string, candidatePath: string): boolean {
-  const parent = normalizeAbsolutePath(parentPath);
-  const candidate = normalizeAbsolutePath(candidatePath);
-  return candidate !== parent && candidate.startsWith(parent.endsWith("/") ? parent : `${parent}/`);
-}
-
 function findRegisteredChildProjects(projectRootPath: string, dependencies: WebAppDependencies): string[] {
-  return dependencies.store
+  const projectRootPaths = dependencies.store
     .listProjects()
-    .map((project) => project.projectRootPath)
-    .filter((registeredPath) => isPathInside(projectRootPath, registeredPath))
-    .slice(0, 20);
+    .map((project) => project.projectRootPath);
+  return findNestedProjectPaths(projectRootPath, projectRootPaths).slice(0, 20);
 }
 
 export function registerIndexRoutes(app: Express, dependencies: WebAppDependencies): void {

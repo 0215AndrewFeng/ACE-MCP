@@ -5,6 +5,7 @@ import {
   DEFAULT_INCLUDE_CONTEXT_LINES,
   MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
+  MAX_QUERY_LENGTH,
   type Settings,
 } from "../common/types.js";
 
@@ -25,11 +26,15 @@ export const INDEX_MODES = ["full", "incremental"] as const;
 // ── Shared numeric bounds (reused by MCP schemas and web clamps) ─────────────
 export const TOPK_MIN = 1;
 export const TOPK_MAX = 50;
+export const PROJECT_ROUTE_TOPK_MIN = 2;
+export const PROJECT_ROUTE_TOPK_MAX = 10;
+export const PROJECT_ROUTE_TOPK_DEFAULT = 3;
 export {
   DEFAULT_CALL_GRAPH_DEPTH,
   DEFAULT_INCLUDE_CONTEXT_LINES,
   MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
+  MAX_QUERY_LENGTH,
 };
 
 // ── Common filter fields shared by search / lookup / call-graph ──────────────
@@ -69,6 +74,16 @@ export function searchContextShape(settings: Settings) {
       .describe("Enable LLM reranker for search results (requires LLM API configured and enableLlmReranker=true in settings)"),
   };
 }
+
+export const resolveProjectsShape = {
+  query: z.string().trim().min(1).max(MAX_QUERY_LENGTH),
+  topK: z
+    .number()
+    .int()
+    .min(PROJECT_ROUTE_TOPK_MIN)
+    .max(PROJECT_ROUTE_TOPK_MAX)
+    .default(PROJECT_ROUTE_TOPK_DEFAULT),
+};
 
 export function symbolLookupShape(settings: Settings) {
   return {

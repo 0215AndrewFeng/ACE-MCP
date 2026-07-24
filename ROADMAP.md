@@ -105,3 +105,11 @@
 54. ✅ **Windows 自包含绿色包**：ZIP 内置 Node.js 22、生产依赖和 `better-sqlite3` 原生二进制，提供无需 Node/npm/VS Build Tools 的 CLI、MCP、Web 与 doctor 入口；发布 smoke 在无 Node/npm PATH 下验证完整启动链路（v4.10.1）
 55. ✅ **可靠的多项目自动索引**：每项目 watcher、debounce/max-wait、generation 追赶、全局并发限制、启动 catch-up 和周期校准协同工作；Web/守护进程是唯一自动维护 owner，stdio MCP 仅按请求索引（v4.10.1）
 56. ✅ **项目删除 API**：删除已注册项目时等待活动索引、停止 watcher、抑制后台复活并清理搜索缓存，Web 项目管理使用同一后端闭环（v4.10.1）
+57. ✅ **自动项目路由**：新增全局有界候选召回与 `resolve_projects`，按问题关键词返回 single/multiple/abstain、置信度和证据；Web 默认自动识别项目，手动路径继续作为显式覆盖，并以独立 golden 指标验证路由质量（v4.10.2）
+58. ✅ **父子项目自动维护 ownership**：自动维护跳过拥有两个及以上已登记后代项目的聚合父目录，由具体子项目各自 watcher/catch-up/reconciliation；删除项目后立即刷新 ownership，单调 sequence 防止旧刷新快照回滚新拓扑；单一嵌套子项目和显式索引保持兼容（v4.10.3）
+59. ✅ **Git clean fast path**：可靠 clean Git 项目的 periodic reconciliation 在 HEAD 未变化、watcher 干净且无失败/在途任务时跳过 source collection，任何不可靠状态保守回退（v4.10.3）
+60. ✅ **独立索引 worker**：索引侧 SQLite 写入、删除、向量、symbol graph 和 semantic 操作移出 Web 主事件循环，源码 IPC 与 dist worker thread 使用独立生命周期和错误隔离（v4.10.3）
+61. ✅ **索引调度与响应性诊断**：解析 batch 主动 yield；`/health` 展示 active/queued phase、origin、进度、queue/phase elapsed，完成事件记录 prepare/parse/write/vector/symbolGraph/semantic/finalize 等耗时（v4.10.3）
+62. ✅ **during-index 响应性门禁**：benchmark 必须观察到 active indexing，只在活动窗口采集至少 20 个 health/resolve 样本，并按 p95 和超时阈值失败（v4.10.3）
+63. ✅ **项目路由公平性与证据边界**：FTS 按项目窗口配额召回，重复证据边际递减；SQLite 显式返回 `matchedTerms`，并限制 query、terms、identifiers、候选证据和匹配文本大小，避免大项目规模偏置及 snippet/substring 覆盖误判（v4.10.3）
+64. ✅ **SQLite search worker 生命周期隔离**：pending request 绑定 worker identity，close 幂等并跟踪 live/terminating worker，旧 generation 的迟到 error/exit 不再影响替代 worker（v4.10.3）

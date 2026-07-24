@@ -14,6 +14,7 @@ import { LlmClient } from "./core/llm/llmClient.js";
 import { SummaryGenerator } from "./core/summary/summaryGenerator.js";
 import { LongTaskTracker } from "./core/tasks/longTaskTracker.js";
 import { SearchService } from "./core/search/searchService.js";
+import { ProjectRouter } from "./core/search/projectRouter.js";
 import { SQLiteStore } from "./core/storage/sqliteStore.js";
 import { createMcpServer } from "./server/mcpServer.js";
 import { startWebApp } from "./web/app.js";
@@ -47,8 +48,9 @@ async function handleAutostart(action: "enable" | "disable" | "status", webPort?
 }
 
 /**
- * v4.6.4: Warm up previously-indexed projects to eliminate first-query latency.
- * Runs entirely in the background — does not block MCP/Web availability.
+ * Warm up previously-indexed projects to eliminate first-query latency.
+ * Introduced in v4.6.4; v4.10.3 runs it before MCP/Web readiness so synchronous
+ * vector hydration is never user-visible.
  */
 async function warmupKnownProjects(
   store: SQLiteStore,
@@ -68,37 +70,28 @@ async function warmupKnownProjects(
   logger.info("warmup: starting", { projectCount: projects.length });
 
   // Restore freshness state for ALL known projects (cheap — just Map entries)
+  let freshnessRestoredCount = 0;
   for (const project of projects) {
     try {
       const projectStats = store.getProjectStats(project.projectRootPath);
-      if (!projectStats || projectStats.status === "indexing") {
+      const event = projectStats?.latestIndexEvent;
+      if (!projectStats || projectStats.status !== "ready" || !event || event.failedFileCount > 0) {
         logger.debug("warmup: skipping project freshness restore", {
           projectRootPath: project.projectRootPath,
-          reason: projectStats?.status ?? "not-found",
+          reason: !projectStats
+            ? "not-found"
+            : projectStats.status !== "ready"
+              ? projectStats.status
+              : !event
+                ? "missing-index-event"
+                : "failed-index-event",
         });
         continue;
       }
 
-      // Restore from the real last index event so cached metadata (vectorIndex,
-      // timings, counts) is faithful; fall back to defaults only when absent.
-      const event = projectStats.latestIndexEvent;
+      // Restore from the real successful event so cached metadata remains faithful.
       const indexResult: IndexProjectResult = {
-        ...(event ?? {
-          changedFiles: 0,
-          chunkCount: projectStats.chunkCount,
-          createdAt: projectStats.lastIndexAt ?? new Date().toISOString(),
-          deletedFiles: 0,
-          failedFileCount: 0,
-          failedFiles: [],
-          indexedFiles: projectStats.fileCount,
-          scannedFiles: projectStats.fileCount,
-          timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: 0 },
-          vectorIndex: {
-            enabled: false,
-            hydratedChunkCount: 0,
-            mode: "lazy" as const,
-          },
-        }),
+        ...event,
         project: {
           rootPath: project.projectRootPath,
           projectType: "single-language",
@@ -110,6 +103,7 @@ async function warmupKnownProjects(
       };
 
       indexCoordinator.restoreFreshnessState(project.projectRootPath, indexResult);
+      freshnessRestoredCount += 1;
 
       logger.debug("warmup: freshness state restored", {
         projectRootPath: project.projectRootPath,
@@ -138,8 +132,8 @@ async function warmupKnownProjects(
         });
       }
 
-      // Ensure semantic FTS index is built (no-op if already complete)
-      store.ensureSemanticIndex(project.projectId);
+      // Semantic FTS writes use the coordinator-owned worker and its shutdown lease.
+      await indexCoordinator.ensureSemanticIndex(project.projectId);
       logger.debug("warmup: semantic FTS ensured", {
         projectRootPath: project.projectRootPath,
       });
@@ -154,7 +148,7 @@ async function warmupKnownProjects(
   const elapsedMs = Date.now() - startTime;
   logger.info("warmup: complete", {
     elapsedMs,
-    freshnessRestoredCount: projects.length,
+    freshnessRestoredCount,
     vectorWarmedCount: projectsToWarm.length,
   });
 }
@@ -198,6 +192,7 @@ async function main(): Promise<void> {
   const embeddingProvider = createEmbeddingProvider(settings, logger);
   const indexCoordinator = new IndexCoordinator(settings, store, logger, embeddingProvider);
   const searchService = new SearchService(store, logger, settings, embeddingProvider);
+  const projectRouter = new ProjectRouter(store, searchService);
 
   // --eval: run search-quality evaluation against a golden case file, then exit
   if (cliOptions.evalPath) {
@@ -205,12 +200,12 @@ async function main(): Promise<void> {
       const evalConfig = await loadEvalConfig(cliOptions.evalPath);
       const result = await runEval(evalConfig, indexCoordinator, searchService);
       process.stdout.write(`${result.report}\n`);
-      indexCoordinator.stopWatching();
+      await indexCoordinator.close();
       process.exit(result.passed ? 0 : 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`Eval failed: ${message}\n`);
-      indexCoordinator.stopWatching();
+      await indexCoordinator.close();
       process.exit(1);
     }
   }
@@ -224,6 +219,7 @@ async function main(): Promise<void> {
     indexCoordinator,
     llmClient,
     logger,
+    projectRouter,
     searchService,
     settings,
     store,
@@ -246,7 +242,11 @@ async function main(): Promise<void> {
         await webAppHandle.close();
       }
     } finally {
-      process.exit(exitCode);
+      try {
+        await indexCoordinator.close();
+      } finally {
+        process.exit(exitCode);
+      }
     }
   };
 
@@ -268,6 +268,18 @@ async function main(): Promise<void> {
     void shutdown("SIGTERM", 0);
   });
 
+  // --warm intentionally delays readiness: vector hydration is synchronous, while
+  // semantic writes run through the coordinator-owned SQLite worker.
+  if (cliOptions.warm) {
+    await warmupKnownProjects(
+      store,
+      indexCoordinator,
+      embeddingProvider,
+      logger,
+      settings.vectorCacheMaxProjects,
+    );
+  }
+
   if (cliOptions.webPort) {
     webAppHandle = await startWebApp(cliOptions.webPort, {
       embeddingProvider,
@@ -275,6 +287,7 @@ async function main(): Promise<void> {
       llmClient,
       logger,
       longTaskTracker,
+      projectRouter,
       runtime,
       searchService,
       settings,
@@ -299,16 +312,6 @@ async function main(): Promise<void> {
     webPort: cliOptions.webPort,
   });
 
-  // v4.6.4: Warm up previously-indexed projects in the background
-  if (cliOptions.warm) {
-    void warmupKnownProjects(
-      store,
-      indexCoordinator,
-      embeddingProvider,
-      logger,
-      settings.vectorCacheMaxProjects,
-    );
-  }
 }
 
 main().catch((error: unknown) => {

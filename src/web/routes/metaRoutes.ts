@@ -135,6 +135,17 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         },
       );
 
+      if (result.deleted) {
+        try {
+          await dependencies.indexCoordinator.refreshAutomaticProjectOwnership(normalized);
+        } catch (error) {
+          dependencies.logger.warn("automatic project refresh failed after deletion", {
+            error: error instanceof Error ? error.message : String(error),
+            projectRootPath: normalized,
+          });
+        }
+      }
+
       res.json(
         buildEnvelope(
           { projectRootPath: normalized },

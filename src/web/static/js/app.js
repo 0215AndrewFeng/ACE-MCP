@@ -53,6 +53,7 @@ const resultEl = document.getElementById("result");
 const resultSummaryEl = document.getElementById("result-summary");
 const projectRootInput = document.getElementById("project-root");
 const projectRootSelect = document.getElementById("project-root-select");
+const projectRouteStatusEl = document.getElementById("project-route-status");
 const searchQueryInput = document.getElementById("search-query");
 const searchModeInput = document.getElementById("search-mode");
 const searchResultModeInput = document.getElementById("search-result-mode");
@@ -83,6 +84,7 @@ const taskFilterStatusInput = document.getElementById("task-filter-status");
 const qaEffectiveParamsEl = document.getElementById("qa-effective-params");
 
 let searchHistory = JSON.parse(localStorage.getItem("ace-mcp-search-history") || "[]");
+let activeResolvedProjectRootPath = "";
 
 // ── v4.2.6: Project management with LocalStorage persistence ─────────────────
 const PROJECT_LIST_KEY = 'ace-mcp-projects';
@@ -128,8 +130,8 @@ function setSelectedProject(projectPath) {
 function renderProjectSelect() {
   if (!projectRootSelect) return;
   const projects = getStoredProjects().sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
-  projectRootSelect.innerHTML = '<option value="">-- 请选择项目 --</option>' +
-    projects.map(p => `<option value="${escapeHtml(p.path)}">${escapeHtml(p.path)}${p.fileCount ? ` (${p.fileCount} 个文件)` : ''}</option>`).join("");
+  projectRootSelect.innerHTML = '<option value="">自动识别（全部项目）</option>' +
+    projects.map(p => `<option value="${escapeHtmlAttribute(p.path)}">${escapeHtml(p.path)}${p.fileCount ? ` (${p.fileCount} 个文件)` : ''}</option>`).join("");
 
   // Restore selection
   const selected = getSelectedProject();
@@ -441,7 +443,7 @@ function renderTaskCenter(tasks) {
     const resultHtml = hasResult ? `<pre class="task-result">${escapeHtml(JSON.stringify(result, null, 2))}</pre>` : "";
     const errorHtml = task.error?.message ? `<p class="task-error">${escapeHtml(task.error.message)}</p>` : "";
     const cancelHtml = task.status === "running"
-      ? `<button type="button" class="btn-secondary btn-small task-cancel" data-task-id="${escapeHtml(task.taskId)}">取消</button>`
+      ? `<button type="button" class="btn-secondary btn-small task-cancel" data-task-id="${escapeHtmlAttribute(task.taskId)}">取消</button>`
       : "";
     return `
       <details class="task-item">
@@ -449,10 +451,10 @@ function renderTaskCenter(tasks) {
           <div class="task-row">
             <span class="task-badge">${escapeHtml(task.type || "--")}</span>
             <div class="task-main">
-              <div class="task-project" title="${escapeHtml(task.projectRootPath || "")}">${escapeHtml(task.projectRootPath || "--")}</div>
+              <div class="task-project" title="${escapeHtmlAttribute(task.projectRootPath || "")}">${escapeHtml(task.projectRootPath || "--")}</div>
               <div class="task-meta">${escapeHtml(formatStatusTime(task.startedAt))} · ${escapeHtml(formatTaskDuration(task))}</div>
             </div>
-            <span class="task-status ${escapeHtml(task.status || "")}">${escapeHtml(task.status || "--")}</span>
+            <span class="task-status ${escapeHtmlAttribute(task.status || "")}">${escapeHtml(task.status || "--")}</span>
           </div>
         </summary>
         <div class="task-details">
@@ -581,7 +583,95 @@ function formatSourceReference(source) {
 }
 
 function getProjectRootPath() {
-  return String(projectRootInput?.value || "").trim();
+  return String(projectRootInput?.value || "").trim() || activeResolvedProjectRootPath;
+}
+
+function clearProjectRouteStatus() {
+  activeResolvedProjectRootPath = "";
+  if (!projectRouteStatusEl) return;
+  projectRouteStatusEl.hidden = true;
+  projectRouteStatusEl.textContent = "";
+  projectRouteStatusEl.classList.remove("is-single", "is-ambiguous", "is-abstain");
+}
+
+function selectProjectRouteCandidate(projectRootPath) {
+  const selectedProjectRootPath = String(projectRootPath || "").trim();
+  if (!selectedProjectRootPath) return;
+  addStoredProject(selectedProjectRootPath);
+  setSelectedProject(selectedProjectRootPath);
+  renderProjectSelect();
+  if (projectRootSelect) projectRootSelect.value = selectedProjectRootPath;
+  if (projectRootInput) projectRootInput.value = selectedProjectRootPath;
+  clearProjectRouteStatus();
+}
+
+function bindProjectRouteCandidateActions() {
+  projectRouteStatusEl?.querySelectorAll("[data-project-route-candidate]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectProjectRouteCandidate(button.getAttribute("data-project-route-candidate"));
+    });
+  });
+}
+
+function renderProjectRouteStatus(resolution) {
+  if (!projectRouteStatusEl) return;
+  projectRouteStatusEl.classList.remove("is-single", "is-ambiguous", "is-abstain");
+  projectRouteStatusEl.hidden = false;
+  const candidates = Array.isArray(resolution?.candidates) ? resolution.candidates : [];
+  if (resolution?.decision === "single" && candidates[0]) {
+    const confidence = Math.round(Number(candidates[0].confidence || 0) * 100);
+    projectRouteStatusEl.classList.add("is-single");
+    projectRouteStatusEl.textContent = `已识别 ${candidates[0].projectRootPath} · ${confidence}%`;
+    return;
+  }
+  if (resolution?.decision === "multiple") {
+    const selectedProjectRootPaths = new Set(
+      Array.isArray(resolution.selectedProjectRootPaths) ? resolution.selectedProjectRootPaths : [],
+    );
+    const selectableCandidates = candidates.filter((candidate) => selectedProjectRootPaths.has(candidate.projectRootPath));
+    projectRouteStatusEl.classList.add("is-ambiguous");
+    projectRouteStatusEl.innerHTML = `<div class="project-route-label">匹配到多个项目</div>
+      <div class="project-route-candidates">${selectableCandidates.map((candidate) => {
+        const confidence = Math.round(Number(candidate.confidence || 0) * 100);
+        return `<button type="button" class="project-route-candidate" data-project-route-candidate="${escapeHtmlAttribute(candidate.projectRootPath)}" title="选择 ${escapeHtmlAttribute(candidate.projectRootPath)}">
+          <span>${escapeHtml(candidate.projectRootPath)}</span><strong>${confidence}%</strong>
+        </button>`;
+      }).join("")}</div>`;
+    bindProjectRouteCandidateActions();
+    return;
+  }
+  projectRouteStatusEl.classList.add("is-abstain");
+  projectRouteStatusEl.textContent = "未识别到对应项目";
+}
+
+async function resolveProjectRootForQuery(query, options = {}) {
+  const manualProjectRootPath = String(projectRootInput?.value || "").trim();
+  if (manualProjectRootPath) {
+    clearProjectRouteStatus();
+    return manualProjectRootPath;
+  }
+  const reusableProjectRootPath = String(options.reuseProjectRootPath || "").trim();
+  if (reusableProjectRootPath) {
+    return reusableProjectRootPath;
+  }
+
+  activeResolvedProjectRootPath = "";
+  const response = await request("POST", "/api/projects/resolve", { query, topK: 3 }, 30000);
+  const resolution = response?.data;
+  renderProjectRouteStatus(resolution);
+  const selectedProjectRootPath = resolution?.selectedProjectRootPaths?.[0];
+  if (resolution?.decision === "single" && selectedProjectRootPath) {
+    activeResolvedProjectRootPath = selectedProjectRootPath;
+    return selectedProjectRootPath;
+  }
+
+  const error = new Error(
+    resolution?.decision === "multiple"
+      ? "匹配到多个项目，请手动选择后重试"
+      : "未识别到对应项目，请手动选择后重试",
+  );
+  error.code = resolution?.decision === "multiple" ? "PROJECT_ROUTE_AMBIGUOUS" : "PROJECT_ROUTE_NOT_FOUND";
+  throw error;
 }
 
 function isAbsoluteSourcePath(filePath) {
@@ -596,8 +686,32 @@ function joinSourcePath(projectRootPath, filePath) {
   return `${rootPath.replace(/[\\/]+$/, "")}/${sourcePath.replace(/^[\\/]+/, "")}`;
 }
 
+function getSourceProjectRootPath(source) {
+  return String(source?.projectRootPath || "").trim() || getProjectRootPath();
+}
+
+function bindSourcesToProjectRoot(sources, projectRootPath) {
+  if (!Array.isArray(sources)) return [];
+  const sourceProjectRootPath = String(projectRootPath || "").trim();
+  return sources.map((source) => ({
+    ...source,
+    projectRootPath: sourceProjectRootPath || String(source?.projectRootPath || "").trim(),
+  }));
+}
+
+function bindSearchResponseSourcesToProjectRoot(response, projectRootPath) {
+  if (!Array.isArray(response?.data?.results)) return response;
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      results: bindSourcesToProjectRoot(response.data.results, projectRootPath),
+    },
+  };
+}
+
 function formatSourceAbsolutePath(source) {
-  return joinSourcePath(getProjectRootPath(), source?.filePath || "");
+  return joinSourcePath(getSourceProjectRootPath(source), source?.filePath || "");
 }
 
 function getSourceLine(source) {
@@ -615,7 +729,7 @@ function buildIdeDeepLink(source, kind) {
   if (!absolutePath) return "";
   const line = getSourceLine(source);
   if (kind === "idea") {
-    const projectRootPath = getProjectRootPath();
+    const projectRootPath = getSourceProjectRootPath(source);
     const query = new URLSearchParams({
       project: projectRootPath || absolutePath,
       path: absolutePath,
@@ -633,7 +747,7 @@ function buildAgentPrompt(source, agentKind) {
   const snippet = getSourceSnippetText(source);
   const lines = [
     `请用 ${agentName} 继续定位这段代码。`,
-    `项目根目录：${getProjectRootPath() || "(未选择)"}`,
+    `项目根目录：${getSourceProjectRootPath(source) || "(未选择)"}`,
     `文件位置：${absoluteReference || sourceReference}`,
     `相对引用：${sourceReference}`,
   ];
@@ -649,6 +763,7 @@ function serializeSourceForBundle(source) {
     explanation: source?.explanation,
     filePath: source?.filePath || "",
     language: source?.language || "",
+    projectRootPath: getSourceProjectRootPath(source),
     reason: source?.reason || "",
     score: source?.score,
     snippet: getSourceSnippetText(source),
@@ -688,6 +803,7 @@ function normalizeBundleSource(source) {
     explanation: source?.explanation,
     filePath: source?.filePath || "",
     language: source?.language || "",
+    projectRootPath: getSourceProjectRootPath(source),
     reason: source?.reason || "",
     score: source?.score,
     snippet: getSourceSnippetText(source),
@@ -705,12 +821,14 @@ function buildContextBundleMarkdown(sources, agentKind, taskDraft = "") {
   const items = Array.isArray(sources) ? sources.map(normalizeBundleSource).filter((source) => source.filePath) : [];
   const agentName = describeBundleAgent(agentKind);
   const taskText = String(taskDraft || "").trim();
+  const projectRootPaths = [...new Set(items.map((source) => getSourceProjectRootPath(source)).filter(Boolean))];
+  const bundleProjectRootPath = projectRootPaths.join(", ") || getProjectRootPath();
   const lines = [
     `请用 ${agentName} 基于以下多文件上下文继续分析。`,
   ];
   if (taskText) lines.push(`任务说明：${taskText}`);
   lines.push(
-    `项目根目录：${getProjectRootPath() || "(未选择)"}`,
+    `项目根目录：${bundleProjectRootPath || "(未选择)"}`,
     `共 ${items.length} 个代码片段`,
     "",
   );
@@ -783,6 +901,7 @@ function renderLazyContextAction(source) {
     <button type="button"
       class="lazy-context-action"
       data-context-action="load"
+      data-context-project-root-path="${escapeHtmlAttribute(getSourceProjectRootPath(source))}"
       data-context-file-path="${escapeHtmlAttribute(source.filePath)}"
       data-context-start-line="${range.startLine}"
       data-context-end-line="${range.endLine}"
@@ -851,13 +970,13 @@ function renderProjectProfileSummary(profile) {
   const suggestionHtml = suggestions.length > 0
     ? `<div class="diagnostic-suggestions">${suggestions.map((suggestion) => {
       const label = suggestionLabels[suggestion.code] || suggestion.code;
-      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}<button type="button" class="btn-secondary btn-small profile-fix-action" data-profile-fix="${escapeHtml(suggestion.code)}">${escapeHtml(label)}</button></span>`;
+      return `<span class="diagnostic-suggestion ${escapeHtmlAttribute(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}<button type="button" class="btn-secondary btn-small profile-fix-action" data-profile-fix="${escapeHtmlAttribute(suggestion.code)}">${escapeHtml(label)}</button></span>`;
     }).join("")}</div>`
     : "";
   const dataHealthHtml = dataHealthSuggestions.length > 0
     ? `<div class="diagnostic-suggestions data-health-suggestions">${dataHealthSuggestions.map((suggestion) => {
       const label = suggestionLabels[suggestion.code] || suggestion.code;
-      return `<span class="diagnostic-suggestion ${escapeHtml(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}</span>`;
+      return `<span class="diagnostic-suggestion ${escapeHtmlAttribute(suggestion.severity || "info")}"><strong>${escapeHtml(label)}</strong>${escapeHtml(suggestion.label || "")}</span>`;
     }).join("")}</div>`
     : "";
   return `${cardHtml}${dataHealthHtml}${suggestionHtml}`;
@@ -915,9 +1034,9 @@ function renderFailedFileDetails(failedFiles, projectRootPath) {
         ? filePath.slice(projectRootPath.length).replace(/^\/+/, "")
         : filePath;
       return `<div class="failed-file-detail">
-        <div class="failed-file-path mono" title="${escapeHtml(filePath)}">${escapeHtml(displayPath || filePath)}</div>
+        <div class="failed-file-path mono" title="${escapeHtmlAttribute(filePath)}">${escapeHtml(displayPath || filePath)}</div>
         ${error ? `<div class="failed-file-error">${escapeHtml(error)}</div>` : ""}
-        <button type="button" class="btn-secondary btn-small copy-failed-file-path" data-copy-path="${escapeHtml(filePath)}">复制路径</button>
+        <button type="button" class="btn-secondary btn-small copy-failed-file-path" data-copy-path="${escapeHtmlAttribute(filePath)}">复制路径</button>
       </div>`;
     }).join("")}
   </div>`;
@@ -1077,7 +1196,7 @@ async function loadLazyContextPreview(button) {
   preview.innerHTML = `<div class="lazy-context-meta">正在读取更多上下文...</div>`;
   try {
     const response = await request("POST", "/api/file-snippet", {
-      projectRootPath: projectRootInput.value.trim(),
+      projectRootPath: button.getAttribute("data-context-project-root-path") || getProjectRootPath(),
       filePath: button.getAttribute("data-context-file-path"),
       startLine: Number(button.getAttribute("data-context-start-line") || 1),
       endLine: Number(button.getAttribute("data-context-end-line") || 1),
@@ -1294,6 +1413,7 @@ document.getElementById("load-projects")?.addEventListener("click", () => run(as
 
 projectRootSelect?.addEventListener("change", async () => {
   if (projectRootSelect.value) {
+    clearProjectRouteStatus();
     projectRootInput.value = projectRootSelect.value;
     setSelectedProject(projectRootSelect.value);
 
@@ -1336,6 +1456,10 @@ projectRootSelect?.addEventListener("change", async () => {
         selectEl.options[selectEl.selectedIndex].text = originalText;
       }
     }
+  } else {
+    projectRootInput.value = "";
+    setSelectedProject("");
+    clearProjectRouteStatus();
   }
 });
 
@@ -1421,18 +1545,22 @@ document.getElementById("run-search")?.addEventListener("click", () => {
   const query = searchQueryInput.value;
   const mode = searchModeInput.value;
   addToHistory(query, mode);
-  run(() => request("POST", "/api/search-context", {
-    includeContextLines: Number(includeContextLinesInput.value || 0),
-    languages: parseSearchLanguages(searchLanguagesInput.value),
-    mode: mode,
-    excludePathPrefix: searchExcludePathPrefixInput.value.trim() || undefined,
-    pathContains: searchPathContainsInput.value.trim() || undefined,
-    pathPrefix: searchPathPrefixInput.value.trim() || undefined,
-    projectRootPath: projectRootInput.value,
-    query: query,
-    resultMode: searchResultModeInput.value,
-    topK: Number(topKInput.value || 8)
-  }));
+  run(async () => {
+    const projectRootPath = await resolveProjectRootForQuery(query);
+    const response = await request("POST", "/api/search-context", {
+      includeContextLines: Number(includeContextLinesInput.value || 0),
+      languages: parseSearchLanguages(searchLanguagesInput.value),
+      mode: mode,
+      excludePathPrefix: searchExcludePathPrefixInput.value.trim() || undefined,
+      pathContains: searchPathContainsInput.value.trim() || undefined,
+      pathPrefix: searchPathPrefixInput.value.trim() || undefined,
+      projectRootPath,
+      query: query,
+      resultMode: searchResultModeInput.value,
+      topK: Number(topKInput.value || 8)
+    });
+    return bindSearchResponseSourcesToProjectRoot(response, projectRootPath);
+  });
 });
 
 document.getElementById("run-snippet")?.addEventListener("click", () => run(() => request("POST", "/api/file-snippet", {
@@ -1924,7 +2052,7 @@ function renderSourceCard(source, maxScore, searchTerms = []) {
       <div class="qa-source-info">
         <div class="qa-source-path">${escapeHtml(source.filePath)}</div>
         <div class="qa-source-meta">
-          <span class="qa-source-badge ${langClass}">${escapeHtml(source.language || '?')}</span>
+          <span class="qa-source-badge ${escapeHtmlAttribute(langClass)}">${escapeHtml(source.language || '?')}</span>
           L${source.startLine}-${source.endLine} (${totalLines} lines)
           ${matchedLineIndices.size > 0 ? `<span class="qa-source-matches">${matchedLineIndices.size} match${matchedLineIndices.size > 1 ? 'es' : ''}</span>` : ''}
         </div>
@@ -2001,7 +2129,9 @@ let qaTimerInterval = null;
 let currentAbortController = null; // v4.2.8: Track abort controller for Stop button
 // v4.2.5: Multi-turn conversation with LocalStorage persistence
 const QA_HISTORY_KEY = 'ace-mcp-qa-history';
+const QA_HISTORY_PROJECT_KEY = 'ace-mcp-qa-history-project';
 let qaConversationHistory = JSON.parse(localStorage.getItem(QA_HISTORY_KEY) || '[]');
+let qaConversationProjectRoot = localStorage.getItem(QA_HISTORY_PROJECT_KEY) || '';
 
 // v4.2.9: Session token usage tracking
 const SESSION_TOKENS_KEY = 'ace-mcp-session-tokens';
@@ -2057,7 +2187,25 @@ function saveQaHistory() {
 
 function clearQaHistory() {
   qaConversationHistory = [];
+  qaConversationProjectRoot = '';
   localStorage.removeItem(QA_HISTORY_KEY);
+  localStorage.removeItem(QA_HISTORY_PROJECT_KEY);
+}
+
+function prepareQaHistoryForProject(projectRootPath) {
+  if (qaConversationHistory.length > 0 && qaConversationProjectRoot !== projectRootPath) {
+    clearQaHistory();
+  }
+  qaConversationProjectRoot = projectRootPath;
+  localStorage.setItem(QA_HISTORY_PROJECT_KEY, projectRootPath);
+}
+
+async function resolveQaProjectRootForQuestion(question) {
+  const projectRootPath = await resolveProjectRootForQuery(question, {
+    reuseProjectRootPath: qaConversationHistory.length > 0 ? qaConversationProjectRoot : "",
+  });
+  prepareQaHistoryForProject(projectRootPath);
+  return projectRootPath;
 }
 
 // ── Ask Codebase (SSE Streaming by default since v4.2.7) ─────────────────────
@@ -2079,7 +2227,7 @@ async function runAskQuestion() {
   if (!question) return;
 
   const timeoutSec = Number(qaTimeoutInput?.value || 120);
-  const projectRoot = projectRootInput.value;
+  let projectRoot = "";
   const maxSources = Number(qaMaxSourcesInput?.value || QA_MAX_SOURCES_DEFAULT);
   const maxContextTokens = Number(qaMaxContextTokensInput?.value || QA_CONTEXT_TOKENS_DEFAULT);
   const maxTokens = Number(qaMaxTokensInput?.value || 8192);
@@ -2122,6 +2270,7 @@ async function runAskQuestion() {
   currentAbortController = abortController;
 
   try {
+    projectRoot = await resolveQaProjectRootForQuestion(question);
     // Use fetch with POST to avoid URL length limits
     const response = await fetch('/api/qa/ask/stream', {
       method: 'POST',
@@ -2194,9 +2343,10 @@ async function runAskQuestion() {
 
             case 'sources':
               if (data.sources?.length) {
-                const maxScore = Math.max(...data.sources.map(s => s.score || 0));
-                const cards = data.sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
-                sourcesListEl.innerHTML = `<h4>参考代码 (${data.sources.length})</h4>${renderContextBundleToolbar("qa")}` + cards;
+                const sources = bindSourcesToProjectRoot(data.sources, projectRoot);
+                const maxScore = Math.max(...sources.map(s => s.score || 0));
+                const cards = sources.map(s => renderSourceCard(s, maxScore, searchTerms)).join('');
+                sourcesListEl.innerHTML = `<h4>参考代码 (${sources.length})</h4>${renderContextBundleToolbar("qa")}` + cards;
                 bindSearchResultActions();
                 bindSearchIdeActions();
                 bindContextBundleActions();

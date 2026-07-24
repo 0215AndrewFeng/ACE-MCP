@@ -1,4 +1,8 @@
-import type { QueryAnalysis } from "../common/types.js";
+import {
+  MAX_PROJECT_ROUTE_TERM_LENGTH,
+  MAX_PROJECT_ROUTE_TERMS,
+  type QueryAnalysis,
+} from "../common/types.js";
 import { buildSemanticTerms, buildCjkBigrams, CJK_PATTERN } from "./semanticText.js";
 
 const TOKEN_SPLIT_PATTERN = /[^\p{L}\p{N}_.$/\\#-]+/u;
@@ -11,6 +15,14 @@ const IDENTIFIER_BOUNDARY_PATTERN = /[._/$\\#-]|[a-z0-9][A-Z]|[A-Z]+[A-Z][a-z]/;
 
 function normalizeToken(token: string): string {
   return token.normalize("NFKC").replaceAll("\\", "/").trim().toLowerCase();
+}
+
+export function boundProjectRouteTerms(tokens: string[]): string[] {
+  return [...new Set(tokens
+    .map(normalizeToken)
+    .filter(Boolean)
+    .map((token) => token.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH)))]
+    .slice(0, MAX_PROJECT_ROUTE_TERMS);
 }
 
 function isMeaningfulToken(token: string): boolean {

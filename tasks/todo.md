@@ -1,3 +1,119 @@
+# v4.10.3 Index Scheduling and Responsiveness
+
+Author: feng.ling
+
+## Goal
+
+Keep project maintenance responsive under real multi-project workloads by preventing aggregate and child indexes from duplicating ownership, skipping Git projects with no effective changes, moving SQLite index writes off the main event loop, yielding during source parsing, and exposing phase-level diagnostics that make slow scans and blocked requests attributable.
+
+## Plan
+
+### Phase 1 - Parent/Child Ownership and Aggregate Root Suppression
+
+- [x] Define one canonical ownership rule for registered parent and child projects across startup catch-up, watcher reconciliation, explicit indexing, and maintenance scripts.
+- [x] Suppress automatic indexing of aggregate roots with multiple registered child projects while preserving explicitly confirmed parent indexing.
+- [x] Refresh ownership immediately after project deletion and guard refresh rollback with a monotonic sequence.
+- [x] Add regression coverage for sibling children, nested descendants, unavailable children, normal multi-module roots, and watcher recovery.
+
+### Phase 2 - Git No-Change Fast Path
+
+- [x] Detect a clean unchanged Git project before collecting and parsing the full source tree, using persisted commit/index metadata without weakening non-Git correctness.
+- [x] Keep control-file, dirty-worktree, untracked-file, deleted-file, and prior-failure cases on the normal reconciliation path.
+- [x] Add tests proving unchanged projects skip expensive collection while real changes still trigger a complete incremental index.
+
+### Phase 3 - Independent Index SQLite Worker and Parse Yield
+
+- [x] Move index-side SQLite writes and transactions to an independent worker with an explicit protocol, lifecycle, error propagation, and bounded shutdown.
+- [x] Add cooperative yields to CPU-heavy source collection/parsing batches so Web health and project resolution requests retain event-loop access.
+- [x] Bind SQLite search requests to worker identity and make close/idle/error/late-exit handling generation-safe and idempotent.
+- [x] Preserve per-project serialization, global index concurrency, generation-safe watcher follow-up, cache reconciliation, and transaction correctness.
+
+### Phase 4 - Phase Diagnostics
+
+- [x] Record collect, detect, parse, SQLite write, vector, queue, and total timings with file/chunk counts for each index operation.
+- [x] Expose the active phase, elapsed time, queue pressure, and latest completed phase timings through `/health`, task details, and logs without deep per-project reads.
+- [x] Add diagnostics tests and update the index-responsiveness benchmark to measure `/health` and `/api/projects/resolve` p95 only while an index is observably active.
+
+### Phase 5 - Version and Documentation
+
+- [x] Bump all current-version carriers and release contracts to `4.10.3`, including package metadata, runtime version, installers, package tests, and release checklist.
+- [x] Add `4.10.3` release notes to README, CHANGELOG, and ROADMAP while preserving `4.10.2` history.
+- [x] Document index ownership, fair and bounded project routing, worker lifecycle behavior, diagnostics, benchmark thresholds, and platform-specific release limits.
+
+### Phase 6 - Verification and LaunchAgent
+
+- [x] Run focused ownership, coordinator, worker, storage, Web, routing, benchmark-contract, and package tests.
+- [x] Run the full test suite, TypeScript build, installer syntax, secret scan, package checks, and all release gates available on the current host.
+- [x] Replace the local LaunchAgent runtime, wait for startup catch-up to settle, and verify version, watcher state, active phases, health/resolve responsiveness, and real incremental indexing.
+
+## Validation Plan
+
+- Ownership and scheduling: `node --import tsx --test src/core/project/projectHierarchy.test.ts src/core/indexing/indexCoordinator.test.ts src/web/app.test.ts`.
+- Worker, storage, and event-loop responsiveness: focused tests for the new index worker/protocol plus `src/core/storage/sqliteStore.test.ts` and `src/core/search/searchServiceConcurrency.test.ts`.
+- Routing under index load: focused `ProjectRouter`, resolve tool, and Web route tests, followed by an isolated benchmark that requires an observed active index and sufficient `/health` plus `/api/projects/resolve` samples.
+- Release contracts: `node --import tsx --test src/config/packageManifest.test.ts src/config/cli.test.ts src/config/doctor.test.ts`.
+- Full regression and build: `npm test`, `npm run build`, `git diff --check`, and `bash -n scripts/install-macos.sh`.
+- Release/runtime: run platform-available package, secret, smoke, and benchmark gates; then restart the LaunchAgent and verify the live `4.10.3` runtime before handoff.
+
+## Comments
+
+- 2026-07-23: Real logs show the 67,828-file aggregate root repeatedly performing empty scans that still take roughly 2-17 seconds. Aggregate ownership must be suppressed before collection, not merely filtered after work has started.
+- 2026-07-23: A real 29-file index took about 104 seconds, showing that small-project latency is dominated by work beyond raw file count and needs phase-level timing before further optimization.
+- 2026-07-23: During indexing, both `/health` and `/api/projects/resolve` have timed out. Release validation must prove request responsiveness during an observed active-index window rather than report idle or single-sample p95 values.
+- 2026-07-23: The current worktree still contains uncommitted `4.10.2` changes. The `4.10.3` implementation and release diff must preserve that work and keep the version boundary explicit.
+- 2026-07-23: The self-contained Windows ZIP and full `release:smoke` require Windows x64 with Node.js 22. This Darwin host can run the portable gates but cannot claim complete Windows artifact validation.
+- 2026-07-23: Phase 1 RED/GREEN initially exposed five failures, and the concurrency review added two more failing race regressions. GREEN finished with coordinator tests 31/31 and the combined hierarchy/coordinator suite 33/33; independent review passed. Compatibility and boundary are explicit: a parent with exactly one registered nested project remains automatically maintained, while an already in-flight parent index is not cancelled and only subsequent automatic ownership and reconciliation move to the concrete children.
+- 2026-07-23: Phase 2 TDD and review completed: Git status is failure-aware and reliable, with a trailing HEAD read after diff collection; clean periodic reconciliation skips collection, while dirty, untracked, deleted, control-file, unreliable, and error cases take the conservative normal path. A central persisted-failure resolver upgrades incremental work from startup, watch, recovery, explicit, and periodic entry points to full until a successful event clears the failure, and pending ownership refreshes are queued only while automatic updates are active and retried after refresh failure. Focused validation passed 107/107, coordinator tests passed 57/57, the TypeScript build and `git diff --check` passed, and independent review passed.
+- 2026-07-23: Phases 3-4 completed with 83/83 focused worker/coordinator tests, 244/244 full tests, and 8/8 built-dist worker tests. The observed during-index window returned 40 health samples at p95 6ms and 20 resolve samples at p95 9ms with zero timeouts.
+- 2026-07-23: Phase 3 was reopened after review reproduced two blockers: project prepare/finalize/event writes still blocked the main event loop behind SQLite's busy timeout, and an index with file failures atomically recorded the failure event but exposed project status as ready. Phase 3 remains unchecked until worker-owned atomic finalization, non-ready recovery, full GREEN validation, and independent review complete.
+- 2026-07-23: Phase 3 re-review completed after three additional RED/GREEN rounds. Project prepare now uses one worker-owned `BEGIN IMMEDIATE` transaction that returns the existing-file snapshot, so a deterministic 350ms main-reader probe no longer delays its timer; failed indexes and startup warmup remain non-fresh until a full recovery succeeds; HNSW invalidation uses entry generation plus `indexVersion` and SHA-256 vector-content identity, and stale saves cannot delete a newer generation file. Final validation passed 106/106 focused worker/store/coordinator/vector tests, 273/273 full tests, 9/9 built-dist worker tests, TypeScript build, secret scan, macOS installer syntax, and `git diff --check`; the third independent review returned no findings.
+- 2026-07-23: Phase 5 release contracts passed 33/33, the combined manifest/benchmark CLI suite passed 40/40, the TypeScript build and macOS installer syntax passed, built `--version` returned 4.10.3, and `git diff --check` passed. The Windows ZIP, full release gates, LaunchAgent replacement, tag, push, and Release remain Phase 6 work.
+- 2026-07-24: Final review hardening added per-project FTS quotas and diminishing duplicate evidence, explicit highlight-derived `matchedTerms`, bounded route IPC/response data, generation-safe SQLite search worker close/late-exit handling, and immediate post-delete ownership refresh protected by a monotonic sequence. At this checkpoint Phase 6 was still open; no release, Windows artifact, LaunchAgent replacement, tag, or push was implied by this entry.
+- 2026-07-24: Final source and package gates passed: the combined focused ownership/coordinator/worker/storage/Web/routing/package/benchmark suite passed 242/242, `npm test` passed 306/306, built-dist worker tests passed 17/17, and TypeScript build, `security:secrets`, `bash -n scripts/install-macos.sh`, and `git diff --check` all passed.
+- 2026-07-24: The regenerated `ace-mcp-4.10.3.tgz` is 434347 bytes with SHA-256 `a64384c018153a0dc426f2975ae178b5d30b34696da901026c884957b124f116`. Isolated global installation, packaged CLI/version/doctor, and an independent packaged Web `/health` smoke passed. The self-contained Windows ZIP, `release:win`, and the Windows-dependent full `release:smoke` remain pending on Windows x64 + Node.js 22.
+- 2026-07-24: The isolated observed-active benchmark completed with 40 `/health` samples at p95 7ms, 20 `/api/projects/resolve` samples at p95 8ms, and zero request timeouts.
+- 2026-07-24: LaunchAgent `com.ace-mcp.server` now runs PID 66548 and reports version 4.10.3. After startup catch-up settled it owned 45 concrete watchers, excluded the aggregate `/Users/fengandrew/work/code` root, and reported zero dirty watchers and zero watcher failures. Startup catch-up took 330.1s, including aggregate `writeMs=254259`; later temporary active/queued work from the normal 30-minute periodic reconciliation is expected maintenance and is not recorded as a startup failure.
+- 2026-07-24: Real routing probes covered all decisions: `ProjectRouter` resolved `single` to ace-mcp and continued to code results, `改签 切流` returned `multiple`, and weak/unrelated input returned `abstain`. `web-access` verified that only returned ambiguity candidates render, candidate selection synchronizes the input/select/LocalStorage and clears the panel, quote-bearing candidate data remains attribute-safe, the desktop layout has no horizontal overflow or candidate overlap, and no fatal console/page errors occurred during the interaction. The dedicated tab was closed, LocalStorage was restored exactly, and the temporary screenshot was deleted.
+- 2026-07-24: Residual performance/data risks remain visible rather than release-blocking on this host: one cold multi-project route previously hit a 3s client timeout, a page request during active indexing later completed in 6.35s, the roughly 10GB SQLite database made startup write work dominate at 254259ms, and one missing backup project keeps `dataHealth` at a repairable warning. Windows artifact validation is still pending; commit, tag, push, Gitee Release, and real release-download verification have not been executed, so 4.10.3 remains Unreleased.
+- 2026-07-24: Precommit review found two lifecycle blockers: index worker `close()` did not await a retired worker whose idle termination was already in progress, and `IndexCoordinator` allowed `startAutomaticUpdates()` or manual `startWatching()` after terminal close, recreating watchers and a reconciliation timer that a repeated close could not drain.
+- 2026-07-24: Both blockers were fixed with strict TDD. The index worker close regression and coordinator terminal-close regression each started RED at 0/2, directly reproducing the leaked lifecycle state, then turned GREEN after close began strongly tracking live/terminating workers and coordinator resource-starting entry points gained consistent `INDEX_COORDINATOR_CLOSED` guards.
+- 2026-07-24: Post-fix validation passed: `npm test` 310/310, coordinator tests 90/90, source/dist worker lifecycle validation 19/19, TypeScript build, `security:secrets`, and `git diff --check`. Final independent re-review found no High or Medium issues. Commit and push status is recorded in Git history; tag, Windows artifact, and Gitee Release remain separate pending work.
+
+# v4.10.2 Automatic Project Routing
+
+Author: feng.ling
+
+## Goal
+
+Let users ask questions without selecting a project first by resolving query keywords against all ready project indexes, preserving explicit project selection as an override, and exposing confidence and evidence instead of silently forcing ambiguous queries into one project.
+
+## Plan
+
+- [x] Write failing core tests for single-project routing, aggregate-parent suppression, multi-project ambiguity, and abstention.
+- [x] Implement global project candidate retrieval and `ProjectRouter` scoring/decision logic.
+- [x] Write failing contract tests for `resolve_projects` MCP and `POST /api/projects/resolve`.
+- [x] Implement MCP/Web project resolution without changing existing `search_context` contracts.
+- [x] Write failing Web behavior tests for automatic routing and manual override.
+- [x] Make automatic project selection the Web default while preserving explicit selection.
+- [x] Add project-routing golden evaluation coverage and package test registration.
+- [x] Run focused tests, full `npm test`, `npm run build`, benchmark checks, and independent review.
+
+## Validation Plan
+
+- Focused router tests: `node --import tsx --test src/core/search/projectRouter.test.ts`.
+- Focused MCP/Web tests: `node --import tsx --test src/server/tools/resolveProjects.test.ts src/web/app.test.ts`.
+- Front-end contract tests: `node --import tsx --test src/config/packageManifest.test.ts`.
+- Full regression suite: `npm test`.
+- TypeScript build: `npm run build`.
+
+## Comments
+
+- 2026-07-22: The repository owner set this feature release to `4.10.2`; all previous `4.11.0` planning references are superseded.
+- 2026-07-22: Current MCP and Web search contracts require `projectRootPath`. The shared SQLite database already contains 46 projects, 132,769 files, 274,223 chunks, and 2,040,758 symbols, so routing should use one bounded global candidate query rather than fan out `ensureFreshIndex` and full search across every project.
+- 2026-07-22: A read-only global FTS probe routed `改签 切流` to the relevant concrete projects in under one second, but also returned the aggregate `/Users/fengandrew/work/code` index beside its children. Parent suppression, clone ambiguity, and confidence-based abstention are required correctness behavior, not optional ranking polish.
+- 2026-07-22: Final TDD follow-up covers compact CJK weak terms such as `服务超时` before any project listing or SQLite query, and the Web multiple-choice panel now renders only the projects in `selectedProjectRootPaths`. Focused router/UI tests, full `npm test` (177/177), TypeScript build, secret scan, macOS installer syntax, CLI version, doctor, and `git diff --check` pass; independent review, browser verification, and local LaunchAgent replacement remain.
+- 2026-07-22: Final independent review passed with no blocking security, logic, or API contract findings. The LaunchAgent now runs `4.10.2` as PID 13316 with 45 valid watchers; after startup catch-up it reports zero active indexes and zero dirty watchers. Real API probes return `single` for `ProjectRouter`, `multiple` for `改签 切流`, immediate `abstain` for compact weak terms, and `abstain` for a genuinely unrelated quantum query. `web-access` confirmed that only selected ambiguity candidates render, a real candidate click synchronizes the input/select/LocalStorage and clears the panel, and the candidate layout has no desktop overflow or overlap; the existing 390px mobile capture remains overflow-free.
+
 # v4.10.1 Automatic Incremental Index Updates
 
 Author: feng.ling

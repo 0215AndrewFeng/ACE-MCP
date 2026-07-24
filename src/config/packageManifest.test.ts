@@ -29,10 +29,10 @@ test("package manifest is ready for npm and tgz global installation", () => {
   const lock = readJson<PackageLockJson>("package-lock.json");
   const versionTs = readFileSync(path.join(rootDir, "src/version.ts"), "utf8");
 
-  assert.equal(pkg.version, "4.10.1");
+  assert.equal(pkg.version, "4.10.3");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages?.[""]?.version, pkg.version);
-  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.10\.1"/);
+  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.10\.3"/);
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -46,15 +46,219 @@ test("package manifest is ready for npm and tgz global installation", () => {
   assert.equal(pkg.scripts["release:pack"], "npm run build && npm pack --cache .npm-cache");
   assert.equal(pkg.scripts["release:win"], "npm run build && node scripts/package-windows.mjs");
   assert.equal(pkg.scripts["release:smoke"], "node scripts/smoke-release.mjs");
-  assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke");
+  assert.equal(pkg.scripts["release:benchmark"], "node scripts/benchmark-search.mjs --smoke --during-index");
   assert.equal(pkg.scripts["release:verify-assets"], "node scripts/verify-release-assets.mjs");
   assert.equal(pkg.scripts["release:publish"], "node scripts/publish-gitee-release.mjs");
   assert.equal(pkg.scripts["security:secrets"], "node scripts/check-secrets.mjs");
-  assert.equal(pkg.scripts["release:check"], "npm test && npm run build && npm run release:pack && npm run release:win && npm run security:secrets && npm run release:smoke && npm run release:benchmark");
+  assert.equal(pkg.scripts["release:check"], "npm test && npm run test:dist-worker && npm run release:pack && npm run release:win && npm run security:secrets && npm run release:smoke && npm run release:benchmark");
+  assert.match(pkg.scripts["test:dist-worker"], /npm run build/);
+  assert.match(pkg.scripts["test:dist-worker"], /dist\/core\/storage\/sqliteIndexWorker\.test\.js/);
   assert.equal(pkg.scripts["benchmark:search"], "node scripts/benchmark-search.mjs");
   assert.equal(pkg.scripts["maintenance:reindex"], "node scripts/reindex-projects.mjs");
   assert.match(pkg.scripts.test, /src\/adapters\/java\/index\.test\.ts/);
   assert.match(pkg.scripts.test, /src\/config\/settings\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/core\/search\/projectRouter\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/core\/project\/gitHelper\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/core\/project\/projectHierarchy\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/core\/storage\/sqliteIndexWorker\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/server\/tools\/resolveProjects\.test\.ts/);
+  assert.match(pkg.scripts.test, /src\/test\/benchmarkSearchCli\.test\.mjs/);
+});
+
+test("web automatic project routing preserves manual and QA conversation ownership", async () => {
+  const html = readFileSync(path.join(rootDir, "src/web/static/index.html"), "utf8");
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
+  assert.match(html, /<option value="">自动识别（全部项目）<\/option>/);
+  assert.match(html, /id="project-route-status"/);
+  assert.match(appJs, /resolveProjectRootForQuery\(query\)/);
+  assert.match(appJs, /resolveProjectRootForQuery\(question/);
+  assert.match(appJs, /projectRoot = await resolveQaProjectRootForQuestion\(question\)/);
+  assert.match(appJs, /class="project-route-candidate"/);
+  assert.match(appJs, /selectProjectRouteCandidate\(projectRootPath\)/);
+  assert.match(css, /\.project-route-candidates/);
+  assert.match(css, /\.primary-panel, \.secondary-panel \{[^}]*min-width: 0/);
+  assert.match(css, /@media \(max-width: 600px\)[\s\S]*\.input-row input \{[^}]*flex: 1 1 100%/);
+  assert.match(readme, /resolve_projects/);
+  assert.match(readme, /自动识别项目/);
+  assert.match(changelog, /Automatic project routing/);
+  assert.match(roadmap, /自动项目路由/);
+
+  const elements = new Map<string, any>();
+  const listeners = new Map<string, Array<(...args: any[]) => unknown>>();
+  const makeElement = (id: string) => {
+    const node = {
+      checked: false,
+      classList: { add() {}, remove() {}, toggle() { return false; } },
+      click() {},
+      dataset: {} as Record<string, string>,
+      disabled: false,
+      hidden: false,
+      id,
+      innerHTML: "",
+      options: [{ text: "" }],
+      parentElement: null,
+      selectedIndex: 0,
+      style: {},
+      textContent: "",
+      value: "",
+      addEventListener(type: string, handler: (...args: any[]) => unknown) {
+        const key = `${id}:${type}`;
+        listeners.set(key, [...(listeners.get(key) || []), handler]);
+      },
+      append() {},
+      appendChild() {},
+      focus() {},
+      getAttribute() { return ""; },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      remove() {},
+      select() {},
+      setAttribute() {},
+    };
+    elements.set(id, node);
+    return node;
+  };
+  const element = (id: string) => elements.get(id) || makeElement(id);
+  const routeRequests: Array<{ body?: string; url: string }> = [];
+  let routeDecision: "single" | "multiple" = "single";
+  const storage = new Map<string, string>();
+  const context = vm.createContext({
+    AbortController,
+    alert() {},
+    clearInterval() {},
+    clearTimeout,
+    confirm() { return false; },
+    console,
+    document: {
+      addEventListener() {},
+      body: element("body"),
+      createElement() { return makeElement("created"); },
+      execCommand() { return true; },
+      getElementById(id: string) { return element(id); },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    },
+    fetch(url: string, options: { body?: string } = {}) {
+      if (url === "/api/projects/resolve") {
+        routeRequests.push({ body: options.body, url });
+        const selectedProjectRootPaths = routeDecision === "single"
+          ? ["/work/change-service"]
+          : ["/work/change-service", "/work/refund-service"];
+        const candidates = selectedProjectRootPaths.map((projectRootPath, index) => ({
+          confidence: index === 0 ? 0.55 : 0.45,
+          evidence: [],
+          matchedTerms: ["flowswitcher"],
+          projectRootPath,
+          score: index === 0 ? 1.1 : 1,
+        }));
+        if (routeDecision === "multiple") {
+          candidates.push({
+            confidence: 0.2,
+            evidence: [],
+            matchedTerms: ["flowswitcher"],
+            projectRootPath: "/work/observer-service",
+            score: 0.4,
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            data: {
+              candidates,
+              decision: routeDecision,
+              durationMs: 2,
+              query: "FlowSwitcher",
+              selectedProjectRootPaths,
+            },
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ projects: [], tasks: [] }),
+      });
+    },
+    localStorage: {
+      getItem(key: string) { return storage.get(key) || null; },
+      removeItem(key: string) { storage.delete(key); },
+      setItem(key: string, value: string) { storage.set(key, value); },
+    },
+    navigator: {},
+    setInterval() { return 1; },
+    setTimeout,
+    URLSearchParams,
+    window: { confirm() { return false; }, isSecureContext: false, location: { href: "" } },
+  });
+
+  vm.runInContext(appJs, context);
+  const automaticRoot = await vm.runInContext(`resolveProjectRootForQuery("FlowSwitcher")`, context);
+  assert.equal(automaticRoot, "/work/change-service");
+  assert.equal(vm.runInContext(`getProjectRootPath()`, context), "/work/change-service");
+  assert.equal(routeRequests.length, 1);
+
+  element("project-root").value = "/work/manual-service";
+  const manualRoot = await vm.runInContext(`resolveProjectRootForQuery("OtherQuery")`, context);
+  assert.equal(manualRoot, "/work/manual-service");
+  assert.equal(routeRequests.length, 1);
+
+  element("project-root").value = "";
+  routeDecision = "multiple";
+  await assert.rejects(
+    vm.runInContext(`resolveProjectRootForQuery("FlowSwitcher")`, context),
+    /多个项目/,
+  );
+  const routeStatusHtml = element("project-route-status").innerHTML;
+  assert.match(routeStatusHtml, /\/work\/change-service/);
+  assert.match(routeStatusHtml, /\/work\/refund-service/);
+  assert.doesNotMatch(routeStatusHtml, /\/work\/observer-service/);
+  assert.equal(vm.runInContext(`getProjectRootPath()`, context), "");
+  vm.runInContext(`selectProjectRouteCandidate("/work/refund-service")`, context);
+  assert.equal(element("project-root").value, "/work/refund-service");
+  assert.equal(storage.get("ace-mcp-selected-project"), "/work/refund-service");
+  element("project-root").value = "";
+  vm.runInContext(`setSelectedProject("")`, context);
+
+  routeDecision = "single";
+  vm.runInContext(`
+    qaConversationHistory = [
+      { role: "user", content: "first question" },
+      { role: "assistant", content: "first answer" }
+    ];
+    qaConversationProjectRoot = "/work/qa-service";
+    activeResolvedProjectRootPath = "/work/latest-search-service";
+  `, context);
+  const routeCountBeforeFollowUp = routeRequests.length;
+  const qaFollowUpRoot = await vm.runInContext(`resolveQaProjectRootForQuestion("follow up")`, context);
+  assert.equal(qaFollowUpRoot, "/work/qa-service");
+  assert.equal(routeRequests.length, routeCountBeforeFollowUp);
+  assert.equal(vm.runInContext(`qaConversationHistory.length`, context), 2);
+  assert.equal(storage.get("ace-mcp-qa-history-project"), "/work/qa-service");
+
+  element("project-root").value = "/work/manual-service";
+  const manualQaRoot = await vm.runInContext(`resolveQaProjectRootForQuestion("manual follow up")`, context);
+  assert.equal(manualQaRoot, "/work/manual-service");
+  assert.equal(vm.runInContext(`qaConversationHistory.length`, context), 0);
+  assert.equal(storage.get("ace-mcp-qa-history-project"), "/work/manual-service");
+
+  element("project-root").value = "";
+  vm.runInContext(`
+    qaConversationHistory = [
+      { role: "user", content: "legacy question" },
+      { role: "assistant", content: "legacy answer" }
+    ];
+    qaConversationProjectRoot = "";
+    activeResolvedProjectRootPath = "/work/latest-search-service";
+  `, context);
+  const routeCountBeforeLegacyHistory = routeRequests.length;
+  const migratedQaRoot = await vm.runInContext(`resolveQaProjectRootForQuestion("FlowSwitcher follow up")`, context);
+  assert.equal(migratedQaRoot, "/work/change-service");
+  assert.equal(routeRequests.length, routeCountBeforeLegacyHistory + 1);
+  assert.equal(vm.runInContext(`qaConversationHistory.length`, context), 0);
+  assert.equal(storage.get("ace-mcp-qa-history-project"), "/work/change-service");
 });
 
 test("CLI bin entrypoint is directly executable after global npm install", () => {
@@ -68,6 +272,36 @@ test("Web runtime starts and stops automatic index updates", () => {
 
   assert.match(entrypoint, /if \(shouldStartAutomaticUpdates\(cliOptions\)\) \{[\s\S]*startAutomaticUpdates\(\)/);
   assert.match(entrypoint, /shutdown[\s\S]*stopAutomaticUpdates\(\)/);
+});
+
+test("CLI warmup completes before service readiness and routes semantic writes through the coordinator", () => {
+  const entrypoint = readFileSync(path.join(rootDir, "src/index.ts"), "utf8");
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const awaitedWarmup = entrypoint.indexOf("await warmupKnownProjects(");
+  const webStart = entrypoint.indexOf("await startWebApp(");
+  const mcpStart = entrypoint.indexOf("await server.connect(");
+  const currentReadmeRelease = readme.match(/### v4\.10\.3[\s\S]*?(?=### v4\.10\.2)/)?.[0] ?? "";
+  const historicalReadmeRelease = readme.match(/### v4\.6\.4[\s\S]*?(?=### v4\.6\.3)/)?.[0] ?? "";
+  const currentChangelogRelease = changelog.match(/## \[4\.10\.3\][\s\S]*?(?=## \[4\.10\.2\])/)?.[0] ?? "";
+
+  assert.ok(awaitedWarmup >= 0, "warmup is not awaited");
+  assert.ok(awaitedWarmup < webStart, "Web starts before warmup completes");
+  assert.ok(awaitedWarmup < mcpStart, "MCP starts before warmup completes");
+  assert.doesNotMatch(entrypoint, /store\.ensureSemanticIndex\(project\.projectId\)/);
+  assert.match(entrypoint, /await indexCoordinator\.ensureSemanticIndex\(project\.projectId\)/);
+  assert.match(entrypoint, /projectStats\.status !== "ready"/);
+  assert.match(entrypoint, /!event \|\| event\.failedFileCount > 0/);
+  assert.match(currentReadmeRelease, /`--warm`/);
+  assert.match(currentReadmeRelease, /readiness 前完成暖机/);
+  assert.match(currentReadmeRelease, /Coordinator 管理的 SQLite worker/);
+  assert.match(currentReadmeRelease, /LaunchAgent 默认不启用 `--warm`/);
+  assert.match(historicalReadmeRelease, /服务启动后异步暖机/);
+  assert.match(historicalReadmeRelease, /暖机完全异步、不阻塞 MCP\/Web 可用性/);
+  assert.match(currentChangelogRelease, /`--warm`/);
+  assert.match(currentChangelogRelease, /readiness 前/);
+  assert.match(currentChangelogRelease, /coordinator-owned SQLite worker/);
+  assert.match(currentChangelogRelease, /LaunchAgent 默认不启用/);
 });
 
 test("local runtime directories are ignored from release worktree noise", () => {
@@ -205,14 +439,15 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(installScript, /brew install node@22/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.10\.1\/scripts\/install-macos\.sh\)"/);
+  assert.match(installScript, /ACE_MCP_VERSION="\$\{ACE_MCP_VERSION:-4\.10\.3\}"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.10\.3\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.10\.1/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.10\.3/);
 
   assert.match(checklist, /bash -n scripts\/install-macos\.sh/);
   assert.match(checklist, /scripts\/install-macos\.sh/);
@@ -235,19 +470,19 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.10\.1/);
-  assert.match(readme, /raw\/v4\.10\.1\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.10\.3/);
+  assert.match(readme, /raw\/v4\.10\.3\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.10\.1/);
-  assert.match(checklist, /ace-mcp-4\.10\.1\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.10\.1-win-x64\.zip/);
-  assert.match(checklist, /tar -tf ace-mcp-4\.10\.1\.tgz > \/tmp\/ace-mcp-tgz-files\.txt/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.10\.3/);
+  assert.match(checklist, /ace-mcp-4\.10\.3\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.10\.3-win-x64\.zip/);
+  assert.match(checklist, /tar -tf ace-mcp-4\.10\.3\.tgz > \/tmp\/ace-mcp-tgz-files\.txt/);
   assert.match(checklist, /rg -Fx "package\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-tgz-files\.txt/);
   assert.match(checklist, /rg -Fx "package\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-tgz-files\.txt/);
-  assert.match(checklist, /unzip -Z1 release\/ace-mcp-v4\.10\.1-win-x64\.zip > \/tmp\/ace-mcp-win-files\.txt/);
-  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.1-win-x64\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-win-files\.txt/);
-  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.1-win-x64\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /unzip -Z1 release\/ace-mcp-v4\.10\.3-win-x64\.zip > \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.3-win-x64\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.3-win-x64\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-win-files\.txt/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -269,18 +504,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.10\.1/);
+  assert.match(readme, /npm run release:publish -- --version 4\.10\.3/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.10\.1/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.10\.3/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.10\.1-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.10\.3-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -289,10 +524,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /doctor\.cmd/);
 });
 
-test("release checklist records the v4.10.1 verification gates", () => {
+test("release checklist records the v4.10.3 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.10\.1/);
+  assert.match(checklist, /v4\.10\.3/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
@@ -304,7 +539,36 @@ test("release checklist records the v4.10.1 verification gates", () => {
   assert.match(checklist, /npm run release:publish/);
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
-  assert.match(checklist, /git tag -a v4\.10\.1/);
+  assert.match(checklist, /git tag -a v4\.10\.3/);
+});
+
+test("v4.10.3 release docs describe index responsiveness without claiming unfinished Windows artifacts", () => {
+  const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
+  const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
+  const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
+  const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
+  const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
+
+  assert.match(readme, /当前版本：`v4\.10\.3`（发布准备中）/);
+  assert.match(readme, /聚合父目录/);
+  assert.match(readme, /Git clean fast path/);
+  assert.match(readme, /独立索引 worker/);
+  assert.match(readme, /phase/);
+  assert.match(readme, /--during-index/);
+
+  assert.match(changelog, /## \[4\.10\.3\] - Unreleased/);
+  assert.match(changelog, /## \[4\.10\.2\] - 2026-07-22/);
+  assert.match(changelog, /Git clean fast path/);
+  assert.match(changelog, /Independent index worker/);
+  assert.match(changelog, /During-index benchmark/);
+  assert.match(roadmap, /索引调度与响应性.*v4\.10\.3/);
+
+  assert.match(checklist, /--during-index/);
+  assert.match(checklist, /至少 20 个.*\/health.*至少 20 个.*\/api\/projects\/resolve/s);
+  assert.match(checklist, /Windows x64 \+ Node\.js 22/);
+  assert.match(checklist, /尚未.*Windows ZIP/);
+  assert.match(windowsReadme, /必须在 Windows x64 \+ Node\.js 22/);
+  assert.match(windowsReadme, /尚待.*Windows.*构建.*验证/);
 });
 
 test("runtime data health diagnostics are exposed by health and project profile", () => {
@@ -339,7 +603,7 @@ test("runtime data health diagnostics are exposed by health and project profile"
   assert.match(appTest, /health reports runtime data health for missing registered project paths/);
   assert.match(appTest, /health degrades data health when project listing fails/);
   assert.match(appTest, /project profile reports repairable data health when indexed project stats fail/);
-  assert.match(readme, /当前版本：`v4\.10\.1`/);
+  assert.match(readme, /当前版本：`v4\.10\.3`/);
   assert.match(readme, /运行时数据健康诊断/);
   assert.match(readme, /dataHealth/);
   assert.match(changelog, /Runtime data health diagnostics/);
@@ -362,7 +626,7 @@ test("web project profile diagnostics are wired through API and static controls"
   assert.match(appJs, /GENERATE_SUMMARY/);
   assert.match(appJs, /WARM_VECTOR_INDEX/);
   assert.match(appJs, /REVIEW_FAILED_FILES/);
-  assert.match(readme, /当前版本：`v4\.10\.1`/);
+  assert.match(readme, /当前版本：`v4\.10\.3`/);
   assert.match(readme, /项目级搜索画像/);
   assert.match(readme, /\/api\/project-profile/);
   assert.match(changelog, /## \[4\.9\.1\]/);
@@ -377,7 +641,7 @@ test("web project profile suggestions provide one-click repair actions", () => {
   const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
   const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
 
-  assert.match(appJs, /data-profile-fix="\$\{escapeHtml\(suggestion\.code\)\}"/);
+  assert.match(appJs, /data-profile-fix="\$\{escapeHtmlAttribute\(suggestion\.code\)\}"/);
   assert.match(appJs, /function bindProjectProfileActions\(/);
   assert.match(appJs, /function runProjectProfileFix\(/);
   assert.match(appJs, /function refreshProjectProfile\(/);
@@ -408,7 +672,7 @@ test("web project profile repairs render visible outcomes and failed-file detail
   assert.match(appJs, /profile-repair-result/);
   assert.match(appJs, /profile-repair-delta/);
   assert.match(appJs, /failed-file-detail/);
-  assert.match(appJs, /data-copy-path="\$\{escapeHtml\(filePath\)\}"/);
+  assert.match(appJs, /data-copy-path="\$\{escapeHtmlAttribute\(filePath\)\}"/);
   assert.match(appJs, /copyText\(filePath\)/);
   assert.match(appJs, /beforeSummary/);
   assert.match(appJs, /afterSummary/);
@@ -561,6 +825,271 @@ test("web search match explanation escapes attribute values and falls back to re
   assert.match(actionsHtml, /data-source-snippet="  const answer = 42;\n"/);
 });
 
+test("web dynamic renderers preserve hostile attribute values without creating event handlers", () => {
+  const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
+  const decodeAttribute = (value: string) => value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+  const parseNodes = (html: string) => {
+    const nodes: any[] = [];
+    for (const tagMatch of html.matchAll(/<([a-z][\w-]*)([^<>]*?)>/gi)) {
+      const attributes = new Map<string, string>();
+      const attributePattern = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+      for (const match of tagMatch[2].matchAll(attributePattern)) {
+        const rawValue = match[2] ?? match[3] ?? match[4] ?? "";
+        attributes.set(match[1].toLowerCase(), decodeAttribute(rawValue));
+      }
+      const listeners = new Map<string, Array<() => void>>();
+      const dataset: Record<string, string> = {};
+      for (const [name, value] of attributes) {
+        if (!name.startsWith("data-")) continue;
+        const key = name.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+        dataset[key] = value;
+      }
+      nodes.push({
+        attributes,
+        dataset,
+        addEventListener(type: string, handler: () => void) {
+          listeners.set(type, [...(listeners.get(type) || []), handler]);
+        },
+        click() {
+          for (const handler of listeners.get("click") || []) handler();
+        },
+        getAttribute(name: string) {
+          return attributes.get(name.toLowerCase()) ?? null;
+        },
+      });
+    }
+    return nodes;
+  };
+  const matchesSelector = (node: any, selector: string) => {
+    if (selector.startsWith(".")) {
+      return (node.getAttribute("class") || "").split(/\s+/).includes(selector.slice(1));
+    }
+    const attributeMatch = selector.match(/^\[([^\]]+)\]$/);
+    return attributeMatch ? node.getAttribute(attributeMatch[1]) !== null : false;
+  };
+  const makeElement = () => {
+    let html = "";
+    let nodes: any[] = [];
+    const node: any = {
+      checked: false,
+      classList: { add() {}, remove() {}, toggle() { return false; } },
+      click() {},
+      dataset: {},
+      disabled: false,
+      hidden: false,
+      options: [{ text: "" }],
+      parentElement: null,
+      selectedIndex: 0,
+      style: {},
+      value: "",
+      addEventListener() {},
+      append() {},
+      appendChild() {},
+      focus() {},
+      getAttribute() { return null; },
+      querySelector(selector: string) {
+        return nodes.find((item) => matchesSelector(item, selector)) || null;
+      },
+      querySelectorAll(selector: string) {
+        return nodes.filter((item) => matchesSelector(item, selector));
+      },
+      remove() {},
+      select() {},
+      setAttribute() {},
+    };
+    Object.defineProperty(node, "innerHTML", {
+      configurable: true,
+      get() { return html; },
+      set(value) {
+        html = String(value);
+        nodes = parseNodes(html);
+      },
+    });
+    Object.defineProperty(node, "textContent", {
+      configurable: true,
+      get() { return html; },
+      set(value) {
+        html = String(value ?? "");
+        nodes = [];
+      },
+    });
+    return node;
+  };
+  const makeEscapingElement = () => {
+    let html = "";
+    return {
+      get innerHTML() { return html; },
+      set innerHTML(value) { html = String(value); },
+      get textContent() { return decodeAttribute(html); },
+      set textContent(value) {
+        html = String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      },
+    };
+  };
+  const makeSelect = () => {
+    let value = "";
+    let html = "";
+    const select: any = makeElement();
+    Object.defineProperty(select, "innerHTML", {
+      configurable: true,
+      get() { return html; },
+      set(nextHtml) {
+        html = String(nextHtml);
+        select.optionNodes = parseNodes(html)
+          .filter((option) => option.getAttribute("value") !== null);
+        select.options = select.optionNodes
+          .map((option: any) => ({ text: "", value: option.getAttribute("value") }));
+      },
+    });
+    Object.defineProperty(select, "value", {
+      configurable: true,
+      get() { return value; },
+      set(nextValue) {
+        const index = select.options.findIndex((option: { value: string }) => option.value === String(nextValue));
+        value = index >= 0 ? String(nextValue) : "";
+        select.selectedIndex = Math.max(0, index);
+      },
+    });
+    return select;
+  };
+
+  const dangerousProject = `/work/quote'" onmouseover="globalThis.__projectPwned=1`;
+  const dangerousTaskId = `task-'" onmouseover="globalThis.__taskPwned=1`;
+  const dangerousStatus = `failed-'" onmouseover="globalThis.__statusPwned=1`;
+  const dangerousCode = `RUN_FULL_INDEX-'" onmouseover="globalThis.__profilePwned=1`;
+  const dangerousFile = `/work/src/file-'" onmouseover="globalThis.__filePwned=1.ts`;
+  const dangerousLanguage = `ts-'" onmouseover="globalThis.__languagePwned=1`;
+  const elements = new Map<string, any>();
+  elements.set("project-root", makeElement());
+  elements.set("project-root-select", makeSelect());
+  elements.set("project-route-status", makeElement());
+  elements.set("task-list", makeElement());
+  const element = (id: string) => {
+    if (!elements.has(id)) elements.set(id, makeElement());
+    return elements.get(id);
+  };
+  const storage = new Map<string, string>();
+  const context = vm.createContext({
+    AbortController,
+    alert() {},
+    clearInterval() {},
+    clearTimeout,
+    confirm() { return false; },
+    console,
+    document: {
+      addEventListener() {},
+      body: element("body"),
+      createElement() { return makeEscapingElement(); },
+      execCommand() { return true; },
+      getElementById(id: string) { return element(id); },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+    },
+    fetch() {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ projects: [], tasks: [] }),
+      });
+    },
+    localStorage: {
+      getItem(key: string) { return storage.get(key) || null; },
+      removeItem(key: string) { storage.delete(key); },
+      setItem(key: string, value: string) { storage.set(key, value); },
+    },
+    navigator: {},
+    setInterval() { return 1; },
+    setTimeout,
+    URLSearchParams,
+    window: { confirm() { return false; }, isSecureContext: false, location: { href: "" } },
+  });
+
+  vm.runInContext(appJs, context);
+  vm.runInContext(`renderProjectRouteStatus({
+    decision: "multiple",
+    selectedProjectRootPaths: [${JSON.stringify(dangerousProject)}],
+    candidates: [{ projectRootPath: ${JSON.stringify(dangerousProject)}, confidence: 1 }]
+  })`, context);
+  const candidate = element("project-route-status").querySelector("[data-project-route-candidate]");
+  assert.ok(candidate);
+  assert.equal(candidate.getAttribute("onmouseover"), null);
+  assert.equal(candidate.dataset.projectRouteCandidate, dangerousProject);
+  candidate.click();
+  assert.equal(storage.get("ace-mcp-selected-project"), dangerousProject);
+  assert.equal(JSON.parse(storage.get("ace-mcp-projects") || "[]")[0]?.path, dangerousProject);
+  const selectedOption = element("project-root-select").optionNodes
+    .find((option: any) => option.getAttribute("value") === dangerousProject);
+  assert.ok(selectedOption);
+  assert.equal(selectedOption.getAttribute("onmouseover"), null);
+  assert.equal(element("project-root-select").value, dangerousProject);
+  assert.equal(element("project-root").value, dangerousProject);
+
+  vm.runInContext(`renderTaskCenter([
+    { taskId: ${JSON.stringify(dangerousTaskId)}, projectRootPath: ${JSON.stringify(dangerousProject)}, status: "running", type: "index" },
+    { taskId: "finished", projectRootPath: "/work/safe", status: ${JSON.stringify(dangerousStatus)}, type: "index" }
+  ])`, context);
+  const cancelButton = element("task-list").querySelector(".task-cancel");
+  assert.equal(cancelButton.getAttribute("onmouseover"), null);
+  assert.equal(cancelButton.dataset.taskId, dangerousTaskId);
+  const taskProject = element("task-list").querySelector(".task-project");
+  assert.equal(taskProject.getAttribute("onmouseover"), null);
+  assert.equal(taskProject.getAttribute("title"), dangerousProject);
+  const taskStatuses = element("task-list").querySelectorAll(".task-status");
+  assert.equal(taskStatuses[1].getAttribute("onmouseover"), null);
+  assert.match(taskStatuses[1].getAttribute("class"), new RegExp(dangerousStatus.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const profileHtml = vm.runInContext(`renderProjectProfileSummary({
+    diagnostics: { suggestions: [{ code: ${JSON.stringify(dangerousCode)}, severity: ${JSON.stringify(dangerousStatus)}, label: "repair" }] },
+    dataHealth: { suggestions: [{ code: "RUN_DOCTOR", severity: ${JSON.stringify(dangerousStatus)}, label: "doctor" }] }
+  })`, context) as string;
+  const profileNodes = parseNodes(profileHtml);
+  const profileButton = profileNodes.find((node) => matchesSelector(node, ".profile-fix-action"));
+  assert.equal(profileButton.getAttribute("onmouseover"), null);
+  assert.equal(profileButton.dataset.profileFix, dangerousCode);
+  for (const suggestion of profileNodes.filter((node) => matchesSelector(node, ".diagnostic-suggestion"))) {
+    assert.equal(suggestion.getAttribute("onmouseover"), null);
+  }
+
+  const failedFilesHtml = vm.runInContext(
+    `renderFailedFileDetails([${JSON.stringify(dangerousFile)}], "/work")`,
+    context,
+  ) as string;
+  const failedFileNodes = parseNodes(failedFilesHtml);
+  const failedFilePath = failedFileNodes.find((node) => matchesSelector(node, ".failed-file-path"));
+  const copyPathButton = failedFileNodes.find((node) => matchesSelector(node, ".copy-failed-file-path"));
+  assert.equal(failedFilePath.getAttribute("onmouseover"), null);
+  assert.equal(failedFilePath.getAttribute("title"), dangerousFile);
+  assert.equal(copyPathButton.getAttribute("onmouseover"), null);
+  assert.equal(copyPathButton.dataset.copyPath, dangerousFile);
+
+  const sourceCardHtml = vm.runInContext(`renderSourceCard({
+    index: 1,
+    score: 1,
+    language: ${JSON.stringify(dangerousLanguage)},
+    snippet: "const value = 1;",
+    startLine: 1,
+    endLine: 1,
+    filePath: "src/example.ts"
+  }, 1)`, context) as string;
+  const sourceCardNodes = parseNodes(sourceCardHtml);
+  const languageBadge = sourceCardNodes.find((node) => matchesSelector(node, ".qa-source-badge"));
+  assert.equal(languageBadge.getAttribute("onmouseover"), null);
+  assert.match(
+    languageBadge.getAttribute("class"),
+    new RegExp(dangerousLanguage.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  );
+
+  assert.doesNotMatch(appJs, /\b(?:class|data-[\w-]+|title|value)="[^"]*\$\{escapeHtml\(/);
+  assert.match(appJs, /class="qa-source-badge \$\{escapeHtmlAttribute\(langClass\)\}"/);
+});
+
 test("web search and QA results expose copy actions and explanation toggles", () => {
   const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
   const css = readFileSync(path.join(rootDir, "src/web/static/css/main.css"), "utf8");
@@ -653,7 +1182,7 @@ test("web search and QA results expose IDE and agent jump actions", () => {
   assert.match(roadmap, /IDE \/ Agent 定位闭环/);
 });
 
-test("web IDE and agent jump helpers derive paths from project root", () => {
+test("web source actions retain their producing project root", () => {
   const appJs = readFileSync(path.join(rootDir, "src/web/static/js/app.js"), "utf8");
   const element = () => {
     const node = {
@@ -781,6 +1310,57 @@ test("web IDE and agent jump helpers derive paths from project root", () => {
   assert.match(actionsHtml, /发送到 Codex/);
   assert.match(actionsHtml, /发送到 Claude/);
   assert.doesNotMatch(actionsHtml, /Cursor/i);
+
+  projectRoot.value = "/repo/later-manual-selection";
+  const boundActions = vm.runInContext(`(() => {
+    const searchResponse = bindSearchResponseSourcesToProjectRoot({
+      data: {
+        results: [{
+          filePath: "src/search.ts",
+          startLine: 11,
+          endLine: 13,
+          language: "typescript",
+          snippet: "export const search = true;"
+        }]
+      }
+    }, "/repo/search-owner");
+    const searchSource = searchResponse.data.results[0];
+    const qaSource = bindSourcesToProjectRoot([{
+      filePath: "src/qa.ts",
+      startLine: 21,
+      endLine: 23,
+      language: "typescript",
+      snippet: "export const qa = true;"
+    }], "/repo/qa-owner")[0];
+    activeResolvedProjectRootPath = "/repo/later-auto-selection";
+    return {
+      searchProjectRoot: searchSource.projectRootPath,
+      qaProjectRoot: qaSource.projectRootPath,
+      absolutePath: formatSourceAbsolutePath(searchSource),
+      vscodeUrl: buildIdeDeepLink(searchSource, "vscode"),
+      ideaUrl: buildIdeDeepLink(searchSource, "idea"),
+      agentPrompt: buildAgentPrompt(searchSource, "codex"),
+      actionsHtml: renderSearchResultActions(searchSource),
+      lazyHtml: renderLazyContextAction(searchSource),
+      serializedProjectRoot: JSON.parse(serializeSourceForBundle(searchSource)).projectRootPath,
+      bundleMarkdown: buildContextBundleMarkdown([qaSource], "codex")
+    };
+  })()`, context) as Record<string, string>;
+
+  assert.equal(boundActions.searchProjectRoot, "/repo/search-owner");
+  assert.equal(boundActions.qaProjectRoot, "/repo/qa-owner");
+  assert.equal(boundActions.absolutePath, "/repo/search-owner/src/search.ts");
+  assert.equal(boundActions.vscodeUrl, "vscode://file//repo/search-owner/src/search.ts:11");
+  assert.match(boundActions.ideaUrl, /project=%2Frepo%2Fsearch-owner/);
+  assert.match(boundActions.ideaUrl, /path=%2Frepo%2Fsearch-owner%2Fsrc%2Fsearch\.ts/);
+  assert.match(boundActions.agentPrompt, /项目根目录：\/repo\/search-owner/);
+  assert.match(boundActions.agentPrompt, /\/repo\/search-owner\/src\/search\.ts:11/);
+  assert.match(boundActions.actionsHtml, /data-source-absolute-path="\/repo\/search-owner\/src\/search\.ts"/);
+  assert.match(boundActions.lazyHtml, /data-context-project-root-path="\/repo\/search-owner"/);
+  assert.equal(boundActions.serializedProjectRoot, "/repo/search-owner");
+  assert.match(boundActions.bundleMarkdown, /项目根目录：\/repo\/qa-owner/);
+  assert.match(boundActions.bundleMarkdown, /\/repo\/qa-owner\/src\/qa\.ts:21/);
+  assert.doesNotMatch(boundActions.bundleMarkdown, /later-(?:manual|auto)-selection/);
 });
 
 test("web search and QA results expose selected context bundle actions", () => {
@@ -1315,10 +1895,11 @@ test("web search and QA results lazy-load wider source context", () => {
   assert.match(appJs, /response\?\.meta\?\.snippet\?\.endLine/);
   assert.match(appJs, /data-context-action="load"/);
   assert.match(appJs, /data-context-file-path="\$\{escapeHtmlAttribute\(source\.filePath\)\}"/);
+  assert.match(appJs, /data-context-project-root-path="\$\{escapeHtmlAttribute\(getSourceProjectRootPath\(source\)\)\}"/);
   assert.match(appJs, /data-context-start-line="\$\{range\.startLine\}"/);
   assert.match(appJs, /data-context-end-line="\$\{range\.endLine\}"/);
   assert.match(appJs, /request\("POST", "\/api\/file-snippet"/);
-  assert.match(appJs, /projectRootPath: projectRootInput\.value\.trim\(\)/);
+  assert.match(appJs, /projectRootPath: button\.getAttribute\("data-context-project-root-path"\) \|\| getProjectRootPath\(\)/);
   assert.match(appJs, /filePath: button\.getAttribute\("data-context-file-path"\)/);
   assert.match(appJs, /startLine: Number\(button\.getAttribute\("data-context-start-line"\)/);
   assert.match(appJs, /endLine: Number\(button\.getAttribute\("data-context-end-line"\)/);

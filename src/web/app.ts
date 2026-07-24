@@ -6,6 +6,7 @@ import { registerAdminRoutes } from "./routes/adminRoutes.js";
 import { registerIndexRoutes } from "./routes/indexRoutes.js";
 import { registerMetaRoutes } from "./routes/metaRoutes.js";
 import { registerProjectProfileRoutes } from "./routes/projectProfileRoutes.js";
+import { registerProjectResolveRoutes } from "./routes/projectResolveRoutes.js";
 import { registerQaRoutes } from "./routes/qaRoutes.js";
 import { registerSearchRoutes } from "./routes/searchRoutes.js";
 import { registerSummaryRoutes } from "./routes/summaryRoutes.js";
@@ -32,6 +33,7 @@ export async function startWebApp(port: number, dependencies: WebAppDependencies
 
   registerMetaRoutes(app, dependencies);
   registerProjectProfileRoutes(app, dependencies);
+  registerProjectResolveRoutes(app, dependencies);
   registerIndexRoutes(app, dependencies);
   registerAdminRoutes(app, dependencies);
   registerSearchRoutes(app, dependencies);

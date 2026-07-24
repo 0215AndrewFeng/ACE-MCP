@@ -45,6 +45,19 @@ function handleRequest(request: SQLiteSearchWorkerRequest): void {
           result: store.getFilePreviewResults(request.payload.projectId, request.payload.relativePaths),
         };
         break;
+      case "searchProjectRoutes":
+        response = {
+          id: request.id,
+          ok: true,
+          result: store.searchProjectRoutes(
+            request.payload.ftsQuery,
+            request.payload.exactSymbols,
+            request.payload.limit,
+            request.payload.excludedProjectRootPaths,
+            request.payload.routeTerms,
+          ),
+        };
+        break;
       case "searchByPath":
         response = {
           id: request.id,

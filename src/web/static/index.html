@@ -27,13 +27,14 @@
           <h2>📁 选择项目</h2>
           <p class="hint">选择已索引的项目，或输入新项目路径添加</p>
           <select id="project-root-select">
-            <option value="">-- 请选择项目 --</option>
+            <option value="">自动识别（全部项目）</option>
           </select>
           <div class="input-row">
             <input id="project-root" class="mono" placeholder="输入项目绝对路径，如 /Users/me/my-project" />
             <button id="add-project" type="button" class="btn-primary" title="索引新项目并添加到列表">➕ 添加</button>
             <button id="delete-project" type="button" class="btn-danger" title="移除项目登记并清理索引数据">🗑️</button>
           </div>
+          <div id="project-route-status" class="project-route-status" aria-live="polite" hidden></div>
         </div>
 
         <!-- 智能问答卡片（核心功能，突出显示） -->

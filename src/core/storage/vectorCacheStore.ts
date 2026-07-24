@@ -1,6 +1,6 @@
 import path from "node:path";
-import fs from "node:fs";
 import fsPromises from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 import Database from "better-sqlite3";
 
@@ -70,14 +70,17 @@ const HNSW_CACHE_DIR = ".ace-mcp/data/hnsw";
 const MAX_RECONCILE_PATHS = 400;
 
 interface VectorCacheEntry {
+  generation: number;
   indexVersion: number;
   modelName: string;
+  vectorFingerprint: string;
   vectors: VectorEntry[];
   hnswIndex: HnswIndex | null;
   hnswBuilding: boolean;
 }
 
 export class VectorCacheStore {
+  private readonly projectGenerations = new Map<string, number>();
   private readonly vectorCache = new Map<string, VectorCacheEntry>();
   private readonly vectorCacheOrder: string[] = [];
   private vectorCacheMaxProjects: number;
@@ -99,6 +102,7 @@ export class VectorCacheStore {
 
   private clearVectorCache(projectId?: string): void {
     if (projectId) {
+      this.bumpProjectGeneration(projectId);
       this.vectorCache.delete(projectId);
       const orderIdx = this.vectorCacheOrder.indexOf(projectId);
       if (orderIdx >= 0) {
@@ -107,24 +111,56 @@ export class VectorCacheStore {
       return;
     }
 
+    for (const cachedProjectId of this.vectorCache.keys()) {
+      this.bumpProjectGeneration(cachedProjectId);
+    }
     this.vectorCache.clear();
     this.vectorCacheOrder.length = 0;
   }
 
-  public clearProjectVectorCache(projectId: string): void {
+  public clearProjectVectorCache(projectId: string, retainedIndexVersion?: number): void {
     this.clearVectorCache(projectId);
-    try {
-      if (!fs.existsSync(this.hnswCacheDir)) {
-        return;
-      }
-      for (const entry of fs.readdirSync(this.hnswCacheDir)) {
-        if (entry.startsWith(`${projectId}_`) && entry.endsWith(".hnsw")) {
-          fs.unlinkSync(path.join(this.hnswCacheDir, entry));
-        }
-      }
-    } catch (error) {
-      this.logger.warn(`Failed to clear HNSW cache for ${projectId}: ${error}`);
+    this.cleanupProjectHnswCache(projectId, retainedIndexVersion);
+  }
+
+  private bumpProjectGeneration(projectId: string): number {
+    const generation = (this.projectGenerations.get(projectId) ?? 0) + 1;
+    this.projectGenerations.set(projectId, generation);
+    return generation;
+  }
+
+  private getProjectGeneration(projectId: string): number {
+    return this.projectGenerations.get(projectId) ?? 0;
+  }
+
+  private isCurrentCacheEntry(
+    projectId: string,
+    cacheEntry: VectorCacheEntry,
+    generation: number,
+  ): boolean {
+    return this.vectorCache.get(projectId) === cacheEntry
+      && cacheEntry.generation === generation
+      && this.getProjectGeneration(projectId) === generation;
+  }
+
+  private computeVectorFingerprint(vectors: VectorEntry[]): string {
+    const hash = createHash("sha256");
+    const orderedVectors = [...vectors].sort((left, right) => (
+      left.chunkId < right.chunkId ? -1 : left.chunkId > right.chunkId ? 1 : 0
+    ));
+    for (const vector of orderedVectors) {
+      const chunkId = Buffer.from(vector.chunkId, "utf8");
+      const length = Buffer.allocUnsafe(4);
+      length.writeUInt32LE(chunkId.length);
+      hash.update(length);
+      hash.update(chunkId);
+      hash.update(Buffer.from(
+        vector.embedding.buffer,
+        vector.embedding.byteOffset,
+        vector.embedding.byteLength,
+      ));
     }
+    return hash.digest("hex");
   }
 
   private evictVectorCache(): void {
@@ -379,8 +415,10 @@ export class VectorCacheStore {
 
     if (Number.isFinite(indexVersion)) {
       const cacheEntry: VectorCacheEntry = {
+        generation: this.getProjectGeneration(projectId),
         indexVersion,
         modelName,
+        vectorFingerprint: this.computeVectorFingerprint(vectors),
         vectors,
         hnswIndex: null,
         hnswBuilding: false,
@@ -396,7 +434,17 @@ export class VectorCacheStore {
       this.evictVectorCache();
 
       // Try to load HNSW from disk cache asynchronously, then fall back to building
-      this.loadHnswFromDisk(projectId, modelName, vectors.length).then((hnswIndex) => {
+      const generation = cacheEntry.generation;
+      this.loadHnswFromDisk(
+        projectId,
+        modelName,
+        indexVersion,
+        cacheEntry.vectorFingerprint,
+        vectors.length,
+      ).then((hnswIndex) => {
+        if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+          return;
+        }
         cacheEntry.hnswIndex = hnswIndex;
         if (hnswIndex) {
           // v4.5.4: Release vectors after successful HNSW load from disk
@@ -461,7 +509,9 @@ export class VectorCacheStore {
    * v4.5.7: Mark the HNSW index stale so it is rebuilt on the next vector search.
    * Brute-force over the patched vectors array serves correct results meanwhile.
    */
-  private markHnswStale(entry: VectorCacheEntry): void {
+  private markHnswStale(projectId: string, entry: VectorCacheEntry): void {
+    entry.generation = this.bumpProjectGeneration(projectId);
+    entry.vectorFingerprint = this.computeVectorFingerprint(entry.vectors);
     entry.hnswIndex = null;
     entry.hnswBuilding = false;
   }
@@ -484,7 +534,7 @@ export class VectorCacheStore {
     const before = entry.vectors.length;
     entry.vectors = entry.vectors.filter((v) => !drop.has(v.filePath));
     if (entry.vectors.length !== before) {
-      this.markHnswStale(entry);
+      this.markHnswStale(projectId, entry);
     }
   }
 
@@ -536,7 +586,7 @@ export class VectorCacheStore {
         modelName: row.model_name,
       });
     }
-    this.markHnswStale(entry);
+    this.markHnswStale(projectId, entry);
   }
 
   /**
@@ -603,7 +653,7 @@ export class VectorCacheStore {
     entry.indexVersion = newIndexVersion;
 
     if (changed) {
-      this.markHnswStale(entry);
+      this.markHnswStale(projectId, entry);
     }
   }
 
@@ -616,6 +666,7 @@ export class VectorCacheStore {
     }
 
     cacheEntry.hnswBuilding = true;
+    const generation = cacheEntry.generation;
     const vectors = cacheEntry.vectors;
     const dimension = vectors[0].embedding.length;
 
@@ -638,6 +689,9 @@ export class VectorCacheStore {
           vector: [...v.embedding],
         })));
 
+        if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+          return;
+        }
         cacheEntry.hnswIndex = hnswIndex;
         cacheEntry.hnswBuilding = false;
 
@@ -649,10 +703,12 @@ export class VectorCacheStore {
         this.logger.info(`HNSW index built for project ${projectId}: ${vectors.length} vectors in ${durationMs}ms, vectors array released`);
 
         // Save to disk for next startup
-        this.saveHnswToDisk(projectId, cacheEntry.modelName, hnswIndex);
+        this.saveHnswToDisk(projectId, cacheEntry, hnswIndex);
       } catch (error) {
-        cacheEntry.hnswBuilding = false;
-        this.logger.warn(`Failed to build HNSW index for ${projectId}: ${error}`);
+        if (this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+          cacheEntry.hnswBuilding = false;
+          this.logger.warn(`Failed to build HNSW index for ${projectId}: ${error}`);
+        }
       }
     });
   }
@@ -660,13 +716,20 @@ export class VectorCacheStore {
   /**
    * Load HNSW index from disk cache if valid (async I/O to avoid blocking event loop)
    */
-  private async loadHnswFromDisk(projectId: string, modelName: string, expectedSize: number): Promise<HnswIndex | null> {
+  private async loadHnswFromDisk(
+    projectId: string,
+    modelName: string,
+    indexVersion: number,
+    vectorFingerprint: string,
+    expectedSize: number,
+  ): Promise<HnswIndex | null> {
     try {
-      const cachePath = this.getHnswCachePath(projectId, modelName);
-      if (!fs.existsSync(cachePath)) {
-        return null;
-      }
-
+      const cachePath = this.getHnswCachePath(
+        projectId,
+        modelName,
+        indexVersion,
+        vectorFingerprint,
+      );
       const data = await fsPromises.readFile(cachePath);
       const hnswIndex = HnswIndex.deserialize(data);
 
@@ -680,6 +743,9 @@ export class VectorCacheStore {
       this.logger.info(`HNSW index loaded from disk for ${projectId}: ${hnswIndex.size()} vectors`);
       return hnswIndex;
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null;
+      }
       this.logger.warn(`Failed to load HNSW cache for ${projectId}: ${error}`);
       return null;
     }
@@ -688,22 +754,44 @@ export class VectorCacheStore {
   /**
    * Save HNSW index to disk for persistence (fire-and-forget async write)
    */
-  private saveHnswToDisk(projectId: string, modelName: string, hnswIndex: HnswIndex): void {
+  private saveHnswToDisk(projectId: string, cacheEntry: VectorCacheEntry, hnswIndex: HnswIndex): void {
+    const generation = cacheEntry.generation;
+    if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+      return;
+    }
     try {
-      const cachePath = this.getHnswCachePath(projectId, modelName);
+      const cachePath = this.getHnswCachePath(
+        projectId,
+        cacheEntry.modelName,
+        cacheEntry.indexVersion,
+        cacheEntry.vectorFingerprint,
+      );
       const cacheDir = path.dirname(cachePath);
-
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-
       const data = hnswIndex.serialize();
-      // Fire-and-forget: don't block on disk write
-      fsPromises.writeFile(cachePath, data).then(() => {
-        this.logger.info(`HNSW index saved to disk for ${projectId}: ${hnswIndex.size()} vectors`);
-      }).catch((error) => {
-        this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
-      });
+      const tempPath = `${cachePath}.${process.pid}.${generation}.tmp`;
+      void (async () => {
+        try {
+          await fsPromises.mkdir(cacheDir, { recursive: true });
+          if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+            return;
+          }
+          await fsPromises.writeFile(tempPath, data);
+          if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+            await fsPromises.unlink(tempPath).catch(() => {});
+            return;
+          }
+          await fsPromises.rename(tempPath, cachePath);
+          if (!this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+            return;
+          }
+          this.logger.info(`HNSW index saved to disk for ${projectId}: ${hnswIndex.size()} vectors`);
+        } catch (error) {
+          await fsPromises.unlink(tempPath).catch(() => {});
+          if (this.isCurrentCacheEntry(projectId, cacheEntry, generation)) {
+            this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
+          }
+        }
+      })();
     } catch (error) {
       this.logger.warn(`Failed to save HNSW cache for ${projectId}: ${error}`);
     }
@@ -712,11 +800,40 @@ export class VectorCacheStore {
   /**
    * Get HNSW cache file path
    */
-  private getHnswCachePath(projectId: string, modelName: string): string {
+  private getHnswCachePath(
+    projectId: string,
+    modelName: string,
+    indexVersion: number,
+    vectorFingerprint: string,
+  ): string {
     // Sanitize projectId for filename
     const safeProjectId = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");
     const safeModelName = modelName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    return path.join(this.hnswCacheDir, `${safeProjectId}_${safeModelName}.hnsw`);
+    const safeFingerprint = vectorFingerprint.replace(/[^a-zA-Z0-9_-]/g, "_");
+    return path.join(
+      this.hnswCacheDir,
+      `${safeProjectId}_${safeModelName}_v${indexVersion}_${safeFingerprint}.hnsw`,
+    );
+  }
+
+  private cleanupProjectHnswCache(projectId: string, retainedIndexVersion?: number): void {
+    const safeProjectId = projectId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const prefix = `${safeProjectId}_`;
+    const retainedVersionMarker = Number.isFinite(retainedIndexVersion)
+      ? `_v${retainedIndexVersion}_`
+      : undefined;
+    void fsPromises.readdir(this.hnswCacheDir).then(async (entries) => {
+      await Promise.all(entries
+        .filter((entry) => entry.startsWith(prefix)
+          && entry.endsWith(".hnsw")
+          && (!retainedVersionMarker
+            || !entry.slice(entry.lastIndexOf("_v")).startsWith(retainedVersionMarker)))
+        .map((entry) => fsPromises.unlink(path.join(this.hnswCacheDir, entry)).catch(() => {})));
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") {
+        this.logger.warn(`Failed to clear HNSW cache for ${projectId}: ${error}`);
+      }
+    });
   }
 
   public hasVectorIndex(projectId: string, modelName?: string): boolean {

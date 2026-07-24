@@ -5,7 +5,10 @@ import path from "node:path";
 import type { Settings } from "../core/common/types.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { createEmbeddingProvider } from "../core/search/embedding.js";
-import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
+import {
+  createSynchronousIndexStorageWorker,
+  IndexCoordinator,
+} from "../core/indexing/indexCoordinator.js";
 import type { WatchFactory } from "../core/indexing/indexCoordinator.js";
 import { Logger } from "../core/common/logger.js";
 import { SearchService } from "../core/search/searchService.js";
@@ -93,14 +96,29 @@ export async function createTestProjectEnvironment(files: Record<string, string>
   store.initialize();
   const provider = embeddingProvider ?? createEmbeddingProvider(settings);
   const searchService = new SearchService(store, logger, settings, provider);
+  const indexCoordinator = new IndexCoordinator(
+    settings,
+    store,
+    logger,
+    provider,
+    testWatchFactory,
+    undefined,
+    undefined,
+    createSynchronousIndexStorageWorker(store),
+  );
 
   return {
     cleanup: async () => {
+      await indexCoordinator.close();
       await searchService.close();
-      await rm(tempDir, { force: true, recursive: true });
+      for (const project of store.listProjectsWithIds()) {
+        store.clearProjectVectorCache(project.projectId);
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await rm(tempDir, { force: true, maxRetries: 5, recursive: true, retryDelay: 20 });
     },
     embeddingProvider: provider,
-    indexCoordinator: new IndexCoordinator(settings, store, logger, provider, testWatchFactory),
+    indexCoordinator,
     projectRootPath,
     searchService,
     settings,

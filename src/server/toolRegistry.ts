@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { Logger } from "../core/common/logger.js";
 import type { Settings } from "../core/common/types.js";
+import type { ProjectRouter } from "../core/search/projectRouter.js";
 import type { EmbeddingProvider } from "../core/search/embedding.js";
 import { IndexCoordinator } from "../core/indexing/indexCoordinator.js";
 import type { LlmClient } from "../core/llm/llmClient.js";
@@ -24,6 +25,7 @@ import { registerGenerateSummaryTool } from "./tools/generateSummary.js";
 import { registerGetSummaryTool } from "./tools/getSummary.js";
 import { registerAskCodebaseTool } from "./tools/askCodebase.js";
 import { registerWarmIndexTool } from "./tools/warmIndex.js";
+import { registerResolveProjectsTool } from "./tools/resolveProjects.js";
 
 export interface ToolDependencies {
   embeddingProvider: EmbeddingProvider;
@@ -36,8 +38,13 @@ export interface ToolDependencies {
   summaryGenerator: SummaryGenerator;
 }
 
-export function registerTools(server: McpServer, dependencies: ToolDependencies): void {
+export interface ToolRegistryDependencies extends ToolDependencies {
+  projectRouter: ProjectRouter;
+}
+
+export function registerTools(server: McpServer, dependencies: ToolRegistryDependencies): void {
   registerIndexProjectTool(server, dependencies);
+  registerResolveProjectsTool(server, dependencies);
   registerSearchContextTool(server, dependencies);
   registerFindDefinitionTool(server, dependencies);
   registerFindReferencesTool(server, dependencies);

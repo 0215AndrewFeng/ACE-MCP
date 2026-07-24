@@ -1,14 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { unlinkSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Worker } from "node:worker_threads";
 
+import { mapInBatches } from "../common/batch.js";
 import type { IndexProjectResult, Settings } from "../common/types.js";
 import { InMemoryEmbeddingProvider } from "../search/embedding.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
 import { createTestProjectEnvironment } from "../../test/helpers.js";
-import { IndexCoordinator } from "./indexCoordinator.js";
+import {
+  createSynchronousIndexStorageWorker,
+  IndexCoordinator,
+  type IndexStorageWorker,
+} from "./indexCoordinator.js";
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -16,6 +23,13 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+function blockFor(durationMs: number): void {
+  const deadline = Date.now() + durationMs;
+  while (Date.now() < deadline) {
+    // Intentionally block to make synchronous phase attribution observable.
+  }
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<void> {
@@ -29,6 +43,39 @@ async function waitFor(predicate: () => boolean, timeoutMs = 1_000): Promise<voi
 }
 
 const noOpWatchFactory = () => ({ close() {} });
+
+async function holdDatabaseWriteLock(databasePath: string, durationMs: number): Promise<Worker> {
+  const worker = new Worker(`
+    const { parentPort, workerData } = require("node:worker_threads");
+    const Database = require("better-sqlite3");
+    const db = new Database(workerData.databasePath);
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      parentPort.postMessage({ status: "locked" });
+      setTimeout(() => {
+        db.exec("COMMIT");
+        db.close();
+        parentPort.postMessage({ status: "released" });
+      }, workerData.durationMs);
+    } catch (error) {
+      parentPort.postMessage({ status: "error", message: String(error) });
+    }
+  `, {
+    eval: true,
+    workerData: { databasePath, durationMs },
+  });
+  await new Promise<void>((resolve, reject) => {
+    worker.once("error", reject);
+    worker.on("message", (message: { message?: string; status: string }) => {
+      if (message.status === "locked") {
+        resolve();
+      } else if (message.status === "error") {
+        reject(new Error(message.message ?? "failed to acquire test database lock"));
+      }
+    });
+  });
+  return worker;
+}
 
 function cachedResult(projectRootPath: string): IndexProjectResult {
   return {
@@ -45,6 +92,140 @@ function cachedResult(projectRootPath: string): IndexProjectResult {
     scannedFiles: 1,
     timings: { collectMs: 1, detectMs: 1, indexMs: 1, totalMs: 3, vectorMs: 0 },
     vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" },
+  };
+}
+
+async function recordPersistedIndexFailure(
+  environment: Awaited<ReturnType<typeof createTestProjectEnvironment>>,
+  projectId: string,
+): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  environment.store.recordIndexEvent(projectId, {
+    changedFiles: 1,
+    chunkCount: 0,
+    createdAt: new Date().toISOString(),
+    deletedFiles: 0,
+    failedFiles: [{ filePath: "source.ts", message: "parse failed" }],
+    indexedFiles: 0,
+    metadata: {
+      timings: { collectMs: 0, detectMs: 0, indexMs: 0, totalMs: 0, vectorMs: 0 },
+      vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" },
+    },
+    scannedFiles: 1,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
+interface PeriodicGitStatus {
+  changedFiles?: string[];
+  currentCommit?: string;
+  isGitRepo: boolean;
+  reliable: boolean;
+  untrackedFiles?: string[];
+}
+
+const cleanPeriodicGitStatus: PeriodicGitStatus = {
+  changedFiles: [],
+  currentCommit: "current-commit",
+  isGitRepo: true,
+  reliable: true,
+  untrackedFiles: [],
+};
+
+async function createPeriodicReconcileFixture(options: {
+  gitStatus?: PeriodicGitStatus;
+  gitStatusError?: Error;
+  gitStatusReader?: () => Promise<PeriodicGitStatus>;
+  lastIndexedCommit?: string | null;
+} = {}) {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-periodic-preflight-"));
+  let failWatcherRestarts = false;
+  let gitReads = 0;
+  let indexRuns = 0;
+
+  class RecordingCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      indexRuns += 1;
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new RecordingCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      getLastIndexedCommit: () => options.lastIndexedCommit === undefined ? "indexed-commit" : options.lastIndexedCommit,
+      latestIndexEventHasFailures: () => false,
+      listProjects: () => [{ projectRootPath }],
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    () => {
+      if (failWatcherRestarts) {
+        throw new Error("recursive watch is unavailable");
+      }
+      return { close() {} };
+    },
+    async () => ({ isDirectory: () => true }),
+    async () => {
+      gitReads += 1;
+      if (options.gitStatusReader) {
+        return options.gitStatusReader();
+      }
+      if (options.gitStatusError) {
+        throw options.gitStatusError;
+      }
+      return options.gitStatus ?? cleanPeriodicGitStatus;
+    },
+  );
+
+  await coordinator.startAutomaticUpdates();
+  await coordinator.reconcileWatchedProjects("startup");
+  const startupGitReads = gitReads;
+  const startupIndexRuns = indexRuns;
+  gitReads = 0;
+  indexRuns = 0;
+
+  const internals = coordinator as unknown as {
+    inFlightIndex: Map<string, Promise<IndexProjectResult>>;
+    watchers: Map<string, {
+      active: boolean;
+      dirty: boolean;
+      failureCount: number;
+      processing: boolean;
+    }>;
+  };
+
+  return {
+    cleanup: async () => {
+      coordinator.stopAutomaticUpdates();
+      await rm(projectRootPath, { force: true, recursive: true });
+    },
+    coordinator,
+    failWatcherRestarts: () => {
+      failWatcherRestarts = true;
+    },
+    get gitReads() {
+      return gitReads;
+    },
+    get indexRuns() {
+      return indexRuns;
+    },
+    projectRootPath,
+    setInFlight: () => {
+      internals.inFlightIndex.set(projectRootPath, Promise.resolve(cachedResult(projectRootPath)));
+    },
+    setWatchState: (patch: Partial<{
+      active: boolean;
+      dirty: boolean;
+      failureCount: number;
+      processing: boolean;
+    }>) => {
+      const state = internals.watchers.get(projectRootPath);
+      assert.ok(state);
+      Object.assign(state, patch);
+    },
+    startupGitReads,
+    startupIndexRuns,
   };
 }
 
@@ -354,6 +535,1316 @@ test("automatic updates watch registered projects before startup catch-up", asyn
   } finally {
     coordinator.stopAutomaticUpdates?.();
     await rm(tempDir, { force: true, recursive: true });
+  }
+});
+
+test("automatic updates watch and reconcile concrete children instead of an aggregate parent", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-aggregate-parent-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const watchedRoots = new Set<string>();
+  const indexedRoots: string[] = [];
+
+  class AggregateStartupCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      indexedRoots.push(root);
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new AggregateStartupCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => [parentProject, firstChild, secondChild].map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.deepEqual([...new Set(indexedRoots)].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(parentProject), false);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("automatic updates keep a parent with only one nested registered project", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-single-child-parent-"));
+  const childProject = path.join(parentProject, "child");
+  const watchedRoots = new Set<string>();
+  const indexedRoots: string[] = [];
+
+  class SingleChildStartupCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      indexedRoots.push(root);
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new SingleChildStartupCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => [parentProject, childProject].map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await mkdir(childProject);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    assert.deepEqual([...watchedRoots].sort(), [parentProject, childProject].sort());
+    assert.deepEqual([...new Set(indexedRoots)].sort(), [parentProject, childProject].sort());
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("registering a second child at runtime transfers automatic maintenance away from the parent", async () => {
+  const environment = await createTestProjectEnvironment({
+    "parent.ts": "export const parent = true;",
+  });
+  const firstChild = path.join(environment.projectRootPath, "first-child");
+  const secondChild = path.join(environment.projectRootPath, "second-child");
+  const watchedRoots = new Set<string>();
+  const closedRoots: string[] = [];
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return {
+        close: () => {
+          closedRoots.push(root);
+          watchedRoots.delete(root);
+        },
+      };
+    },
+  );
+
+  try {
+    await mkdir(firstChild);
+    await writeFile(path.join(firstChild, "first.ts"), "export const first = true;", "utf8");
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await coordinator.indexProject(firstChild, "full");
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.deepEqual([...watchedRoots].sort(), [environment.projectRootPath, firstChild].sort());
+
+    await mkdir(secondChild);
+    await writeFile(path.join(secondChild, "second.ts"), "export const second = true;", "utf8");
+    await coordinator.indexProject(secondChild, "full");
+
+    assert.equal(coordinator.isWatching(environment.projectRootPath), false);
+    assert.equal(coordinator.isWatching(firstChild), true);
+    assert.equal(coordinator.isWatching(secondChild), true);
+    assert.ok(closedRoots.includes(environment.projectRootPath));
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("deleting a second child immediately restores automatic maintenance for its parent", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-delete-child-ownership-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const watchedRoots = new Set<string>();
+  let registeredRoots = [parentProject, firstChild, secondChild];
+
+  class DeleteChildCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new DeleteChildCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+
+    await coordinator.withProjectIndexPaused(secondChild, () => {
+      registeredRoots = [parentProject, firstChild];
+    });
+    await coordinator.refreshAutomaticProjectOwnership(secondChild);
+
+    assert.deepEqual([...watchedRoots].sort(), [parentProject, firstChild].sort());
+    assert.equal(coordinator.isWatching(secondChild), false);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("a failed child deletion preserves the aggregate child watchers", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-delete-child-rollback-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const watchedRoots = new Set<string>();
+
+  class FailedDeleteCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new FailedDeleteCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => [parentProject, firstChild, secondChild].map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    await assert.rejects(
+      coordinator.withProjectIndexPaused(secondChild, () => {
+        throw new Error("delete failed");
+      }),
+      /delete failed/,
+    );
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(parentProject), false);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("failed topology refresh stays pending and can be retried", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-delete-child-refresh-retry-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const watchedRoots = new Set<string>();
+  const warnings: Array<Record<string, unknown> | undefined> = [];
+  let failProjectList = false;
+  let registeredRoots = [parentProject, firstChild, secondChild];
+
+  class RetryDeleteRefreshCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new RetryDeleteRefreshCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => {
+        if (failProjectList) {
+          throw new Error("project list unavailable");
+        }
+        return registeredRoots.map((projectRootPath) => ({ projectRootPath }));
+      },
+    } as never,
+    {
+      debug() {},
+      info() {},
+      warn(_message: string, context?: Record<string, unknown>) {
+        warnings.push(context);
+      },
+    } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    await coordinator.withProjectIndexPaused(secondChild, () => {
+      registeredRoots = [parentProject, firstChild];
+    });
+    failProjectList = true;
+    await coordinator.refreshAutomaticProjectOwnership(secondChild);
+
+    const pendingRoots = (
+      coordinator as unknown as { pendingAutomaticOwnershipRefreshRoots: Set<string> }
+    ).pendingAutomaticOwnershipRefreshRoots;
+    assert.equal(pendingRoots.has(secondChild), true);
+    assert.deepEqual([...watchedRoots], [firstChild]);
+    assert.ok(warnings.some((warning) => warning?.reason === "topology"));
+
+    failProjectList = false;
+    await coordinator.refreshAutomaticProjectOwnership(secondChild);
+
+    assert.equal(pendingRoots.size, 0);
+    assert.deepEqual([...watchedRoots].sort(), [parentProject, firstChild].sort());
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("an older topology refresh cannot overwrite a newer concurrent registration", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-delete-child-refresh-order-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const thirdChild = path.join(parentProject, "third-child");
+  const oldRefreshStarted = deferred<void>();
+  const releaseOldRefresh = deferred<void>();
+  const watchedRoots = new Set<string>();
+  let blockInspection = false;
+  let registeredRoots = [parentProject, firstChild, secondChild];
+
+  class ConcurrentTopologyCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new ConcurrentTopologyCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+    async () => {
+      if (blockInspection) {
+        oldRefreshStarted.resolve();
+        await releaseOldRefresh.promise;
+      }
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild), mkdir(thirdChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    await coordinator.withProjectIndexPaused(secondChild, () => {
+      registeredRoots = [parentProject, firstChild];
+    });
+    blockInspection = true;
+    const olderRefresh = coordinator.refreshAutomaticProjectOwnership(secondChild);
+    await oldRefreshStarted.promise;
+
+    blockInspection = false;
+    registeredRoots = [parentProject, firstChild, thirdChild];
+    const newerRefresh = coordinator.refreshAutomaticProjectOwnership(thirdChild);
+    await newerRefresh;
+    releaseOldRefresh.resolve();
+    await olderRefresh;
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, thirdChild].sort());
+    assert.equal(coordinator.isWatching(parentProject), false);
+    assert.equal(coordinator.isWatching(secondChild), false);
+  } finally {
+    releaseOldRefresh.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("a topology refresh from an old generation cannot revive watchers after restart", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-delete-child-refresh-generation-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const oldRefreshStarted = deferred<void>();
+  const releaseOldRefresh = deferred<void>();
+  const watchedRoots = new Set<string>();
+  let blockInspection = false;
+  let registeredRoots = [parentProject, firstChild, secondChild];
+
+  class RestartTopologyCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new RestartTopologyCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+    async () => {
+      if (blockInspection) {
+        oldRefreshStarted.resolve();
+        await releaseOldRefresh.promise;
+      }
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    await coordinator.withProjectIndexPaused(secondChild, () => {
+      registeredRoots = [parentProject, firstChild];
+    });
+    blockInspection = true;
+    const oldRefresh = coordinator.refreshAutomaticProjectOwnership(secondChild);
+    await oldRefreshStarted.promise;
+
+    coordinator.stopAutomaticUpdates();
+    blockInspection = false;
+    registeredRoots = [firstChild];
+    await coordinator.startAutomaticUpdates();
+    releaseOldRefresh.resolve();
+    await oldRefresh;
+
+    assert.deepEqual([...watchedRoots], [firstChild]);
+    assert.equal(coordinator.isWatching(parentProject), false);
+    assert.equal(coordinator.isWatching(secondChild), false);
+  } finally {
+    releaseOldRefresh.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+for (const autoWatch of [false, true]) {
+  test(`new explicit registrations do not queue ownership refresh while automatic updates are inactive (autoWatch=${autoWatch})`, async () => {
+    const environment = await createTestProjectEnvironment({
+      "source.ts": "export const value = 1;",
+    });
+    environment.settings.autoWatch = autoWatch;
+    const coordinator = new IndexCoordinator(
+      environment.settings,
+      environment.store,
+      { debug() {}, info() {}, warn() {} } as never,
+      environment.embeddingProvider,
+      noOpWatchFactory,
+    );
+
+    try {
+      await coordinator.indexProject(environment.projectRootPath, "full");
+
+      const pendingRoots = (
+        coordinator as unknown as { pendingAutomaticOwnershipRefreshRoots: Set<string> }
+      ).pendingAutomaticOwnershipRefreshRoots;
+      assert.equal(pendingRoots.size, 0);
+    } finally {
+      coordinator.stopAutomaticUpdates();
+      await environment.cleanup();
+    }
+  });
+}
+
+test("an existing project retries a failed ownership refresh from its registration", async () => {
+  const environment = await createTestProjectEnvironment({
+    "parent.ts": "export const parent = true;",
+  });
+  const firstChild = path.join(environment.projectRootPath, "first-child");
+  const secondChild = path.join(environment.projectRootPath, "second-child");
+  const watchedRoots = new Set<string>();
+  let failNextProjectList = false;
+  let listProjectCalls = 0;
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const store = new Proxy(environment.store, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (property === "listProjects") {
+        return (...args: unknown[]) => {
+          listProjectCalls += 1;
+          if (failNextProjectList) {
+            failNextProjectList = false;
+            throw new Error("project list unavailable");
+          }
+          return (value as (...callArgs: unknown[]) => unknown).apply(target, args);
+        };
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await mkdir(firstChild);
+    await writeFile(path.join(firstChild, "first.ts"), "export const first = true;", "utf8");
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await coordinator.indexProject(firstChild, "full");
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.deepEqual([...watchedRoots].sort(), [environment.projectRootPath, firstChild].sort());
+
+    await mkdir(secondChild);
+    await writeFile(path.join(secondChild, "second.ts"), "export const second = true;", "utf8");
+    failNextProjectList = true;
+    await coordinator.indexProject(secondChild, "full");
+    const listCallsAfterFailure = listProjectCalls;
+    const pendingRoots = (
+      coordinator as unknown as { pendingAutomaticOwnershipRefreshRoots: Set<string> }
+    ).pendingAutomaticOwnershipRefreshRoots;
+    assert.equal(pendingRoots.has(secondChild), true);
+    assert.equal(coordinator.isWatching(environment.projectRootPath), true);
+
+    await coordinator.indexProject(secondChild, "full");
+
+    assert.equal(listProjectCalls, listCallsAfterFailure + 1);
+    assert.equal(pendingRoots.size, 0);
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(environment.projectRootPath), false);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("re-indexing an existing project does not refresh all automatic ownership", async () => {
+  const environment = await createTestProjectEnvironment({
+    "source.ts": "export const value = 1;",
+  });
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  let inspectionCalls = 0;
+  let listProjectCalls = 0;
+  const store = new Proxy(environment.store, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (property === "listProjects") {
+        return (...args: unknown[]) => {
+          listProjectCalls += 1;
+          return (value as (...callArgs: unknown[]) => unknown).apply(target, args);
+        };
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    async () => {
+      inspectionCalls += 1;
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    inspectionCalls = 0;
+    listProjectCalls = 0;
+
+    await coordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.equal(listProjectCalls, 0);
+    assert.equal(inspectionCalls, 0);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("periodic reconciliation refreshes aggregate ownership before indexing", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-periodic-hierarchy-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const watchedRoots = new Set<string>();
+  const indexedRoots: string[] = [];
+  let registeredRoots = [parentProject, firstChild];
+
+  class PeriodicHierarchyCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      indexedRoots.push(root);
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new PeriodicHierarchyCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.deepEqual([...watchedRoots].sort(), [parentProject, firstChild].sort());
+
+    indexedRoots.length = 0;
+    registeredRoots = [parentProject, firstChild, secondChild];
+    await coordinator.reconcileWatchedProjects("periodic");
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.deepEqual([...new Set(indexedRoots)].sort(), [firstChild, secondChild].sort());
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("startup reconciliation still indexes a clean unchanged Git project", async () => {
+  const fixture = await createPeriodicReconcileFixture();
+  try {
+    assert.ok(fixture.startupIndexRuns >= 1);
+    assert.equal(fixture.startupGitReads, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("startup reconciliation fully retries a persisted file failure", async () => {
+  const environment = await createTestProjectEnvironment({
+    "source.ts": "export const value = 1;",
+  });
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const initialIndex = await environment.indexCoordinator.indexProject(
+    environment.projectRootPath,
+    "full",
+  );
+  await recordPersistedIndexFailure(environment, initialIndex.projectId);
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    const latestEvent = environment.store.getLatestIndexEvent(initialIndex.projectId);
+    assert.equal(latestEvent?.failedFileCount, 0);
+    assert.equal(latestEvent?.indexedFiles, 1);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("explicit incremental indexing fully retries a persisted file failure", async () => {
+  const environment = await createTestProjectEnvironment({
+    "source.ts": "export const value = 1;",
+  });
+
+  try {
+    const initialIndex = await environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+    );
+    await recordPersistedIndexFailure(environment, initialIndex.projectId);
+
+    const result = await environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "incremental",
+    );
+
+    assert.equal(result.failedFileCount, 0);
+    assert.equal(result.indexedFiles, 1);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("incremental indexing forces a full retry while the persisted project is not ready", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+
+  try {
+    const initial = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    for (const status of ["indexing", "error"] as const) {
+      environment.store.upsertProject(
+        initial.projectId,
+        initial.project,
+        status,
+        new Date().toISOString(),
+      );
+
+      const recovered = await environment.indexCoordinator.indexProject(
+        environment.projectRootPath,
+        "incremental",
+      );
+      assert.equal(recovered.changedFiles, 1, `${status} did not force a full retry`);
+      assert.equal(environment.store.getProjectByRoot(environment.projectRootPath)?.status, "ready");
+    }
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("a failed file index stays non-ready and freshness retries it after the file recovers", async () => {
+  const source = "export const value = 1;\n";
+  const environment = await createTestProjectEnvironment({ "src/index.ts": source });
+  environment.settings.indexFreshness = "stale";
+  environment.settings.indexFreshnessSeconds = 60;
+  let removed = false;
+
+  try {
+    const failed = await environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      (event) => {
+        if (!removed && event.phase === "detect" && event.status === "done") {
+          removed = true;
+          unlinkSync(path.join(environment.projectRootPath, "src/index.ts"));
+        }
+      },
+    );
+    const failedProject = environment.store.getProjectByRoot(environment.projectRootPath);
+    const failedEvent = environment.store.getLatestIndexEvent(failed.projectId);
+
+    assert.equal(failed.failedFileCount, 1);
+    assert.equal(failedProject?.status, "error");
+    assert.equal(failedEvent?.failedFileCount, 1);
+
+    await writeFile(path.join(environment.projectRootPath, "src/index.ts"), source, "utf8");
+    const recovered = await environment.indexCoordinator.ensureFreshIndex(environment.projectRootPath);
+    assert.equal(recovered.failedFileCount, 0);
+    assert.equal(recovered.indexedFiles, 1);
+    assert.equal(environment.store.getProjectByRoot(environment.projectRootPath)?.status, "ready");
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("restart warmup cannot restore a persisted failed index event as fresh", async () => {
+  const source = "export const value = 1;\n";
+  const environment = await createTestProjectEnvironment({ "src/index.ts": source });
+  environment.settings.indexFreshness = "manual";
+  let removed = false;
+  let restartedCoordinator: IndexCoordinator | undefined;
+
+  try {
+    const failed = await environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      (event) => {
+        if (!removed && event.phase === "detect" && event.status === "done") {
+          removed = true;
+          unlinkSync(path.join(environment.projectRootPath, "src/index.ts"));
+        }
+      },
+    );
+    const persistedStats = environment.store.getProjectStats(environment.projectRootPath);
+    assert.equal(persistedStats?.status, "error");
+    assert.equal(persistedStats?.latestIndexEvent?.failedFileCount, 1);
+
+    await environment.indexCoordinator.close();
+    await writeFile(path.join(environment.projectRootPath, "src/index.ts"), source, "utf8");
+    restartedCoordinator = new IndexCoordinator(
+      environment.settings,
+      environment.store,
+      { debug() {}, info() {}, warn() {} } as never,
+      environment.embeddingProvider,
+      noOpWatchFactory,
+      undefined,
+      undefined,
+      createSynchronousIndexStorageWorker(environment.store),
+    );
+    restartedCoordinator.restoreFreshnessState(environment.projectRootPath, {
+      ...persistedStats!.latestIndexEvent!,
+      project: failed.project,
+      projectId: failed.projectId,
+      projectRootPath: failed.projectRootPath,
+    });
+
+    const recovered = await restartedCoordinator.ensureFreshIndex(environment.projectRootPath);
+    assert.equal(recovered.failedFileCount, 0);
+    assert.equal(recovered.indexedFiles, 1);
+    assert.equal(environment.store.getProjectByRoot(environment.projectRootPath)?.status, "ready");
+  } finally {
+    await restartedCoordinator?.close();
+    await environment.cleanup();
+  }
+});
+
+test("periodic reconciliation skips a clean unchanged Git project before indexing", async () => {
+  const fixture = await createPeriodicReconcileFixture();
+  try {
+    await fixture.coordinator.reconcileWatchedProjects("periodic");
+
+    assert.equal(fixture.indexRuns, 0);
+    assert.equal(fixture.gitReads, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("periodic reconciliation retries persisted file failures before allowing a clean Git skip", async () => {
+  const environment = await createTestProjectEnvironment({
+    "source.ts": "export const value = 1;",
+  });
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const initialIndex = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+  environment.store.updateProjectAfterIndex(
+    initialIndex.projectId,
+    new Date().toISOString(),
+    "ready",
+    false,
+    "indexed-commit",
+  );
+
+  const indexModes: Array<"full" | "incremental"> = [];
+  let gitReads = 0;
+  const recordEvent = (createdAt: string, failedFiles: Array<{ filePath: string; message: string }>) => {
+    environment.store.recordIndexEvent(initialIndex.projectId, {
+      changedFiles: 0,
+      chunkCount: 0,
+      createdAt,
+      deletedFiles: 0,
+      failedFiles,
+      indexedFiles: 0,
+      metadata: {
+        timings: { collectMs: 0, detectMs: 0, indexMs: 0, totalMs: 0, vectorMs: 0 },
+        vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" },
+      },
+      scannedFiles: 1,
+    });
+  };
+
+  class PersistentFailureCoordinator extends IndexCoordinator {
+    public override async indexProject(
+      root: string,
+      mode: "full" | "incremental" = "incremental",
+      onProgress?: Parameters<IndexCoordinator["indexProject"]>[2],
+      origin: "automatic" | "explicit" = "explicit",
+    ): Promise<IndexProjectResult> {
+      indexModes.push(mode);
+      return super.indexProject(root, mode, onProgress, origin);
+    }
+  }
+
+  const coordinator = new PersistentFailureCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    async () => ({ isDirectory: () => true }),
+    async () => {
+      gitReads += 1;
+      return cleanPeriodicGitStatus;
+    },
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    indexModes.length = 0;
+    gitReads = 0;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    recordEvent(new Date().toISOString(), [
+      { filePath: "source.ts", message: "parse failed" },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const watchStatus = coordinator.getWatchStatuses()[0];
+    assert.equal(watchStatus.dirty, false);
+    assert.equal(watchStatus.failureCount, 0);
+
+    await coordinator.reconcileWatchedProjects("periodic");
+    assert.deepEqual(indexModes, ["full"]);
+    assert.equal(gitReads, 0);
+    const latestEvent = environment.store.getLatestIndexEvent(initialIndex.projectId);
+    assert.equal(latestEvent?.failedFileCount, 0);
+    assert.equal(latestEvent?.indexedFiles, 1);
+
+    await coordinator.reconcileWatchedProjects("periodic");
+    assert.deepEqual(indexModes, ["full"]);
+    assert.equal(gitReads, 1);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("periodic reconciliation does not index after automatic updates stop during Git preflight", async () => {
+  const gitReadStarted = deferred<void>();
+  const releaseGitStatus = deferred<PeriodicGitStatus>();
+  const fixture = await createPeriodicReconcileFixture({
+    gitStatusReader: async () => {
+      gitReadStarted.resolve();
+      return releaseGitStatus.promise;
+    },
+  });
+  try {
+    const periodic = fixture.coordinator.reconcileWatchedProjects("periodic");
+    await gitReadStarted.promise;
+
+    fixture.coordinator.stopAutomaticUpdates();
+    releaseGitStatus.resolve(cleanPeriodicGitStatus);
+    await periodic;
+
+    assert.equal(fixture.indexRuns, 0);
+  } finally {
+    releaseGitStatus.resolve(cleanPeriodicGitStatus);
+    await fixture.cleanup();
+  }
+});
+
+const periodicFallbackCases: Array<{
+  expectedGitReads: number;
+  gitStatus?: PeriodicGitStatus;
+  gitStatusError?: Error;
+  lastIndexedCommit?: string | null;
+  name: string;
+  prepare?: (fixture: Awaited<ReturnType<typeof createPeriodicReconcileFixture>>) => void;
+}> = [
+  {
+    expectedGitReads: 0,
+    name: "a dirty watcher",
+    prepare: (fixture) => fixture.setWatchState({ dirty: true }),
+  },
+  {
+    expectedGitReads: 0,
+    name: "an inactive watcher that restarts",
+    prepare: (fixture) => fixture.setWatchState({ active: false }),
+  },
+  {
+    expectedGitReads: 0,
+    name: "an inactive watcher that cannot restart",
+    prepare: (fixture) => {
+      fixture.setWatchState({ active: false });
+      fixture.failWatcherRestarts();
+    },
+  },
+  {
+    expectedGitReads: 0,
+    name: "a watcher with prior failures",
+    prepare: (fixture) => fixture.setWatchState({ failureCount: 1 }),
+  },
+  {
+    expectedGitReads: 0,
+    name: "a watcher already processing changes",
+    prepare: (fixture) => fixture.setWatchState({ processing: true }),
+  },
+  {
+    expectedGitReads: 0,
+    name: "an in-flight project index",
+    prepare: (fixture) => fixture.setInFlight(),
+  },
+  {
+    expectedGitReads: 0,
+    lastIndexedCommit: null,
+    name: "missing persisted commit metadata",
+  },
+  {
+    expectedGitReads: 1,
+    gitStatus: {
+      changedFiles: [],
+      currentCommit: "current-commit",
+      isGitRepo: true,
+      reliable: false,
+      untrackedFiles: [],
+    },
+    name: "an unreliable Git status",
+  },
+  {
+    expectedGitReads: 1,
+    gitStatus: {
+      ...cleanPeriodicGitStatus,
+      changedFiles: ["source.ts"],
+    },
+    name: "a tracked Git change",
+  },
+  {
+    expectedGitReads: 1,
+    gitStatus: {
+      ...cleanPeriodicGitStatus,
+      untrackedFiles: ["new.ts"],
+    },
+    name: "an untracked Git file",
+  },
+  {
+    expectedGitReads: 1,
+    gitStatusError: new Error("git unavailable"),
+    name: "a Git status read failure",
+  },
+];
+
+for (const scenario of periodicFallbackCases) {
+  test(`periodic reconciliation keeps the normal index path for ${scenario.name}`, async () => {
+    const fixture = await createPeriodicReconcileFixture({
+      gitStatus: scenario.gitStatus,
+      gitStatusError: scenario.gitStatusError,
+      lastIndexedCommit: scenario.lastIndexedCommit,
+    });
+    try {
+      scenario.prepare?.(fixture);
+      await fixture.coordinator.reconcileWatchedProjects("periodic");
+
+      assert.equal(fixture.indexRuns, 1);
+      assert.equal(fixture.gitReads, scenario.expectedGitReads);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+}
+
+test("a superseded periodic refresh waits for the newer aggregate ownership snapshot", async () => {
+  const environment = await createTestProjectEnvironment({
+    "parent.ts": "export const parent = true;",
+  });
+  const firstChild = path.join(environment.projectRootPath, "first-child");
+  const secondChild = path.join(environment.projectRootPath, "second-child");
+  const oldInspection = deferred<{ isDirectory(): boolean } | null>();
+  const newInspection = deferred<{ isDirectory(): boolean } | null>();
+  const automaticRuns: string[] = [];
+  let blockOldRefresh = false;
+  let blockNewRefresh = false;
+  let oldInspectionStarted = false;
+  let newInspectionStarted = false;
+
+  class ConcurrentHierarchyCoordinator extends IndexCoordinator {
+    public override async indexProject(
+      root: string,
+      mode: "full" | "incremental" = "incremental",
+      onProgress?: Parameters<IndexCoordinator["indexProject"]>[2],
+      origin: "automatic" | "explicit" = "explicit",
+    ): Promise<IndexProjectResult> {
+      if (origin === "automatic") {
+        automaticRuns.push(root);
+        return cachedResult(root);
+      }
+      return super.indexProject(root, mode, onProgress, origin);
+    }
+  }
+
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const coordinator = new ConcurrentHierarchyCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    async (root) => {
+      if (blockOldRefresh && root === environment.projectRootPath && !oldInspectionStarted) {
+        oldInspectionStarted = true;
+        return oldInspection.promise;
+      }
+      if (blockNewRefresh && root === firstChild && !newInspectionStarted) {
+        newInspectionStarted = true;
+        return newInspection.promise;
+      }
+      return { isDirectory: () => true };
+    },
+  );
+  let periodic: Promise<void> | undefined;
+  let registration: Promise<IndexProjectResult> | undefined;
+
+  try {
+    await mkdir(firstChild);
+    await writeFile(path.join(firstChild, "first.ts"), "export const first = true;", "utf8");
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await coordinator.indexProject(firstChild, "full");
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    automaticRuns.length = 0;
+
+    blockOldRefresh = true;
+    periodic = coordinator.reconcileWatchedProjects("periodic");
+    await waitFor(() => oldInspectionStarted);
+
+    await mkdir(secondChild);
+    await writeFile(path.join(secondChild, "second.ts"), "export const second = true;", "utf8");
+    blockNewRefresh = true;
+    registration = coordinator.indexProject(secondChild, "full");
+    await waitFor(() => newInspectionStarted);
+
+    oldInspection.resolve({ isDirectory: () => true });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(automaticRuns, [], "periodic reconcile must wait for the newer ownership snapshot");
+
+    newInspection.resolve({ isDirectory: () => true });
+    await Promise.all([periodic, registration]);
+    assert.deepEqual([...new Set(automaticRuns)].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(environment.projectRootPath), false);
+  } finally {
+    oldInspection.resolve(null);
+    newInspection.resolve(null);
+    const pending: Promise<unknown>[] = [];
+    if (periodic) pending.push(periodic);
+    if (registration) pending.push(registration);
+    await Promise.allSettled(pending);
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("stopping a project during inspection keeps it out of automatic ownership", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-stop-during-refresh-"));
+  const inspection = deferred<{ isDirectory(): boolean } | null>();
+  let blockInspection = false;
+  let inspectionStarted = false;
+
+  class StopDuringRefreshCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new StopDuringRefreshCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+    async () => {
+      if (blockInspection && !inspectionStarted) {
+        inspectionStarted = true;
+        return inspection.promise;
+      }
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    blockInspection = true;
+    const periodic = coordinator.reconcileWatchedProjects("periodic");
+    await waitFor(() => inspectionStarted);
+
+    coordinator.stopWatching(projectRootPath);
+    inspection.resolve({ isDirectory: () => true });
+    await periodic;
+
+    const automaticProjectRoots = (coordinator as unknown as { automaticProjectRoots: Set<string> }).automaticProjectRoots;
+    assert.equal(automaticProjectRoots.has(projectRootPath), false);
+    assert.equal(coordinator.isWatching(projectRootPath), false);
+  } finally {
+    inspection.resolve(null);
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("a stale startup refresh cannot revive old watchers after automatic updates restart", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-hierarchy-restart-"));
+  const oldProject = path.join(tempDir, "old-project");
+  const newProject = path.join(tempDir, "new-project");
+  const oldInspection = deferred<{ isDirectory(): boolean } | null>();
+  const watchedRoots = new Set<string>();
+  let oldInspectionStarted = false;
+  let registeredRoots = [oldProject];
+
+  class RestartHierarchyCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new RestartHierarchyCoordinator(
+    { autoWatch: true, indexConcurrency: 1, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+    async (root) => {
+      if (root === oldProject) {
+        oldInspectionStarted = true;
+        return oldInspection.promise;
+      }
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(oldProject), mkdir(newProject)]);
+    const firstStart = coordinator.startAutomaticUpdates();
+    await waitFor(() => oldInspectionStarted);
+
+    coordinator.stopAutomaticUpdates();
+    registeredRoots = [newProject];
+    await coordinator.startAutomaticUpdates();
+    assert.deepEqual([...watchedRoots], [newProject]);
+
+    oldInspection.resolve({ isDirectory: () => true });
+    await firstStart;
+
+    assert.deepEqual([...watchedRoots], [newProject]);
+    assert.equal(coordinator.isWatching(oldProject), false);
+  } finally {
+    oldInspection.resolve(null);
+    coordinator.stopAutomaticUpdates();
+    await rm(tempDir, { force: true, recursive: true });
+  }
+});
+
+test("explicit indexing remains allowed for an automatically suppressed aggregate parent", async () => {
+  const environment = await createTestProjectEnvironment({
+    "parent.ts": "export const parent = true;",
+  });
+  const firstChild = path.join(environment.projectRootPath, "first-child");
+  const secondChild = path.join(environment.projectRootPath, "second-child");
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await Promise.all([
+      writeFile(path.join(firstChild, "first.ts"), "export const first = true;", "utf8"),
+      writeFile(path.join(secondChild, "second.ts"), "export const second = true;", "utf8"),
+    ]);
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await coordinator.indexProject(firstChild, "full");
+    await coordinator.indexProject(secondChild, "full");
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.equal(coordinator.isWatching(environment.projectRootPath), false);
+
+    const result = await coordinator.indexProject(environment.projectRootPath, "incremental");
+
+    assert.equal(result.projectRootPath, environment.projectRootPath);
+    assert.equal(coordinator.isWatching(environment.projectRootPath), false);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("explicit indexing restores automatic ownership after reusing an automatic in-flight index", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+
+  class BlockingEmbeddingProvider extends InMemoryEmbeddingProvider {
+    public blocked = false;
+
+    public override async embedBatch(texts: string[]): Promise<number[][]> {
+      if (this.blocked) {
+        embeddingStarted.resolve();
+        await releaseEmbedding.promise;
+      }
+      return super.embedBatch(texts);
+    }
+  }
+
+  const provider = new BlockingEmbeddingProvider();
+  const environment = await createTestProjectEnvironment(
+    { "source.ts": "export const value = 1;" },
+    provider,
+  );
+  environment.settings.autoWatch = true;
+  environment.settings.vectorIndexingMode = "eager";
+  environment.settings.watchReconcileSeconds = 0;
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    provider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    provider.blocked = true;
+    await writeFile(
+      path.join(environment.projectRootPath, "source.ts"),
+      "export const value = 2;",
+      "utf8",
+    );
+    await coordinator.startAutomaticUpdates();
+    await embeddingStarted.promise;
+
+    coordinator.stopWatching(environment.projectRootPath);
+    const explicitIndex = coordinator.indexProject(environment.projectRootPath, "incremental");
+    releaseEmbedding.resolve();
+    await explicitIndex;
+
+    const internal = coordinator as unknown as {
+      automaticProjectRoots: Set<string>;
+      suppressedProjectRoots: Set<string>;
+    };
+    assert.equal(coordinator.isWatching(environment.projectRootPath), true);
+    assert.equal(internal.automaticProjectRoots.has(environment.projectRootPath), true);
+    assert.equal(internal.suppressedProjectRoots.has(environment.projectRootPath), false);
+  } finally {
+    releaseEmbedding.resolve();
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
   }
 });
 
@@ -670,6 +2161,306 @@ test("failed paused project operations restore the previous watcher", async () =
   }
 });
 
+test("failed paused deletion does not restore a parent superseded by a newer ownership refresh", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-refresh-superseded-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+  const watchedRoots = new Set<string>();
+  let registeredRoots = [parentProject];
+
+  class SupersededPauseCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new SupersededPauseCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+    assert.deepEqual([...watchedRoots], [parentProject]);
+
+    const pausedDeletion = coordinator.withProjectIndexPaused(parentProject, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    registeredRoots = [parentProject, firstChild, secondChild];
+    await coordinator.refreshAutomaticProjectOwnership(secondChild);
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+
+    releaseOperation.resolve();
+    await assert.rejects(pausedDeletion, /delete failed/);
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(parentProject), false);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("failed paused deletion adopts aggregate ownership from a restarted generation", async () => {
+  const parentProject = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-refresh-restart-"));
+  const firstChild = path.join(parentProject, "first-child");
+  const secondChild = path.join(parentProject, "second-child");
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+  const watchedRoots = new Set<string>();
+  let registeredRoots = [parentProject];
+
+  class RestartedPauseCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new RestartedPauseCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    {
+      listProjects: () => registeredRoots.map((projectRootPath) => ({ projectRootPath })),
+    } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    (root) => {
+      watchedRoots.add(root);
+      return { close: () => { watchedRoots.delete(root); } };
+    },
+  );
+
+  try {
+    await Promise.all([mkdir(firstChild), mkdir(secondChild)]);
+    await coordinator.startAutomaticUpdates();
+    await coordinator.reconcileWatchedProjects("startup");
+
+    const pausedDeletion = coordinator.withProjectIndexPaused(parentProject, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    coordinator.stopAutomaticUpdates();
+    registeredRoots = [parentProject, firstChild, secondChild];
+    await coordinator.startAutomaticUpdates();
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+
+    releaseOperation.resolve();
+    await assert.rejects(pausedDeletion, /delete failed/);
+
+    assert.deepEqual([...watchedRoots].sort(), [firstChild, secondChild].sort());
+    assert.equal(coordinator.isWatching(parentProject), false);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(parentProject, { force: true, recursive: true });
+  }
+});
+
+test("failed paused operations preserve a concurrent user project stop", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-user-stop-"));
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+
+  class PausedUserStopCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new PausedUserStopCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    const paused = coordinator.withProjectIndexPaused(projectRootPath, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    coordinator.stopWatching(projectRootPath);
+    releaseOperation.resolve();
+    await assert.rejects(paused, /delete failed/);
+
+    const internal = coordinator as unknown as {
+      automaticProjectRoots: Set<string>;
+      suppressedProjectRoots: Set<string>;
+    };
+    assert.equal(coordinator.isWatching(projectRootPath), false);
+    assert.equal(internal.automaticProjectRoots.has(projectRootPath), false);
+    assert.equal(internal.suppressedProjectRoots.has(projectRootPath), true);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("failed paused operations preserve a concurrent user stop of all watchers", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-user-stop-all-"));
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+
+  class PausedUserStopAllCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new PausedUserStopAllCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    const paused = coordinator.withProjectIndexPaused(projectRootPath, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    coordinator.stopWatching();
+    releaseOperation.resolve();
+    await assert.rejects(paused, /delete failed/);
+
+    const internal = coordinator as unknown as {
+      automaticProjectRoots: Set<string>;
+      suppressedProjectRoots: Set<string>;
+    };
+    assert.equal(coordinator.isWatching(projectRootPath), false);
+    assert.equal(internal.automaticProjectRoots.has(projectRootPath), false);
+    assert.equal(internal.suppressedProjectRoots.has(projectRootPath), true);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("failed paused operations rejoin automatic ownership after automatic updates restart", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-restart-"));
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+
+  class PausedRestartCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new PausedRestartCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    const paused = coordinator.withProjectIndexPaused(projectRootPath, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    coordinator.stopAutomaticUpdates();
+    await coordinator.startAutomaticUpdates();
+    assert.equal(coordinator.isWatching(projectRootPath), false);
+    releaseOperation.resolve();
+    await assert.rejects(paused, /delete failed/);
+
+    const internal = coordinator as unknown as {
+      automaticProjectRoots: Set<string>;
+      suppressedProjectRoots: Set<string>;
+    };
+    assert.equal(coordinator.isWatching(projectRootPath), true);
+    assert.equal(internal.automaticProjectRoots.has(projectRootPath), true);
+    assert.equal(internal.suppressedProjectRoots.has(projectRootPath), false);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("failed paused operations do not revive watchers after automatic updates stop", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-stop-"));
+  const operationStarted = deferred<void>();
+  const releaseOperation = deferred<void>();
+
+  class PausedStopCoordinator extends IndexCoordinator {
+    public override async indexProject(root: string): Promise<IndexProjectResult> {
+      return cachedResult(root);
+    }
+  }
+
+  const coordinator = new PausedStopCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 0 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    assert.equal(coordinator.isWatching(projectRootPath), true);
+
+    const paused = coordinator.withProjectIndexPaused(projectRootPath, async () => {
+      operationStarted.resolve();
+      await releaseOperation.promise;
+      throw new Error("delete failed");
+    });
+    await operationStarted.promise;
+
+    coordinator.stopAutomaticUpdates();
+    releaseOperation.resolve();
+    await assert.rejects(paused, /delete failed/);
+
+    const automaticProjectRoots = (
+      coordinator as unknown as { automaticProjectRoots: Set<string> }
+    ).automaticProjectRoots;
+    assert.equal(coordinator.isWatching(projectRootPath), false);
+    assert.equal(automaticProjectRoots.has(projectRootPath), false);
+  } finally {
+    releaseOperation.resolve();
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
 test("cannot start a watcher while project indexing is paused", async () => {
   const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-pause-watch-"));
   const operationStarted = deferred<void>();
@@ -884,5 +2675,1027 @@ test("duplicate same-project index requests report deduped in-flight pressure", 
     await Promise.allSettled([first, second]);
   } finally {
     await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("in-flight diagnostics track the active phase without a progress callback", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+  const baseProvider = new InMemoryEmbeddingProvider();
+  const provider: EmbeddingProvider = {
+    ...baseProvider,
+    clearQueryCache: () => baseProvider.clearQueryCache(),
+    embed: (text) => baseProvider.embed(text),
+    embedBatch: async (texts) => {
+      embeddingStarted.resolve();
+      await releaseEmbedding.promise;
+      return baseProvider.embedBatch(texts);
+    },
+    embedQuery: (query, useCache) => baseProvider.embedQuery(query, useCache),
+    getDimension: () => baseProvider.getDimension(),
+    getModelName: () => baseProvider.getModelName(),
+    getQueryCacheStats: () => baseProvider.getQueryCacheStats(),
+  };
+  const environment = await createTestProjectEnvironment(
+    { "src/index.ts": "export const value = 1;\n" },
+    provider,
+  );
+  environment.settings.vectorIndexingMode = "eager";
+  let indexing: Promise<IndexProjectResult> | undefined;
+
+  try {
+    indexing = environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      undefined,
+      "automatic",
+    );
+    await embeddingStarted.promise;
+
+    const [info] = environment.indexCoordinator.getInFlightIndexInfo();
+    assert.equal(info.phase, "vector");
+    assert.equal(info.current, 0);
+    assert.equal(info.total, 1);
+    assert.equal(info.origin, "automatic");
+    assert.equal(typeof info.phaseElapsedMs, "number");
+    assert.equal(typeof info.queueMs, "number");
+    assert.ok(Number.isFinite(Date.parse(info.lastProgressAt)));
+  } finally {
+    releaseEmbedding.resolve();
+    await Promise.allSettled(indexing ? [indexing] : []);
+    await environment.cleanup();
+  }
+});
+
+test("in-flight diagnostics report requests waiting for the global index slot", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+  const baseProvider = new InMemoryEmbeddingProvider();
+  let embeddingCalls = 0;
+  const provider: EmbeddingProvider = {
+    ...baseProvider,
+    clearQueryCache: () => baseProvider.clearQueryCache(),
+    embed: (text) => baseProvider.embed(text),
+    embedBatch: async (texts) => {
+      embeddingCalls += 1;
+      if (embeddingCalls === 1) {
+        embeddingStarted.resolve();
+        await releaseEmbedding.promise;
+      }
+      return baseProvider.embedBatch(texts);
+    },
+    embedQuery: (query, useCache) => baseProvider.embedQuery(query, useCache),
+    getDimension: () => baseProvider.getDimension(),
+    getModelName: () => baseProvider.getModelName(),
+    getQueryCacheStats: () => baseProvider.getQueryCacheStats(),
+  };
+  const environment = await createTestProjectEnvironment(
+    { "src/first.ts": "export const first = 1;\n" },
+    provider,
+  );
+  environment.settings.indexConcurrency = 1;
+  environment.settings.vectorIndexingMode = "eager";
+  const secondProjectRootPath = path.join(environment.tempDir, "second-project");
+  await mkdir(path.join(secondProjectRootPath, "src"), { recursive: true });
+  await writeFile(path.join(secondProjectRootPath, "src/second.ts"), "export const second = 2;\n");
+  let firstIndex: Promise<IndexProjectResult> | undefined;
+  let secondIndex: Promise<IndexProjectResult> | undefined;
+
+  try {
+    firstIndex = environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    await embeddingStarted.promise;
+    secondIndex = environment.indexCoordinator.indexProject(secondProjectRootPath, "full");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const queued = environment.indexCoordinator
+      .getInFlightIndexInfo()
+      .find((info) => info.projectRootPath === secondProjectRootPath);
+    assert.ok(queued);
+    assert.equal(queued.phase, "queued");
+    assert.equal(queued.origin, "explicit");
+    assert.ok(queued.queueMs >= 0);
+    assert.ok(queued.phaseElapsedMs >= 0);
+  } finally {
+    releaseEmbedding.resolve();
+    await Promise.allSettled([firstIndex, secondIndex].filter(Boolean) as Array<Promise<IndexProjectResult>>);
+    await environment.cleanup();
+  }
+});
+
+test("same-project progress requests do not hide the active index diagnostics", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+  const baseProvider = new InMemoryEmbeddingProvider();
+  let embeddingCalls = 0;
+  const provider: EmbeddingProvider = {
+    ...baseProvider,
+    clearQueryCache: () => baseProvider.clearQueryCache(),
+    embed: (text) => baseProvider.embed(text),
+    embedBatch: async (texts) => {
+      embeddingCalls += 1;
+      if (embeddingCalls === 1) {
+        embeddingStarted.resolve();
+        await releaseEmbedding.promise;
+      }
+      return baseProvider.embedBatch(texts);
+    },
+    embedQuery: (query, useCache) => baseProvider.embedQuery(query, useCache),
+    getDimension: () => baseProvider.getDimension(),
+    getModelName: () => baseProvider.getModelName(),
+    getQueryCacheStats: () => baseProvider.getQueryCacheStats(),
+  };
+  const environment = await createTestProjectEnvironment(
+    { "src/index.ts": "export const value = 1;\n" },
+    provider,
+  );
+  environment.settings.vectorIndexingMode = "eager";
+  let activeIndex: Promise<IndexProjectResult> | undefined;
+  let queuedIndex: Promise<IndexProjectResult> | undefined;
+
+  try {
+    activeIndex = environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      undefined,
+      "automatic",
+    );
+    await embeddingStarted.promise;
+    queuedIndex = environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      () => {},
+      "explicit",
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const info = environment.indexCoordinator.getInFlightIndexInfo();
+    assert.equal(info.length, 2);
+    const active = info.find((entry) => entry.phase === "vector" && entry.origin === "automatic");
+    assert.ok(active);
+    assert.equal(active.queuedRequests, 1);
+    assert.ok(info.some((entry) => entry.phase === "queued" && entry.origin === "explicit"));
+  } finally {
+    releaseEmbedding.resolve();
+    await Promise.allSettled([activeIndex, queuedIndex].filter(Boolean) as Array<Promise<IndexProjectResult>>);
+    await environment.cleanup();
+  }
+});
+
+test("a timed-out reuse cannot remove a newer same-project tracker", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+  const reuseStarted = deferred<void>();
+  const releaseReuse = deferred<void>();
+  const baseProvider = new InMemoryEmbeddingProvider();
+  let embeddingCalls = 0;
+  const provider: EmbeddingProvider = {
+    ...baseProvider,
+    clearQueryCache: () => baseProvider.clearQueryCache(),
+    embed: (text) => baseProvider.embed(text),
+    embedBatch: async (texts) => {
+      embeddingCalls += 1;
+      if (embeddingCalls === 1) {
+        embeddingStarted.resolve();
+        await releaseEmbedding.promise;
+      }
+      return baseProvider.embedBatch(texts);
+    },
+    embedQuery: (query, useCache) => baseProvider.embedQuery(query, useCache),
+    getDimension: () => baseProvider.getDimension(),
+    getModelName: () => baseProvider.getModelName(),
+    getQueryCacheStats: () => baseProvider.getQueryCacheStats(),
+  };
+  const environment = await createTestProjectEnvironment(
+    { "src/index.ts": "export const value = 1;\n" },
+    provider,
+  );
+  environment.settings.vectorIndexingMode = "eager";
+  const coordinatorInternals = environment.indexCoordinator as unknown as {
+    withTimeout: <T>(promise: Promise<T>, timeoutMs: number, message: string) => Promise<T>;
+  };
+  coordinatorInternals.withTimeout = async <T>(): Promise<T> => {
+    reuseStarted.resolve();
+    await releaseReuse.promise;
+    throw new Error("forced reuse timeout");
+  };
+  let activeIndex: Promise<IndexProjectResult> | undefined;
+  let reusedIndex: Promise<IndexProjectResult> | undefined;
+  let queuedIndex: Promise<IndexProjectResult> | undefined;
+
+  try {
+    activeIndex = environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    await embeddingStarted.promise;
+    reusedIndex = environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    await reuseStarted.promise;
+    queuedIndex = environment.indexCoordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      () => {},
+      "automatic",
+    );
+    releaseReuse.resolve();
+    await waitFor(() => environment.indexCoordinator.getInFlightIndexInfo().length === 3);
+
+    const info = environment.indexCoordinator.getInFlightIndexInfo();
+    assert.ok(info.some((entry) => entry.phase === "vector" && entry.origin === "explicit"));
+    assert.ok(info.some((entry) => entry.phase === "queued" && entry.origin === "automatic"));
+  } finally {
+    releaseReuse.resolve();
+    releaseEmbedding.resolve();
+    await Promise.allSettled([activeIndex, reusedIndex, queuedIndex].filter(Boolean) as Array<Promise<IndexProjectResult>>);
+    await environment.cleanup();
+  }
+});
+
+test("a reuse timeout keeps the underlying running tracker visible", async () => {
+  const embeddingStarted = deferred<void>();
+  const releaseEmbedding = deferred<void>();
+  const baseProvider = new InMemoryEmbeddingProvider();
+  let embeddingCalls = 0;
+  const provider: EmbeddingProvider = {
+    ...baseProvider,
+    clearQueryCache: () => baseProvider.clearQueryCache(),
+    embed: (text) => baseProvider.embed(text),
+    embedBatch: async (texts) => {
+      embeddingCalls += 1;
+      if (embeddingCalls === 1) {
+        embeddingStarted.resolve();
+        await releaseEmbedding.promise;
+      }
+      return baseProvider.embedBatch(texts);
+    },
+    embedQuery: (query, useCache) => baseProvider.embedQuery(query, useCache),
+    getDimension: () => baseProvider.getDimension(),
+    getModelName: () => baseProvider.getModelName(),
+    getQueryCacheStats: () => baseProvider.getQueryCacheStats(),
+  };
+  const environment = await createTestProjectEnvironment(
+    { "src/index.ts": "export const value = 1;\n" },
+    provider,
+  );
+  environment.settings.vectorIndexingMode = "eager";
+  const coordinatorInternals = environment.indexCoordinator as unknown as {
+    withTimeout: <T>(promise: Promise<T>, timeoutMs: number, message: string) => Promise<T>;
+  };
+  coordinatorInternals.withTimeout = async <T>(): Promise<T> => {
+    throw new Error("forced reuse timeout");
+  };
+  let activeIndex: Promise<IndexProjectResult> | undefined;
+  let restartedIndex: Promise<IndexProjectResult> | undefined;
+
+  try {
+    activeIndex = environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    await embeddingStarted.promise;
+    restartedIndex = environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    await waitFor(() => environment.indexCoordinator.getInFlightIndexInfo().some((entry) => entry.phase === "queued"));
+
+    assert.ok(
+      environment.indexCoordinator
+        .getInFlightIndexInfo()
+        .some((entry) => entry.phase === "vector" && entry.origin === "explicit"),
+    );
+  } finally {
+    releaseEmbedding.resolve();
+    await Promise.allSettled([activeIndex, restartedIndex].filter(Boolean) as Array<Promise<IndexProjectResult>>);
+    await environment.cleanup();
+  }
+});
+
+test("completed indexing persists detailed phase timings", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const originalWriteBatch = environment.store.writeFileIndexBatch.bind(environment.store);
+  environment.store.writeFileIndexBatch = (...args) => {
+    blockFor(20);
+    return originalWriteBatch(...args);
+  };
+
+  try {
+    const result = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    const persisted = environment.store.getLatestIndexEvent(result.projectId);
+
+    for (const timing of [
+      "parseMs",
+      "writeMs",
+      "symbolGraphMs",
+      "semanticMs",
+      "finalizeMs",
+      "maxWriteBatchMs",
+    ] as const) {
+      assert.equal(typeof result.timings[timing], "number", `${timing} is missing from the result`);
+    }
+    assert.ok((result.timings.maxWriteBatchMs ?? 0) >= 15);
+    assert.ok((result.timings.writeMs ?? 0) >= (result.timings.maxWriteBatchMs ?? 0));
+    assert.deepEqual(persisted?.timings, result.timings);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("SQLite project writes do not block the main event loop behind a database write lock", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+  );
+  let lockWorker: Worker | undefined;
+  let timerDelayMs = Number.POSITIVE_INFINITY;
+  let timerPromise: Promise<void> | undefined;
+
+  try {
+    lockWorker = await holdDatabaseWriteLock(environment.settings.databasePath, 350);
+    await coordinator.indexProject(environment.projectRootPath, "full", (event) => {
+      if (!timerPromise && event.phase === "prepare" && event.status === "start" && event.total !== undefined) {
+        const timerStartedAt = Date.now();
+        timerPromise = new Promise<void>((resolve) => setTimeout(() => {
+          timerDelayMs = Date.now() - timerStartedAt;
+          resolve();
+        }, 10));
+      }
+    });
+    await timerPromise;
+
+    assert.ok(timerDelayMs < 200, `main event loop timer was delayed ${timerDelayMs}ms`);
+  } finally {
+    await coordinator.close();
+    await lockWorker?.terminate();
+    await environment.cleanup();
+  }
+});
+
+test("existing file snapshots do not materialize on the main event loop", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const originalListProjectFiles = environment.store.listProjectFiles.bind(environment.store);
+  let mainThreadReads = 0;
+  let timerDelayMs = Number.POSITIVE_INFINITY;
+  let timerPromise: Promise<void> | undefined;
+  environment.store.listProjectFiles = (...args) => {
+    mainThreadReads += 1;
+    blockFor(350);
+    return originalListProjectFiles(...args);
+  };
+  const indexStorageWorker = {
+    acquireLease() {},
+    async close() {},
+    async deleteFiles(projectId: string, relativePaths: string[]) {
+      environment.store.deleteFiles(projectId, relativePaths);
+    },
+    async ensureSemanticIndex(projectId: string) {
+      environment.store.ensureSemanticIndex(projectId);
+    },
+    async finalizeProjectIndex(projectId: string, finalization: Parameters<typeof environment.store.finalizeProjectIndex>[1]) {
+      return environment.store.finalizeProjectIndex(projectId, finalization);
+    },
+    async prepareProjectIndex(projectId: string, project: Parameters<typeof environment.store.upsertProject>[1], timestamp: string) {
+      environment.store.upsertProject(projectId, project, "indexing", timestamp);
+      const existingFiles = originalListProjectFiles(projectId);
+      const timerStartedAt = Date.now();
+      timerPromise = new Promise<void>((resolve) => setTimeout(() => {
+        timerDelayMs = Date.now() - timerStartedAt;
+        resolve();
+      }, 10));
+      return { existingFiles };
+    },
+    releaseLease() {},
+    async resolveSymbolGraph(projectId: string, changedFileIds: string[]) {
+      environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async writeChunkVectors(entries: Parameters<typeof environment.store.writeChunkVectors>[0], projectId: string) {
+      environment.store.writeChunkVectors(entries, projectId);
+    },
+    async writeFileIndexBatch(
+      projectId: string,
+      files: Parameters<typeof environment.store.writeFileIndexBatch>[1],
+      indexedAt: string,
+    ) {
+      environment.store.writeFileIndexBatch(projectId, files, indexedAt);
+    },
+  } as unknown as IndexStorageWorker;
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    indexStorageWorker,
+  );
+
+  try {
+    await coordinator.indexProject(environment.projectRootPath, "full");
+    await timerPromise;
+
+    assert.ok(timerDelayMs < 200, `main event loop timer was delayed ${timerDelayMs}ms`);
+    assert.equal(mainThreadReads, 0);
+  } finally {
+    await coordinator.close();
+    await environment.cleanup();
+  }
+});
+
+test("coordinator awaits the injected index worker and preserves progress and timings", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  environment.settings.vectorIndexingMode = "eager";
+  const calls: string[] = [];
+  const events: string[] = [];
+  let activeLeases = 0;
+  let closed = false;
+  const delay = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const indexStorageWorker: IndexStorageWorker = {
+    acquireLease() {
+      activeLeases += 1;
+      calls.push("acquireLease");
+    },
+    async close() {
+      closed = true;
+      calls.push("close");
+    },
+    async deleteFiles(projectId, relativePaths) {
+      calls.push("deleteFiles");
+      await delay();
+      environment.store.deleteFiles(projectId, relativePaths);
+    },
+    async ensureSemanticIndex(projectId) {
+      calls.push("ensureSemanticIndex");
+      await delay();
+      environment.store.ensureSemanticIndex(projectId);
+    },
+    async finalizeProjectIndex(projectId, finalization) {
+      calls.push("finalizeProjectIndex");
+      await delay();
+      return environment.store.finalizeProjectIndex(projectId, finalization);
+    },
+    async prepareProjectIndex(projectId, project, timestamp) {
+      calls.push("prepareProjectIndex");
+      await delay();
+      environment.store.upsertProject(projectId, project, "indexing", timestamp);
+      return { existingFiles: environment.store.listProjectFiles(projectId) };
+    },
+    releaseLease() {
+      activeLeases -= 1;
+      calls.push("releaseLease");
+    },
+    async resolveSymbolGraph(projectId, changedFileIds) {
+      calls.push("resolveSymbolGraph");
+      await delay();
+      environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async writeChunkVectors(entries, projectId) {
+      calls.push("writeChunkVectors");
+      await delay();
+      environment.store.writeChunkVectors(entries, projectId);
+    },
+    async writeFileIndexBatch(projectId, files, indexedAt) {
+      calls.push("writeFileIndexBatch");
+      await delay();
+      environment.store.writeFileIndexBatch(projectId, files, indexedAt);
+    },
+  };
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    indexStorageWorker,
+  );
+
+  try {
+    const result = await coordinator.indexProject(
+      environment.projectRootPath,
+      "full",
+      (event) => events.push(`${event.phase}:${event.status}`),
+    );
+
+    assert.deepEqual(calls.slice(0, -1), [
+      "acquireLease",
+      "prepareProjectIndex",
+      "deleteFiles",
+      "writeFileIndexBatch",
+      "writeChunkVectors",
+      "resolveSymbolGraph",
+      "ensureSemanticIndex",
+      "finalizeProjectIndex",
+    ]);
+    assert.equal(calls.at(-1), "releaseLease");
+    assert.equal(activeLeases, 0);
+    assert.ok((result.timings.writeMs ?? 0) >= 30);
+    assert.ok((result.timings.symbolGraphMs ?? 0) >= 15);
+    assert.ok((result.timings.semanticMs ?? 0) >= 15);
+    assert.ok(events.includes("index:done"));
+    assert.ok(events.includes("symbolGraph:done"));
+    assert.ok(events.includes("semantic:done"));
+  } finally {
+    await coordinator.close();
+    assert.equal(closed, true);
+    await environment.cleanup();
+  }
+});
+
+test("semantic startup warmup releases its worker lease after failure and still closes", async () => {
+  let activeLeases = 0;
+  let closed = false;
+  const indexStorageWorker = {
+    acquireLease() {
+      activeLeases += 1;
+    },
+    async close() {
+      closed = true;
+    },
+    async ensureSemanticIndex() {
+      throw new Error("semantic warmup failed");
+    },
+    releaseLease() {
+      activeLeases -= 1;
+    },
+  } as unknown as IndexStorageWorker;
+  const coordinator = new IndexCoordinator(
+    { indexConcurrency: 1 } as Settings,
+    {} as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    indexStorageWorker,
+  );
+
+  await assert.rejects(coordinator.ensureSemanticIndex("project"), /semantic warmup failed/);
+  assert.equal(activeLeases, 0);
+  await coordinator.close();
+  assert.equal(closed, true);
+});
+
+test("closed coordinator rejects automatic update restart without leaking watchers or timers", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-closed-auto-watch-"));
+  let watcherStarts = 0;
+  let watcherCloses = 0;
+  const coordinator = new IndexCoordinator(
+    { autoWatch: true, watchReconcileSeconds: 60 } as unknown as Settings,
+    { listProjects: () => [{ projectRootPath }] } as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    () => {
+      watcherStarts += 1;
+      return {
+        close() {
+          watcherCloses += 1;
+        },
+      };
+    },
+    async () => ({ isDirectory: () => true }),
+  );
+
+  try {
+    const firstClose = coordinator.close();
+    await firstClose;
+    let startError: unknown;
+    try {
+      await coordinator.startAutomaticUpdates();
+    } catch (error) {
+      startError = error;
+    }
+
+    const secondClose = coordinator.close();
+    await secondClose;
+
+    assert.equal(secondClose, firstClose);
+    assert.equal(watcherStarts, 0);
+    assert.equal(watcherCloses, 0);
+    assert.equal(coordinator.isWatching(), false);
+    assert.equal(
+      (coordinator as unknown as { reconciliationTimer?: NodeJS.Timeout }).reconciliationTimer,
+      undefined,
+    );
+    assert.equal((startError as { code?: string } | undefined)?.code, "INDEX_COORDINATOR_CLOSED");
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("closed coordinator rejects manual watcher startup without leaking on repeated close", async () => {
+  const projectRootPath = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-closed-manual-watch-"));
+  let watcherStarts = 0;
+  let watcherCloses = 0;
+  const coordinator = new IndexCoordinator(
+    { autoWatch: false } as unknown as Settings,
+    {} as never,
+    { debug() {}, info() {}, warn() {} } as never,
+    {} as EmbeddingProvider,
+    () => {
+      watcherStarts += 1;
+      return {
+        close() {
+          watcherCloses += 1;
+        },
+      };
+    },
+  );
+
+  try {
+    const firstClose = coordinator.close();
+    await firstClose;
+    let startError: unknown;
+    try {
+      coordinator.startWatching(projectRootPath);
+    } catch (error) {
+      startError = error;
+    }
+
+    const secondClose = coordinator.close();
+    await secondClose;
+
+    assert.equal(secondClose, firstClose);
+    assert.equal(watcherStarts, 0);
+    assert.equal(watcherCloses, 0);
+    assert.equal(coordinator.isWatching(), false);
+    assert.equal((startError as { code?: string } | undefined)?.code, "INDEX_COORDINATOR_CLOSED");
+  } finally {
+    coordinator.stopWatching();
+    await rm(projectRootPath, { force: true, recursive: true });
+  }
+});
+
+test("close drains an active index before closing its storage worker", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const writeStarted = deferred<void>();
+  const releaseWrite = deferred<void>();
+  const calls: string[] = [];
+  let workerClosed = false;
+  const indexStorageWorker: IndexStorageWorker = {
+    acquireLease() {
+      calls.push("acquireLease");
+    },
+    async close() {
+      workerClosed = true;
+      calls.push("close");
+    },
+    async deleteFiles(projectId, relativePaths) {
+      environment.store.deleteFiles(projectId, relativePaths);
+    },
+    async ensureSemanticIndex(projectId) {
+      calls.push("ensureSemanticIndex");
+      environment.store.ensureSemanticIndex(projectId);
+    },
+    async finalizeProjectIndex(projectId, finalization) {
+      calls.push("finalizeProjectIndex");
+      return environment.store.finalizeProjectIndex(projectId, finalization);
+    },
+    async prepareProjectIndex(projectId, project, timestamp) {
+      environment.store.upsertProject(projectId, project, "indexing", timestamp);
+      return { existingFiles: environment.store.listProjectFiles(projectId) };
+    },
+    releaseLease() {
+      calls.push("releaseLease");
+    },
+    async resolveSymbolGraph(projectId, changedFileIds) {
+      calls.push("resolveSymbolGraph");
+      environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async writeChunkVectors(entries, projectId) {
+      environment.store.writeChunkVectors(entries, projectId);
+    },
+    async writeFileIndexBatch(projectId, files, indexedAt) {
+      calls.push("writeFileIndexBatch");
+      writeStarted.resolve();
+      await releaseWrite.promise;
+      environment.store.writeFileIndexBatch(projectId, files, indexedAt);
+    },
+  };
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    indexStorageWorker,
+  );
+  let indexing: Promise<IndexProjectResult> | undefined;
+  let closing: Promise<void> | undefined;
+
+  try {
+    indexing = coordinator.indexProject(environment.projectRootPath, "full");
+    await writeStarted.promise;
+    let closeSettled = false;
+    closing = coordinator.close().then(() => {
+      closeSettled = true;
+    });
+    const rejectedNewIndex = assert.rejects(
+      coordinator.indexProject(environment.projectRootPath, "full"),
+      /closing|closed/i,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(closeSettled, false);
+    assert.equal(workerClosed, false);
+
+    releaseWrite.resolve();
+    const result = await indexing;
+    await Promise.all([closing, rejectedNewIndex]);
+    assert.equal(environment.store.getProjectByRoot(environment.projectRootPath)?.status, "ready");
+    assert.ok(calls.includes("resolveSymbolGraph"));
+    assert.ok(calls.includes("ensureSemanticIndex"));
+    assert.deepEqual(calls.slice(-2), ["releaseLease", "close"]);
+    assert.equal(result.changedFiles, 1);
+  } finally {
+    releaseWrite.resolve();
+    await Promise.allSettled([indexing, closing].filter(Boolean) as Promise<unknown>[]);
+    await coordinator.close();
+    await environment.cleanup();
+  }
+});
+
+test("close force closes after a bounded drain grace and leaves recovery state non-ready", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const writeStarted = deferred<void>();
+  let rejectWrite!: (error: Error) => void;
+  const blockedWrite = new Promise<void>((_resolve, reject) => {
+    rejectWrite = reject;
+  });
+  const warnings: Array<Record<string, unknown> | undefined> = [];
+  let workerClosed = false;
+  const indexStorageWorker: IndexStorageWorker = {
+    acquireLease() {},
+    async close() {
+      workerClosed = true;
+      rejectWrite(new Error("forced worker close"));
+    },
+    async deleteFiles(projectId, relativePaths) {
+      environment.store.deleteFiles(projectId, relativePaths);
+    },
+    async ensureSemanticIndex(projectId) {
+      environment.store.ensureSemanticIndex(projectId);
+    },
+    async finalizeProjectIndex(projectId, finalization) {
+      return environment.store.finalizeProjectIndex(projectId, finalization);
+    },
+    async prepareProjectIndex(projectId, project, timestamp) {
+      environment.store.upsertProject(projectId, project, "indexing", timestamp);
+      return { existingFiles: environment.store.listProjectFiles(projectId) };
+    },
+    releaseLease() {},
+    async resolveSymbolGraph(projectId, changedFileIds) {
+      environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async writeChunkVectors(entries, projectId) {
+      environment.store.writeChunkVectors(entries, projectId);
+    },
+    async writeFileIndexBatch() {
+      writeStarted.resolve();
+      await blockedWrite;
+    },
+  };
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn(_message: string, meta?: Record<string, unknown>) { warnings.push(meta); } } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    indexStorageWorker,
+  );
+  (coordinator as unknown as { closeDrainTimeoutMs: number }).closeDrainTimeoutMs = 25;
+  const indexing = coordinator.indexProject(environment.projectRootPath, "full");
+  const observedIndex = indexing.then(
+    () => null,
+    (error: Error) => error,
+  );
+  let closing: Promise<void> | undefined;
+
+  try {
+    await writeStarted.promise;
+    closing = coordinator.close();
+    const closeOutcome = await Promise.race([
+      closing.then(() => "closed" as const),
+      new Promise<"timed-out">((resolve) => setTimeout(() => resolve("timed-out"), 150)),
+    ]);
+
+    assert.equal(closeOutcome, "closed");
+    assert.equal(workerClosed, true);
+    assert.match((await observedIndex)?.message ?? "", /forced worker close/);
+    assert.equal(environment.store.getProjectByRoot(environment.projectRootPath)?.status, "indexing");
+    assert.ok(warnings.some((meta) => meta?.reason === "drain-timeout"));
+  } finally {
+    rejectWrite(new Error("test cleanup"));
+    await Promise.allSettled([indexing, closing].filter(Boolean) as Promise<unknown>[]);
+    await coordinator.close();
+    await environment.cleanup();
+  }
+});
+
+test("vector SQLite writes are attributed to vector and write timings", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  environment.settings.vectorIndexingMode = "eager";
+  const originalWriteChunkVectors = environment.store.writeChunkVectors.bind(environment.store);
+  environment.store.writeChunkVectors = (...args) => {
+    blockFor(35);
+    return originalWriteChunkVectors(...args);
+  };
+
+  try {
+    const result = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.ok(result.timings.vectorMs >= 30);
+    assert.ok((result.timings.writeMs ?? 0) >= 30);
+    assert.ok((result.timings.maxWriteBatchMs ?? 0) >= 30);
+    assert.deepEqual(environment.store.getLatestIndexEvent(result.projectId)?.timings, result.timings);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("index finalization invalidates the main vector cache without SQL reconciliation", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  environment.settings.vectorIndexingMode = "eager";
+
+  try {
+    const first = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+    const modelName = environment.embeddingProvider.getModelName();
+    const firstVersion = environment.store.getProjectByRoot(environment.projectRootPath)?.index_version;
+    assert.ok(firstVersion);
+    const warmed = environment.store.getProjectVectors(first.projectId, modelName, firstVersion);
+    const cached = environment.store.getProjectVectors(first.projectId, modelName, firstVersion);
+    assert.equal(cached.cacheHit, true);
+    const firstEmbedding = Array.from(warmed.vectors[0]?.embedding ?? []);
+
+    environment.store.reconcileVectorCacheAfterIndex = () => {
+      throw new Error("main-thread SQL vector reconciliation was called");
+    };
+    await writeFile(
+      path.join(environment.projectRootPath, "src/index.ts"),
+      "export const value = 2;\n",
+      "utf8",
+    );
+    await environment.indexCoordinator.indexProject(environment.projectRootPath, "incremental");
+
+    const secondVersion = environment.store.getProjectByRoot(environment.projectRootPath)?.index_version;
+    assert.ok(secondVersion);
+    const reloaded = environment.store.getProjectVectors(first.projectId, modelName, secondVersion);
+    assert.equal(reloaded.cacheHit, false);
+    assert.notDeepEqual(Array.from(reloaded.vectors[0]?.embedding ?? []), firstEmbedding);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("post-detection preparation latency is attributed before parsing", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const originalListProjectFiles = environment.store.listProjectFiles.bind(environment.store);
+  environment.store.listProjectFiles = (...args) => {
+    blockFor(35);
+    return originalListProjectFiles(...args);
+  };
+
+  try {
+    const result = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.ok((result.timings.prepareMs ?? 0) >= 30);
+    assert.ok(result.timings.indexMs >= (result.timings.prepareMs ?? 0));
+    assert.ok(result.timings.totalMs >= (result.timings.prepareMs ?? 0));
+    assert.deepEqual(environment.store.getLatestIndexEvent(result.projectId)?.timings, result.timings);
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("symbol graph latency is attributed before total indexing time completes", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export function answer() { return 42; }\n",
+  });
+  const originalResolveSymbolGraph = environment.store.resolveSymbolGraph.bind(environment.store);
+  environment.store.resolveSymbolGraph = (...args) => {
+    blockFor(30);
+    return originalResolveSymbolGraph(...args);
+  };
+
+  try {
+    const result = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.ok((result.timings.symbolGraphMs ?? 0) >= 25);
+    assert.ok(result.timings.indexMs >= (result.timings.symbolGraphMs ?? 0));
+    assert.ok(result.timings.totalMs >= (result.timings.symbolGraphMs ?? 0));
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("semantic latency is attributed before total indexing time completes", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export function answer() { return 42; }\n",
+  });
+  const originalEnsureSemanticIndex = environment.store.ensureSemanticIndex.bind(environment.store);
+  environment.store.ensureSemanticIndex = (...args) => {
+    blockFor(30);
+    return originalEnsureSemanticIndex(...args);
+  };
+
+  try {
+    const result = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.ok((result.timings.semanticMs ?? 0) >= 25);
+    assert.ok(result.timings.indexMs >= (result.timings.semanticMs ?? 0));
+    assert.ok(result.timings.totalMs >= (result.timings.semanticMs ?? 0));
+  } finally {
+    await environment.cleanup();
+  }
+});
+
+test("automatic ownership refresh latency is included in finalization timings", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  environment.settings.autoWatch = true;
+  environment.settings.watchReconcileSeconds = 0;
+  let delayInspection = false;
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    async () => {
+      if (delayInspection) {
+        blockFor(30);
+      }
+      return { isDirectory: () => true };
+    },
+  );
+
+  try {
+    await coordinator.startAutomaticUpdates();
+    delayInspection = true;
+    const result = await coordinator.indexProject(environment.projectRootPath, "full");
+
+    assert.ok((result.timings.finalizeMs ?? 0) >= 25);
+    assert.ok(result.timings.indexMs >= (result.timings.finalizeMs ?? 0));
+    assert.ok(result.timings.totalMs >= (result.timings.finalizeMs ?? 0));
+    assert.deepEqual(environment.store.getLatestIndexEvent(result.projectId)?.timings, result.timings);
+  } finally {
+    coordinator.stopAutomaticUpdates();
+    await environment.cleanup();
+  }
+});
+
+test("mapInBatches yields to timers before starting a later batch", async () => {
+  let timerFired = false;
+
+  await mapInBatches([1, 2], 1, async (item) => {
+    if (item === 1) {
+      setTimeout(() => {
+        timerFired = true;
+      }, 0);
+    } else {
+      assert.equal(timerFired, true);
+    }
+    return item;
+  });
+});
+
+test("mapInBatches preserves input for invalid batch sizes", async () => {
+  for (const batchSize of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -5]) {
+    const result = await mapInBatches([1, 2, 3], batchSize, async (item) => item * 2);
+    assert.deepEqual(result, [2, 4, 6], `batchSize=${String(batchSize)}`);
+  }
+});
+
+test("mapInBatches still yields for invalid batch sizes", async () => {
+  for (const batchSize of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -5]) {
+    let timerFired = false;
+    await mapInBatches([1, 2], batchSize, async (item) => {
+      if (item === 1) {
+        setTimeout(() => {
+          timerFired = true;
+        }, 0);
+      }
+      return item;
+    });
+    assert.equal(timerFired, true, `batchSize=${String(batchSize)}`);
   }
 });

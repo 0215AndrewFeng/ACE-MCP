@@ -14,16 +14,40 @@ const DEFAULT_QUERY = "RefundService";
 const DEFAULT_ITERATIONS = 5;
 const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_ACTIVE_WAIT_TIMEOUT_MS = 30_000;
+const DEFAULT_ACTIVE_WINDOW_TIMEOUT_MS = 60_000;
+const DEFAULT_ACTIVE_SAMPLE_COUNT = 20;
+const DEFAULT_HEALTH_P95_THRESHOLD_MS = 1_000;
+const DEFAULT_RESOLVE_P95_THRESHOLD_MS = 2_000;
+const DEFAULT_MAX_TIMEOUTS = 0;
+const ACTIVE_POLL_INTERVAL_MS = 25;
+const ACTIVE_INDEX_PHASES = new Set([
+  "prepare",
+  "collect",
+  "detect",
+  "parse",
+  "index",
+  "vector",
+  "symbolGraph",
+  "semantic",
+  "finalize",
+]);
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function parseArgs(argv) {
   const options = {
+    activeWaitTimeoutMs: DEFAULT_ACTIVE_WAIT_TIMEOUT_MS,
+    activeWindowTimeoutMs: DEFAULT_ACTIVE_WINDOW_TIMEOUT_MS,
     baseUrl: process.env.ACE_MCP_BENCHMARK_BASE_URL || DEFAULT_BASE_URL,
     concurrency: DEFAULT_CONCURRENCY,
+    duringIndex: false,
+    healthP95ThresholdMs: DEFAULT_HEALTH_P95_THRESHOLD_MS,
     iterations: DEFAULT_ITERATIONS,
     json: false,
+    maxTimeouts: DEFAULT_MAX_TIMEOUTS,
     projectRootPath: process.cwd(),
     query: DEFAULT_QUERY,
+    resolveP95ThresholdMs: DEFAULT_RESOLVE_P95_THRESHOLD_MS,
     smoke: false,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -39,6 +63,12 @@ function parseArgs(argv) {
     };
 
     switch (arg) {
+      case "--active-wait-timeout-ms":
+        options.activeWaitTimeoutMs = parsePositiveInteger(next(), arg);
+        break;
+      case "--active-window-timeout-ms":
+        options.activeWindowTimeoutMs = parsePositiveInteger(next(), arg);
+        break;
       case "--base-url":
         options.baseUrl = next().replace(/\/$/, "");
         break;
@@ -48,14 +78,26 @@ function parseArgs(argv) {
       case "--iterations":
         options.iterations = parsePositiveInteger(next(), arg);
         break;
+      case "--during-index":
+        options.duringIndex = true;
+        break;
+      case "--health-p95-threshold-ms":
+        options.healthP95ThresholdMs = parsePositiveInteger(next(), arg);
+        break;
       case "--json":
         options.json = true;
+        break;
+      case "--max-timeouts":
+        options.maxTimeouts = parseNonNegativeInteger(next(), arg);
         break;
       case "--project":
         options.projectRootPath = next();
         break;
       case "--query":
         options.query = next();
+        break;
+      case "--resolve-p95-threshold-ms":
+        options.resolveP95ThresholdMs = parsePositiveInteger(next(), arg);
         break;
       case "--smoke":
         options.smoke = true;
@@ -87,6 +129,14 @@ function parsePositiveInteger(raw, label) {
   return value;
 }
 
+function parseNonNegativeInteger(raw, label) {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
 function printHelp() {
   console.log(`Usage: npm run benchmark:search -- [options]
 
@@ -97,6 +147,16 @@ Options:
   --iterations <n>       Search iterations (default: ${DEFAULT_ITERATIONS})
   --concurrency <n>      Parallel health probes during each search (default: ${DEFAULT_CONCURRENCY})
   --timeout-ms <n>       Per-request timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})
+  --during-index         Start a full index and benchmark health/project resolution only while it is active
+  --active-wait-timeout-ms <n>
+                         Time allowed to observe active indexing (default: ${DEFAULT_ACTIVE_WAIT_TIMEOUT_MS})
+  --active-window-timeout-ms <n>
+                         Time allowed to collect ${DEFAULT_ACTIVE_SAMPLE_COUNT} valid samples per endpoint (default: ${DEFAULT_ACTIVE_WINDOW_TIMEOUT_MS})
+  --health-p95-threshold-ms <n>
+                         Fail above this active-index health p95 (default: ${DEFAULT_HEALTH_P95_THRESHOLD_MS})
+  --resolve-p95-threshold-ms <n>
+                         Fail above this active-index project resolve p95 (default: ${DEFAULT_RESOLVE_P95_THRESHOLD_MS})
+  --max-timeouts <n>     Allowed probe timeouts before failure (default: ${DEFAULT_MAX_TIMEOUTS})
   --json                 Print machine-readable JSON
   --smoke                Create and index a tiny temp project, then run one benchmark iteration
   --help                 Show this help
@@ -122,7 +182,8 @@ async function fetchJson(url, init, timeoutMs) {
       throw new Error(`${url} timed out after ${timeoutMs}ms`);
     }
     const cause = error instanceof Error && error.cause instanceof Error ? `: ${error.cause.message}` : "";
-    throw new Error(`${url} failed${cause}`);
+    const detail = error instanceof Error ? `: ${error.message}` : "";
+    throw new Error(`${url} failed${detail}${cause}`);
   } finally {
     clearTimeout(timer);
   }
@@ -151,7 +212,7 @@ function summarize(values) {
   return {
     count: values.length,
     maxMs: Math.max(...values, 0),
-    minMs: Math.min(...values, 0),
+    minMs: values.length === 0 ? 0 : Math.min(...values),
     p50Ms: percentile(values, 50),
     p95Ms: percentile(values, 95),
   };
@@ -196,6 +257,248 @@ async function indexProject(baseUrl, projectRootPath, timeoutMs) {
 
 async function runHealthProbe(baseUrl, timeoutMs) {
   return timed("health", () => fetchJson(`${baseUrl}/health`, undefined, timeoutMs));
+}
+
+async function runResolveProbe(baseUrl, query, timeoutMs) {
+  return timed("resolve", () =>
+    fetchJson(`${baseUrl}/api/projects/resolve`, {
+      body: JSON.stringify({ query, topK: 3 }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    }, timeoutMs),
+  );
+}
+
+function normalizeComparablePath(value) {
+  const normalized = path.resolve(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function findActiveIndex(health, projectRootPath) {
+  if (!Array.isArray(health?.indexing)) {
+    return undefined;
+  }
+  const targetPath = normalizeComparablePath(projectRootPath);
+  return health.indexing.find((entry) =>
+    entry
+      && typeof entry.projectRootPath === "string"
+      && normalizeComparablePath(entry.projectRootPath) === targetPath
+      && ACTIVE_INDEX_PHASES.has(entry.phase),
+  );
+}
+
+async function captureProbe(operation) {
+  const startedAt = performance.now();
+  try {
+    const probe = await operation();
+    return { ...probe, ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      durationMs: Math.round(performance.now() - startedAt),
+      error: message,
+      ok: false,
+      timedOut: /timed out after \d+ms/i.test(message),
+    };
+  }
+}
+
+function compactHealth(health) {
+  if (!health || typeof health !== "object") {
+    return health;
+  }
+  return {
+    indexing: Array.isArray(health.indexing) ? health.indexing : [],
+    pid: health.pid,
+    status: health.status,
+    tasks: Array.isArray(health.tasks) ? health.tasks.slice(0, 10) : [],
+    version: health.version,
+  };
+}
+
+function formatBenchmarkDiagnostics(options, diagnostics) {
+  return JSON.stringify({
+    baseUrl: options.baseUrl,
+    healthProbeFailures: diagnostics.healthProbeFailures.slice(-10),
+    indexSubmission: diagnostics.indexSubmission,
+    lastHealth: compactHealth(diagnostics.lastHealth),
+    observationProbeFailures: diagnostics.observationProbeFailures.slice(-10),
+    observedPhases: [...diagnostics.observedPhases],
+    projectRootPath: options.projectRootPath,
+    resolveProbeFailures: diagnostics.resolveProbeFailures.slice(-10),
+    summary: diagnostics.summary,
+  }, null, 2);
+}
+
+function benchmarkFailure(message, options, diagnostics) {
+  return new Error(`${message}\nbenchmark diagnostics:\n${formatBenchmarkDiagnostics(options, diagnostics)}`);
+}
+
+function recordActiveHealth(probe, projectRootPath, healthMs, diagnostics) {
+  diagnostics.lastHealth = probe.result;
+  const activeIndex = findActiveIndex(probe.result, projectRootPath);
+  if (!activeIndex) {
+    return false;
+  }
+  healthMs.push(probe.durationMs);
+  if (typeof activeIndex.phase === "string") {
+    diagnostics.observedPhases.add(activeIndex.phase);
+  }
+  return true;
+}
+
+async function waitForActiveIndex(options, diagnostics) {
+  const deadline = Date.now() + options.activeWaitTimeoutMs;
+  while (Date.now() < deadline) {
+    const probe = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
+    if (probe.ok) {
+      diagnostics.lastHealth = probe.result;
+      const activeIndex = findActiveIndex(probe.result, options.projectRootPath);
+      if (activeIndex) {
+        if (typeof activeIndex.phase === "string") {
+          diagnostics.observedPhases.add(activeIndex.phase);
+        }
+        return;
+      }
+    } else {
+      diagnostics.observationProbeFailures.push(probe);
+    }
+    await new Promise((resolve) => setTimeout(resolve, ACTIVE_POLL_INTERVAL_MS));
+  }
+
+  throw benchmarkFailure(
+    `did not observe active indexing for ${options.projectRootPath} within ${options.activeWaitTimeoutMs}ms`,
+    options,
+    diagnostics,
+  );
+}
+
+async function runDuringIndexBenchmark(options, serverHealth) {
+  const diagnostics = {
+    healthProbeFailures: [],
+    indexSubmission: undefined,
+    lastHealth: serverHealth,
+    observationProbeFailures: [],
+    observedPhases: new Set(),
+    resolveProbeFailures: [],
+    summary: undefined,
+  };
+
+  try {
+    diagnostics.indexSubmission = await indexProject(options.baseUrl, options.projectRootPath, options.timeoutMs);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw benchmarkFailure(`could not start target index: ${message}`, options, diagnostics);
+  }
+  await waitForActiveIndex(options, diagnostics);
+
+  const healthMs = [];
+  const resolveMs = [];
+  const sampleStartedAt = Date.now();
+  const deadline = sampleStartedAt + options.activeWindowTimeoutMs;
+  while (
+    (healthMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT || resolveMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT)
+    && Date.now() < deadline
+  ) {
+    const before = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
+    if (!before.ok) {
+      diagnostics.healthProbeFailures.push(before);
+      continue;
+    }
+    if (!recordActiveHealth(before, options.projectRootPath, healthMs, diagnostics)) {
+      break;
+    }
+
+    const resolveProbe = await captureProbe(() => runResolveProbe(
+      options.baseUrl,
+      options.query,
+      options.timeoutMs,
+    ));
+    const after = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
+    let activeAfter = false;
+    if (after.ok) {
+      activeAfter = recordActiveHealth(after, options.projectRootPath, healthMs, diagnostics);
+    } else {
+      diagnostics.healthProbeFailures.push(after);
+    }
+
+    if (!resolveProbe.ok) {
+      diagnostics.resolveProbeFailures.push(resolveProbe);
+    } else if (activeAfter) {
+      resolveMs.push(resolveProbe.durationMs);
+    }
+    if (!activeAfter) {
+      break;
+    }
+  }
+
+  const healthTimeouts = diagnostics.healthProbeFailures.filter((failure) => failure.timedOut).length;
+  const resolveTimeouts = diagnostics.resolveProbeFailures.filter((failure) => failure.timedOut).length;
+  const timeoutCount = healthTimeouts + resolveTimeouts;
+  const summary = {
+    baseUrl: options.baseUrl,
+    healthP95Ms: percentile(healthMs, 95),
+    healthSummary: summarize(healthMs),
+    mode: "during-index",
+    observedActive: true,
+    observedPhases: [...diagnostics.observedPhases],
+    projectRootPath: options.projectRootPath,
+    query: options.query,
+    requiredSamples: DEFAULT_ACTIVE_SAMPLE_COUNT,
+    resolveP95Ms: percentile(resolveMs, 95),
+    resolveSummary: summarize(resolveMs),
+    sampleWindowMs: Date.now() - sampleStartedAt,
+    server: {
+      pid: serverHealth.pid,
+      version: serverHealth.version,
+    },
+    thresholds: {
+      healthP95Ms: options.healthP95ThresholdMs,
+      maxTimeouts: options.maxTimeouts,
+      resolveP95Ms: options.resolveP95ThresholdMs,
+    },
+    timeouts: {
+      health: healthTimeouts,
+      resolve: resolveTimeouts,
+      total: timeoutCount,
+    },
+  };
+  diagnostics.summary = summary;
+
+  const violations = [];
+  if (summary.healthSummary.count < DEFAULT_ACTIVE_SAMPLE_COUNT) {
+    violations.push(`health valid sample count ${summary.healthSummary.count} is below required ${DEFAULT_ACTIVE_SAMPLE_COUNT}`);
+  }
+  if (summary.resolveSummary.count < DEFAULT_ACTIVE_SAMPLE_COUNT) {
+    violations.push(`resolve valid sample count ${summary.resolveSummary.count} is below required ${DEFAULT_ACTIVE_SAMPLE_COUNT}`);
+  }
+  if (summary.healthP95Ms > options.healthP95ThresholdMs) {
+    violations.push(`health p95 ${summary.healthP95Ms}ms exceeds threshold ${options.healthP95ThresholdMs}ms`);
+  }
+  if (summary.resolveP95Ms > options.resolveP95ThresholdMs) {
+    violations.push(`resolve p95 ${summary.resolveP95Ms}ms exceeds threshold ${options.resolveP95ThresholdMs}ms`);
+  }
+  if (timeoutCount > options.maxTimeouts) {
+    violations.push(`timeout count ${timeoutCount} exceeds allowed ${options.maxTimeouts}`);
+  }
+  const nonTimeoutFailures = [
+    ...diagnostics.healthProbeFailures,
+    ...diagnostics.resolveProbeFailures,
+  ].filter((failure) => !failure.timedOut);
+  if (nonTimeoutFailures.length > 0) {
+    violations.push(`${nonTimeoutFailures.length} non-timeout probe request(s) failed`);
+  }
+  if (violations.length > 0) {
+    throw benchmarkFailure(
+      `during-index responsiveness benchmark failed:\n- ${violations.join("\n- ")}`,
+      options,
+      diagnostics,
+    );
+  }
+
+  return summary;
 }
 
 function getFreePort() {
@@ -355,12 +658,29 @@ async function main() {
   try {
     if (options.smoke) {
       smokeServer = await startSmokeServer(options.timeoutMs);
-      smokeDir = await createSmokeProject();
+      smokeDir = await createSmokeProject(options.duringIndex);
       options.baseUrl = smokeServer.baseUrl;
       options.projectRootPath = smokeDir;
     }
 
     const health = await fetchJson(`${options.baseUrl}/health`, undefined, options.timeoutMs);
+    if (options.duringIndex) {
+      const summary = await runDuringIndexBenchmark(options, health);
+      if (options.json || options.smoke) {
+        console.log(JSON.stringify(summary, null, 2));
+        return;
+      }
+
+      console.log(`ace-mcp during-index responsiveness benchmark (${summary.server.version ?? "unknown"})`);
+      console.log(`project: ${summary.projectRootPath}`);
+      console.log(`query: ${summary.query}`);
+      console.log(`observed phases: ${summary.observedPhases.join(", ") || "unknown"}`);
+      console.log(`valid samples: health ${summary.healthSummary.count}, resolve ${summary.resolveSummary.count}`);
+      console.log(`health p50/p95/max: ${summary.healthSummary.p50Ms}/${summary.healthSummary.p95Ms}/${summary.healthSummary.maxMs}ms (limit ${summary.thresholds.healthP95Ms}ms)`);
+      console.log(`resolve p50/p95/max: ${summary.resolveSummary.p50Ms}/${summary.resolveSummary.p95Ms}/${summary.resolveSummary.maxMs}ms (limit ${summary.thresholds.resolveP95Ms}ms)`);
+      console.log(`timeouts: ${summary.timeouts.total} (allowed ${summary.thresholds.maxTimeouts})`);
+      return;
+    }
     if (options.smoke) {
       await indexProject(options.baseUrl, options.projectRootPath, options.timeoutMs);
     }
@@ -427,7 +747,7 @@ async function main() {
   }
 }
 
-async function createSmokeProject() {
+async function createSmokeProject(duringIndex = false) {
   const root = await mkdtemp(path.join(os.tmpdir(), "ace-mcp-benchmark-"));
   await mkdir(path.join(root, "src"), { recursive: true });
   await writeFile(path.join(root, "package.json"), "{\"type\":\"module\"}\n", "utf8");
@@ -443,6 +763,24 @@ async function createSmokeProject() {
     ].join("\n"),
     "utf8",
   );
+  if (duringIndex) {
+    await Promise.all(Array.from({ length: 400 }, (_, index) =>
+      writeFile(
+        path.join(root, "src", `refund-${index}.ts`),
+        [
+          `export class RefundService${index} {`,
+          ...Array.from({ length: 12 }, (_unused, methodIndex) => [
+            `  refundOrder${methodIndex}(orderId: string) {`,
+            `    return orderId.trim() + "-${index}-${methodIndex}";`,
+            "  }",
+          ]).flat(),
+          "}",
+          "",
+        ].join("\n"),
+        "utf8",
+      ),
+    ));
+  }
   return root;
 }
 

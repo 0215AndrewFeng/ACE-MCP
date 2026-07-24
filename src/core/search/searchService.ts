@@ -12,8 +12,12 @@ import {
   type DefinitionSearchResponse,
   MAX_CALL_GRAPH_DEPTH,
   MAX_INCLUDE_CONTEXT_LINES,
+  MAX_PROJECT_ROUTE_IDENTIFIERS,
+  MAX_PROJECT_ROUTE_TERM_LENGTH,
+  MAX_QUERY_LENGTH,
   type IndexedFileRecord,
   type QueryAnalysis,
+  type ProjectRouteMatch,
   type ReferenceSearchResponse,
   type SearchBudget,
   type SearchDiagnostics,
@@ -33,7 +37,7 @@ import {
 } from "../common/types.js";
 import { AppError } from "../common/errors.js";
 import { readFileSnippet } from "../project/fileSnippet.js";
-import { analyzeQuery, buildFtsQuery } from "./queryAnalyzer.js";
+import { analyzeQuery, boundProjectRouteTerms, buildFtsQuery } from "./queryAnalyzer.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
 import { SQLiteSearchWorkerClient } from "../storage/sqliteSearchWorkerClient.js";
@@ -190,6 +194,30 @@ export class SearchService {
 
   public async close(): Promise<void> {
     await this.sqliteSearchWorker.close();
+  }
+
+  public searchProjectRouteMatches(
+    query: string,
+    limit: number,
+    excludedProjectRootPaths: string[] = [],
+  ): Promise<ProjectRouteMatch[]> {
+    const analysis = analyzeQuery(query.normalize("NFKC").slice(0, MAX_QUERY_LENGTH));
+    const routeTerms = boundProjectRouteTerms(analysis.tokens);
+    const exactSymbols = analysis.identifiers.length > 0
+      ? analysis.identifiers
+      : analysis.isSymbolLike
+        ? analysis.tokens
+        : [];
+    const boundedExactSymbols = exactSymbols
+      .slice(0, MAX_PROJECT_ROUTE_IDENTIFIERS)
+      .map((symbol) => symbol.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH));
+    return this.sqliteSearchWorker.searchProjectRoutes(
+      buildFtsQuery(routeTerms, analysis.hasIdentifierLikeSegments && !analysis.isPathLike),
+      boundedExactSymbols,
+      limit,
+      excludedProjectRootPaths,
+      routeTerms,
+    );
   }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {

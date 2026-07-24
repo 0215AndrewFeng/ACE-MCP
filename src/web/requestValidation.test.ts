@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import type { Settings } from "../core/common/types.js";
+import { MAX_QUERY_LENGTH } from "../core/validation/schemas.js";
 import {
   parseAskRequest,
   parseCallGraphRequest,
   parseFileSnippetRequest,
   parseIndexProjectRequest,
+  parseProjectResolveRequest,
   parseSearchContextRequest,
 } from "./requestValidation.js";
 
@@ -104,4 +106,19 @@ test("parseAskRequest reports effective request parameters for Web display", () 
     retries: 5,
     timeoutSeconds: 600,
   });
+});
+
+test("parseProjectResolveRequest preserves at least two ambiguity candidates", () => {
+  const parsed = parseProjectResolveRequest({ query: "FlowSwitcher", topK: 1 });
+
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.topK, 2);
+});
+
+test("parseProjectResolveRequest rejects oversized routing queries", () => {
+  assert.deepEqual(
+    parseProjectResolveRequest({ query: "x".repeat(MAX_QUERY_LENGTH + 1) }),
+    { ok: false, error: `query must contain at most ${MAX_QUERY_LENGTH} characters` },
+  );
 });

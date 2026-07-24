@@ -3,39 +3,35 @@ import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 
 import type { Logger } from "../common/logger.js";
-import {
-  MAX_PROJECT_ROUTE_IDENTIFIERS,
-  MAX_PROJECT_ROUTE_TERM_LENGTH,
-  MAX_PROJECT_ROUTE_TERMS,
-  MAX_QUERY_LENGTH,
-  type ProjectRouteMatch,
-  type SearchFilters,
-  type SearchResult,
-} from "../common/types.js";
+import type { ProjectInfo } from "../common/types.js";
 import type {
-  SQLiteSearchWorkerData,
-  SQLiteSearchWorkerRequest,
-  SQLiteSearchWorkerResponse,
-} from "./sqliteSearchWorkerProtocol.js";
+  FinalizeProjectIndexPayload,
+  FinalizeProjectIndexResult,
+  PrepareProjectIndexResult,
+  SQLiteIndexFileBatch,
+  SQLiteIndexWorkerData,
+  SQLiteIndexWorkerRequest,
+  SQLiteIndexWorkerResponse,
+} from "./sqliteIndexWorkerProtocol.js";
 
-const SQLITE_SEARCH_WORKER_IDLE_MS = 1_000;
-
-type SQLiteSearchWorkerResult = ProjectRouteMatch[] | SearchResult[];
+const SQLITE_INDEX_WORKER_IDLE_MS = 1_000;
 
 interface PendingRequest {
-  method: SQLiteSearchWorkerRequest["method"];
+  method: SQLiteIndexWorkerRequest["method"];
   reject: (error: Error) => void;
-  resolve: (value: SQLiteSearchWorkerResult) => void;
+  resolve: (value: FinalizeProjectIndexResult | PrepareProjectIndexResult | null) => void;
   worker: ChildProcess | Worker;
 }
 
-interface SQLiteSearchWorkerClientOptions {
+interface SQLiteIndexWorkerClientOptions {
   createChildProcess?: () => ChildProcess;
+  idleMs?: number;
+  workerUrl?: URL;
 }
 
-function getWorkerUrl(): URL {
+function defaultWorkerUrl(): URL {
   const sourceExtension = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-  return new URL(`./sqliteSearchWorker${sourceExtension}`, import.meta.url);
+  return new URL(`./sqliteIndexWorker${sourceExtension}`, import.meta.url);
 }
 
 function getTsxExecArgv(): string[] {
@@ -48,7 +44,6 @@ function getTsxExecArgv(): string[] {
       return ["--import=tsx"];
     }
   }
-
   return ["--import", "tsx"];
 }
 
@@ -56,117 +51,116 @@ function isSourceRuntime(): boolean {
   return import.meta.url.endsWith(".ts");
 }
 
-export class SQLiteSearchWorkerClient {
+export class SQLiteIndexWorkerClient {
+  private activeLeases = 0;
   private closed = false;
   private closePromise: Promise<void> | null = null;
   private idleShutdownTimer: ReturnType<typeof setTimeout> | null = null;
+  private nextRequestId = 1;
   private readonly liveWorkers = new Set<ChildProcess | Worker>();
   private readonly pending = new Map<number, PendingRequest>();
   private readonly retiredWorkers = new WeakSet<ChildProcess | Worker>();
   private readonly shuttingDownWorkers = new WeakSet<ChildProcess | Worker>();
   private readonly terminatingWorkers = new Map<ChildProcess | Worker, Promise<void>>();
-  private nextRequestId = 1;
   private worker: ChildProcess | Worker | null = null;
 
   public constructor(
-    private readonly workerData: SQLiteSearchWorkerData,
+    private readonly workerData: SQLiteIndexWorkerData,
     private readonly logger: Logger,
-    private readonly options: SQLiteSearchWorkerClientOptions = {},
+    private readonly options: SQLiteIndexWorkerClientOptions = {},
   ) {}
 
+  public acquireLease(): void {
+    if (this.closed) {
+      throw new Error("SQLite index worker closed");
+    }
+    this.activeLeases += 1;
+    this.clearIdleShutdownTimer();
+  }
+
+  public releaseLease(): void {
+    if (this.activeLeases === 0) {
+      if (this.closed) {
+        return;
+      }
+      throw new Error("SQLite index worker lease released without a matching acquire");
+    }
+    this.activeLeases -= 1;
+    this.scheduleIdleShutdown();
+  }
+
+  /** Forceful close. Owners must drain active work before invoking this method. */
   public close(): Promise<void> {
     if (this.closePromise) {
       return this.closePromise;
     }
     this.closed = true;
+    this.activeLeases = 0;
     this.clearIdleShutdownTimer();
     this.worker = null;
-    this.rejectAll(new Error("SQLite search worker closed"));
+    this.rejectAll(new Error("SQLite index worker closed"));
     const workers = [...this.liveWorkers];
     this.closePromise = Promise.all(workers.map((worker) => this.stopWorker(worker))).then(() => {});
     return this.closePromise;
   }
 
-  public getFilePreviewResults(projectId: string, relativePaths: string[]): Promise<SearchResult[]> {
-    return this.request({
+  public deleteFiles(projectId: string, relativePaths: string[]): Promise<void> {
+    return this.request<void>({ id: 0, method: "deleteFiles", payload: { projectId, relativePaths } });
+  }
+
+  public finalizeProjectIndex(
+    projectId: string,
+    finalization: FinalizeProjectIndexPayload,
+  ): Promise<FinalizeProjectIndexResult> {
+    return this.request<FinalizeProjectIndexResult>({
       id: 0,
-      method: "getFilePreviewResults",
-      payload: { projectId, relativePaths },
+      method: "finalizeProjectIndex",
+      payload: { finalization, projectId },
     });
   }
 
-  public searchProjectRoutes(
-    ftsQuery: string | null,
-    exactSymbols: string[],
-    limit: number,
-    excludedProjectRootPaths: string[] = [],
-    routeTerms: string[] = [],
-  ): Promise<ProjectRouteMatch[]> {
-    if (ftsQuery && ftsQuery.length > MAX_QUERY_LENGTH) {
-      return Promise.reject(new Error(`Project route FTS query exceeds ${MAX_QUERY_LENGTH} characters`));
-    }
-    const boundedExactSymbols = exactSymbols
-      .slice(0, MAX_PROJECT_ROUTE_IDENTIFIERS)
-      .map((symbol) => symbol.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH));
-    const boundedRouteTerms = routeTerms
-      .slice(0, MAX_PROJECT_ROUTE_TERMS)
-      .map((term) => term.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH));
-    return this.request<ProjectRouteMatch[]>({
+  public ensureSemanticIndex(projectId: string): Promise<void> {
+    return this.request<void>({ id: 0, method: "ensureSemanticIndex", payload: { projectId } });
+  }
+
+  public prepareProjectIndex(
+    projectId: string,
+    project: ProjectInfo,
+    timestamp: string,
+  ): Promise<PrepareProjectIndexResult> {
+    return this.request<PrepareProjectIndexResult>({
       id: 0,
-      method: "searchProjectRoutes",
-      payload: {
-        excludedProjectRootPaths,
-        exactSymbols: boundedExactSymbols,
-        ftsQuery,
-        limit,
-        routeTerms: boundedRouteTerms,
-      },
+      method: "prepareProjectIndex",
+      payload: { project, projectId, timestamp },
     });
   }
 
-  public searchByPath(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): Promise<SearchResult[]> {
-    return this.request({
-      id: 0,
-      method: "searchByPath",
-      payload: { filters, limit, projectId, tokens },
-    });
+  public resolveSymbolGraph(projectId: string, changedFileIds: string[]): Promise<void> {
+    return this.request<void>({ id: 0, method: "resolveSymbolGraph", payload: { changedFileIds, projectId } });
   }
 
-  public searchBySemantic(projectId: string, semanticTerms: string[], limit: number, filters?: SearchFilters): Promise<SearchResult[]> {
-    return this.request({
-      id: 0,
-      method: "searchBySemantic",
-      payload: { filters, limit, projectId, semanticTerms },
-    });
+  public writeChunkVectors(
+    entries: Array<{ chunkId: string; embedding: number[]; modelName: string }>,
+    projectId: string,
+  ): Promise<void> {
+    return this.request<void>({ id: 0, method: "writeChunkVectors", payload: { entries, projectId } });
   }
 
-  public searchBySymbols(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): Promise<SearchResult[]> {
-    return this.request({
-      id: 0,
-      method: "searchBySymbols",
-      payload: { filters, limit, projectId, tokens },
-    });
+  public writeFileIndexBatch(
+    projectId: string,
+    files: SQLiteIndexFileBatch[],
+    indexedAt: string,
+  ): Promise<void> {
+    return this.request<void>({ id: 0, method: "writeFileIndexBatch", payload: { files, indexedAt, projectId } });
   }
 
-  public searchByText(projectId: string, ftsQuery: string, limit: number, filters?: SearchFilters): Promise<SearchResult[]> {
-    return this.request({
-      id: 0,
-      method: "searchByText",
-      payload: { filters, ftsQuery, limit, projectId },
-    });
-  }
-
-  public searchByTextSubstrings(projectId: string, tokens: string[], limit: number, filters?: SearchFilters): Promise<SearchResult[]> {
-    return this.request({
-      id: 0,
-      method: "searchByTextSubstrings",
-      payload: { filters, limit, projectId, tokens },
-    });
+  private get workerUrl(): URL {
+    return this.options.workerUrl ?? defaultWorkerUrl();
   }
 
   private ensureWorker(): ChildProcess | Worker {
     if (this.closed) {
-      throw new Error("SQLite search worker closed");
+      throw new Error("SQLite index worker closed");
     }
     if (this.worker) {
       return this.worker;
@@ -183,64 +177,58 @@ export class SQLiteSearchWorkerClient {
     }
 
     if (isSourceRuntime()) {
-      const worker = fork(fileURLToPath(getWorkerUrl()), [], {
+      const worker = fork(fileURLToPath(this.workerUrl), [], {
         env: {
           ...process.env,
-          ACE_MCP_SQLITE_SEARCH_WORKER_DATA: JSON.stringify(this.workerData),
+          ACE_MCP_SQLITE_INDEX_WORKER_DATA: JSON.stringify(this.workerData),
         },
         execArgv: getTsxExecArgv(),
+        serialization: "advanced",
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       });
       worker.unref();
       worker.channel?.unref();
       this.attachChildProcess(worker);
       this.liveWorkers.add(worker);
-
       this.worker = worker;
       return worker;
     }
 
-    const worker = new Worker(getWorkerUrl(), {
-      workerData: this.workerData,
-    });
+    const worker = new Worker(this.workerUrl, { workerData: this.workerData });
     worker.unref();
     this.attachWorkerThread(worker);
     this.liveWorkers.add(worker);
-
     this.worker = worker;
     return worker;
   }
 
   private attachChildProcess(worker: ChildProcess): void {
-    worker.on("message", (message) => this.handleMessage(worker, message as SQLiteSearchWorkerResponse));
+    worker.on("message", (message) => this.handleMessage(message as SQLiteIndexWorkerResponse));
     worker.on("error", (error) => this.handleWorkerError(worker, error));
     worker.on("exit", (code, signal) => this.handleWorkerExit(worker, code, signal));
   }
 
   private attachWorkerThread(worker: Worker): void {
-    worker.on("message", (message: SQLiteSearchWorkerResponse) => this.handleMessage(worker, message));
+    worker.on("message", (message: SQLiteIndexWorkerResponse) => this.handleMessage(message));
     worker.on("error", (error) => this.handleWorkerError(worker, error));
     worker.on("exit", (code) => this.handleWorkerExit(worker, code, null));
   }
 
-  private handleMessage(worker: ChildProcess | Worker, message: SQLiteSearchWorkerResponse): void {
+  private handleMessage(message: SQLiteIndexWorkerResponse): void {
     const pending = this.pending.get(message.id);
-    if (!pending || pending.worker !== worker) {
+    if (!pending) {
       return;
     }
-
     this.pending.delete(message.id);
     if (message.ok) {
       pending.resolve(message.result);
-      this.scheduleIdleShutdown();
-      return;
+    } else {
+      const error = new Error(message.error.message);
+      if (message.error.stack) {
+        error.stack = message.error.stack;
+      }
+      pending.reject(error);
     }
-
-    const error = new Error(message.error.message);
-    if (message.error.stack) {
-      error.stack = message.error.stack;
-    }
-    pending.reject(error);
     this.scheduleIdleShutdown();
   }
 
@@ -253,17 +241,11 @@ export class SQLiteSearchWorkerClient {
       return;
     }
     this.retiredWorkers.add(worker);
-    this.logger.warn("sqlite search worker failed", {
-      error: error.stack ?? error.message,
-    });
+    this.logger.warn("sqlite index worker failed", { error: error.stack ?? error.message });
     this.rejectWorkerRequests(worker, error);
   }
 
-  private handleWorkerExit(
-    worker: ChildProcess | Worker,
-    code: number | null,
-    signal: NodeJS.Signals | null,
-  ): void {
+  private handleWorkerExit(worker: ChildProcess | Worker, code: number | null, signal: NodeJS.Signals | null): void {
     const expectedShutdown = this.shuttingDownWorkers.has(worker);
     const retiredWorker = this.retiredWorkers.has(worker);
     this.liveWorkers.delete(worker);
@@ -276,16 +258,44 @@ export class SQLiteSearchWorkerClient {
       return;
     }
     const suffix = signal ? ` from signal ${signal}` : ` with code ${String(code)}`;
-    const error = new Error(`SQLite search worker exited${suffix}`);
-    this.logger.warn("sqlite search worker exited unexpectedly", { code, signal });
+    const error = new Error(`SQLite index worker exited${suffix}`);
+    this.logger.warn("sqlite index worker exited unexpectedly", { code, signal });
     this.rejectWorkerRequests(worker, error);
   }
 
-  private rejectAll(error: Error): void {
-    for (const pending of this.pending.values()) {
-      pending.reject(error);
+  private request<T = void>(request: SQLiteIndexWorkerRequest): Promise<T> {
+    this.clearIdleShutdownTimer();
+    let worker: ChildProcess | Worker;
+    try {
+      worker = this.ensureWorker();
+    } catch (error) {
+      return Promise.reject(error);
     }
-    this.pending.clear();
+    const id = this.nextRequestId++;
+    const message = { ...request, id } as SQLiteIndexWorkerRequest;
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, {
+        method: message.method,
+        reject,
+        resolve: (value) => resolve(value as T),
+        worker,
+      });
+      try {
+        if (worker instanceof Worker) {
+          worker.postMessage(message);
+        } else if (worker.connected) {
+          worker.send(message, (error) => {
+            if (error) {
+              this.rejectRequest(id, worker, error);
+            }
+          });
+        } else {
+          throw new Error("SQLite index worker IPC channel is closed");
+        }
+      } catch (error) {
+        this.rejectRequest(id, worker, error instanceof Error ? error : new Error(String(error)));
+      }
+    });
   }
 
   private rejectRequest(id: number, worker: ChildProcess | Worker, error: Error): void {
@@ -308,41 +318,32 @@ export class SQLiteSearchWorkerClient {
     this.scheduleIdleShutdown();
   }
 
-  private request<T extends SQLiteSearchWorkerResult = SearchResult[]>(request: SQLiteSearchWorkerRequest): Promise<T> {
-    this.clearIdleShutdownTimer();
-    let worker: ChildProcess | Worker;
-    try {
-      worker = this.ensureWorker();
-    } catch (error) {
-      return Promise.reject(error);
+  private rejectAll(error: Error): void {
+    for (const pending of this.pending.values()) {
+      pending.reject(error);
     }
-    const id = this.nextRequestId++;
-    const message = { ...request, id };
+    this.pending.clear();
+  }
 
-    return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, {
-        method: message.method,
-        reject,
-        resolve: (value) => resolve(value as T),
-        worker,
-      });
-      try {
-        if (worker instanceof Worker) {
-          worker.postMessage(message);
-        } else {
-          if (!worker.connected) {
-            throw new Error("SQLite search worker IPC channel is disconnected");
-          }
-          worker.send(message, (error) => {
-            if (error) {
-              this.rejectRequest(id, worker, error);
-            }
-          });
-        }
-      } catch (error: unknown) {
-        this.rejectRequest(id, worker, error instanceof Error ? error : new Error(String(error)));
+  private scheduleIdleShutdown(): void {
+    if (this.closed || this.activeLeases > 0 || this.pending.size > 0 || !this.worker) {
+      return;
+    }
+    this.clearIdleShutdownTimer();
+    const worker = this.worker;
+    this.idleShutdownTimer = setTimeout(() => {
+      this.idleShutdownTimer = null;
+      if (this.worker !== worker || this.activeLeases > 0 || this.pending.size > 0) {
+        return;
       }
-    });
+      this.worker = null;
+      void this.stopWorker(worker).catch((error: unknown) => {
+        this.logger.warn("sqlite index worker idle shutdown failed", {
+          error: error instanceof Error ? error.stack ?? error.message : String(error),
+        });
+      });
+    }, this.options.idleMs ?? SQLITE_INDEX_WORKER_IDLE_MS);
+    this.idleShutdownTimer.unref();
   }
 
   private clearIdleShutdownTimer(): void {
@@ -350,28 +351,6 @@ export class SQLiteSearchWorkerClient {
       clearTimeout(this.idleShutdownTimer);
       this.idleShutdownTimer = null;
     }
-  }
-
-  private scheduleIdleShutdown(): void {
-    if (this.closed || this.pending.size > 0 || !this.worker || this.idleShutdownTimer) {
-      return;
-    }
-
-    this.idleShutdownTimer = setTimeout(() => {
-      this.idleShutdownTimer = null;
-      const worker = this.worker;
-      if (!worker || this.pending.size > 0) {
-        return;
-      }
-
-      this.worker = null;
-      void this.stopWorker(worker).catch((error: unknown) => {
-        this.logger.warn("sqlite search worker idle shutdown failed", {
-          error: error instanceof Error ? error.stack ?? error.message : String(error),
-        });
-      });
-    }, SQLITE_SEARCH_WORKER_IDLE_MS);
-    this.idleShutdownTimer.unref();
   }
 
   private stopWorker(worker: ChildProcess | Worker): Promise<void> {

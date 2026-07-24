@@ -24,11 +24,19 @@ import { buildStableId, computeSha256, hasFileChanged } from "./fileFingerprint.
 import { analyzeSource } from "./symbolExtractor.js";
 import { AppError } from "../common/errors.js";
 import { collectSourceFiles } from "../project/fileCollector.js";
-import { getGitChangedFiles, getHeadCommit } from "../project/gitHelper.js";
+import { getGitChangedFiles, type GitStatus } from "../project/gitHelper.js";
 import { IgnoreManager } from "../project/ignoreManager.js";
 import { normalizeAbsolutePath } from "../project/pathNormalizer.js";
 import { detectProject } from "../project/projectDetector.js";
+import { findAggregateProjectRoots } from "../project/projectHierarchy.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
+import { SQLiteIndexWorkerClient } from "../storage/sqliteIndexWorkerClient.js";
+import type {
+  FinalizeProjectIndexPayload,
+  FinalizeProjectIndexResult,
+  PrepareProjectIndexResult,
+  SQLiteIndexFileBatch,
+} from "../storage/sqliteIndexWorkerProtocol.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
 
 interface DecodedSource {
@@ -39,8 +47,20 @@ interface DecodedSource {
 /**
  * v4.3.6: Index progress event types for SSE streaming
  */
-export type IndexProgressPhase = "collect" | "parse" | "index" | "vector" | "semantic" | "complete";
+export type IndexProgressPhase =
+  | "queued"
+  | "prepare"
+  | "collect"
+  | "detect"
+  | "parse"
+  | "index"
+  | "vector"
+  | "symbolGraph"
+  | "semantic"
+  | "finalize"
+  | "complete";
 export type IndexProgressStatus = "start" | "progress" | "done";
+export type IndexOrigin = "automatic" | "explicit";
 
 export interface IndexProgressEvent {
   phase: IndexProgressPhase;
@@ -58,11 +78,31 @@ export interface IndexProgressEvent {
 export type IndexProgressCallback = (event: IndexProgressEvent) => void;
 
 export interface InFlightIndexInfo {
+  current: number;
   dedupedRequests: number;
   elapsedMs: number;
+  lastProgressAt: string;
+  origin: IndexOrigin;
+  phase: IndexProgressPhase;
+  phaseElapsedMs: number;
   projectRootPath: string;
+  queueMs: number;
   queuedRequests: number;
   status: "running";
+  total: number;
+}
+
+interface IndexProgressState {
+  current: number;
+  dedupedRequests: number;
+  lastProgressAtMs: number;
+  origin: IndexOrigin;
+  phase: IndexProgressPhase;
+  phaseStartedAtMs: number;
+  projectRootPath: string;
+  requestedAtMs: number;
+  runStartedAtMs?: number;
+  total: number;
 }
 
 export interface ProjectWatchStatus {
@@ -93,6 +133,31 @@ interface ProjectWatchState {
   watcher?: WatchHandle;
 }
 
+interface AutomaticProjectOwnershipSnapshot {
+  applied: boolean;
+  generation: number;
+  projectRootPaths: string[];
+  sequence: number;
+}
+
+interface AutomaticProjectRefresh {
+  generation: number;
+  promise: Promise<AutomaticProjectOwnershipSnapshot>;
+  sequence: number;
+}
+
+interface PeriodicFastSkipCandidate {
+  generation: number;
+  watchState: ProjectWatchState;
+}
+
+type PeriodicIndexDecision = "full" | "incremental" | "skip";
+
+interface IncrementalIndexModeResolution {
+  effectiveMode: "full" | "incremental";
+  latestIndexEventKnown: boolean;
+}
+
 type WatchListener = (eventType: string, filename: string | Buffer | null) => void;
 interface WatchHandle {
   close(): void;
@@ -105,6 +170,74 @@ export type WatchFactory = (
 export type ProjectDirectoryInspector = (
   projectRootPath: string,
 ) => Promise<{ isDirectory(): boolean } | null>;
+export type GitStatusReader = (
+  projectRootPath: string,
+  lastIndexedCommit?: string,
+) => Promise<GitStatus>;
+
+export interface IndexStorageWorker {
+  acquireLease(): void;
+  /** Force-close the transport after the coordinator has drained active index work. */
+  close(): Promise<void>;
+  deleteFiles(projectId: string, relativePaths: string[]): Promise<void>;
+  ensureSemanticIndex(projectId: string): Promise<void>;
+  finalizeProjectIndex(
+    projectId: string,
+    finalization: FinalizeProjectIndexPayload,
+  ): Promise<FinalizeProjectIndexResult>;
+  prepareProjectIndex(
+    projectId: string,
+    project: ProjectInfo,
+    timestamp: string,
+  ): Promise<PrepareProjectIndexResult>;
+  releaseLease(): void;
+  resolveSymbolGraph(projectId: string, changedFileIds: string[]): Promise<void>;
+  writeChunkVectors(
+    entries: Array<{ chunkId: string; embedding: number[]; modelName: string }>,
+    projectId: string,
+  ): Promise<void>;
+  writeFileIndexBatch(projectId: string, files: SQLiteIndexFileBatch[], indexedAt: string): Promise<void>;
+}
+
+export function createSynchronousIndexStorageWorker(
+  store: Pick<
+    SQLiteStore,
+    | "deleteFiles"
+    | "ensureSemanticIndex"
+    | "finalizeProjectIndex"
+    | "prepareProjectIndex"
+    | "resolveSymbolGraph"
+    | "writeChunkVectors"
+    | "writeFileIndexBatch"
+  >,
+): IndexStorageWorker {
+  return {
+    acquireLease() {},
+    async close() {},
+    async deleteFiles(projectId, relativePaths) {
+      store.deleteFiles(projectId, relativePaths);
+    },
+    async ensureSemanticIndex(projectId) {
+      store.ensureSemanticIndex(projectId);
+    },
+    async finalizeProjectIndex(projectId, finalization) {
+      return store.finalizeProjectIndex(projectId, finalization);
+    },
+    async prepareProjectIndex(projectId, project, timestamp) {
+      return store.prepareProjectIndex(projectId, project, timestamp);
+    },
+    releaseLease() {},
+    async resolveSymbolGraph(projectId, changedFileIds) {
+      store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async writeChunkVectors(entries, projectId) {
+      store.writeChunkVectors(entries, projectId);
+    },
+    async writeFileIndexBatch(projectId, files, indexedAt) {
+      store.writeFileIndexBatch(projectId, files, indexedAt);
+    },
+  };
+}
 
 const defaultWatchFactory: WatchFactory = (projectRootPath, listener) => {
   const watcher = watch(projectRootPath, { recursive: true }, listener);
@@ -155,6 +288,7 @@ type IndexedFileResult =
  * Balances transaction overhead vs memory usage
  */
 const DB_WRITE_BATCH_SIZE = 50;
+const INDEX_CLOSE_DRAIN_TIMEOUT_MS = 30_000;
 const CJK_DECODE_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 export function scoreDecodedContent(content: string): number {
@@ -196,15 +330,25 @@ export function decodeSourceBuffer(buffer: Buffer): DecodedSource {
 
 export class IndexCoordinator {
   private activeIndexRuns = 0;
+  private readonly activeStorageOperations = new Set<Promise<unknown>>();
+  private readonly aggregateProjectRoots = new Set<string>();
   private readonly automaticProjectRoots = new Set<string>();
+  private latestAutomaticRefresh?: AutomaticProjectRefresh;
+  private automaticRefreshSequence = 0;
+  private automaticUpdatesGeneration = 0;
   private automaticWatchAllowed = true;
   private automaticUpdatesStarted = false;
+  private closing = false;
+  private closePromise?: Promise<void>;
+  private closeDrainTimeoutMs = INDEX_CLOSE_DRAIN_TIMEOUT_MS;
   private readonly pendingIndexSlots: Array<() => void> = [];
+  private readonly pendingAutomaticOwnershipRefreshRoots = new Set<string>();
   private readonly pausedProjectRoots = new Set<string>();
   private reconcileRequested = false;
   private reconciliationPromise?: Promise<void>;
   private reconciliationTimer?: NodeJS.Timeout;
   private readonly suppressedProjectRoots = new Set<string>();
+  private readonly watchIntentRevisions = new Map<string, number>();
   private readonly watchers = new Map<string, ProjectWatchState>();
 
   /** Per-project last successful index timestamp (epoch ms) */
@@ -224,10 +368,8 @@ export class IndexCoordinator {
    * If an index is already running for a project, new requests will wait for it
    */
   private inFlightIndex = new Map<string, Promise<IndexProjectResult>>();
-  /** v4.5.2: Track start time for in-flight indices */
-  private inFlightStartTimes = new Map<string, number>();
-  /** v4.7.3: Count duplicate requests coalesced into an in-flight project index */
-  private inFlightDedupedRequests = new Map<string, number>();
+  private inFlightProgress = new Map<Promise<IndexProjectResult>, IndexProgressState>();
+  private indexStorageWorker?: IndexStorageWorker;
 
   /**
    * v4.5.2: Return info about currently in-flight index operations
@@ -235,17 +377,57 @@ export class IndexCoordinator {
   public getInFlightIndexInfo(): InFlightIndexInfo[] {
     const result: InFlightIndexInfo[] = [];
     const now = Date.now();
-    for (const [projectRootPath] of this.inFlightIndex) {
-      const startTime = this.inFlightStartTimes.get(projectRootPath);
+    const queuedRequestsByProject = new Map<string, number>();
+    for (const progress of this.inFlightProgress.values()) {
+      if (progress.runStartedAtMs === undefined) {
+        queuedRequestsByProject.set(
+          progress.projectRootPath,
+          (queuedRequestsByProject.get(progress.projectRootPath) ?? 0) + 1,
+        );
+      }
+    }
+    for (const progress of this.inFlightProgress.values()) {
       result.push({
-        dedupedRequests: this.inFlightDedupedRequests.get(projectRootPath) ?? 0,
-        projectRootPath,
-        elapsedMs: startTime ? now - startTime : 0,
-        queuedRequests: this.projectQueue.has(projectRootPath) ? 1 : 0,
+        current: progress.current,
+        dedupedRequests: progress.dedupedRequests,
+        projectRootPath: progress.projectRootPath,
+        elapsedMs: Math.max(0, now - progress.requestedAtMs),
+        lastProgressAt: new Date(progress.lastProgressAtMs).toISOString(),
+        origin: progress.origin,
+        phase: progress.phase,
+        phaseElapsedMs: Math.max(0, now - progress.phaseStartedAtMs),
+        queueMs: Math.max(0, (progress.runStartedAtMs ?? now) - progress.requestedAtMs),
+        queuedRequests: queuedRequestsByProject.get(progress.projectRootPath) ?? 0,
         status: "running",
+        total: progress.total,
       });
     }
     return result;
+  }
+
+  private reportIndexProgress(
+    progress: IndexProgressState,
+    event: IndexProgressEvent,
+    onProgress?: IndexProgressCallback,
+  ): void {
+    const now = Date.now();
+    if (event.status === "start" || progress.phase !== event.phase) {
+      progress.phase = event.phase;
+      progress.phaseStartedAtMs = now;
+      progress.current = event.current ?? 0;
+      progress.total = event.total ?? 0;
+    } else {
+      if (event.current !== undefined) {
+        progress.current = event.current;
+      } else if (event.status === "done" && progress.total > 0) {
+        progress.current = progress.total;
+      }
+      if (event.total !== undefined) {
+        progress.total = event.total;
+      }
+    }
+    progress.lastProgressAtMs = now;
+    onProgress?.(event);
   }
 
   public constructor(
@@ -255,7 +437,23 @@ export class IndexCoordinator {
     private readonly embeddingProvider: EmbeddingProvider,
     private readonly watchFactory: WatchFactory = defaultWatchFactory,
     private readonly projectDirectoryInspector: ProjectDirectoryInspector = defaultProjectDirectoryInspector,
-  ) {}
+    private readonly gitStatusReader: GitStatusReader = getGitChangedFiles,
+    indexStorageWorker?: IndexStorageWorker,
+  ) {
+    this.indexStorageWorker = indexStorageWorker;
+  }
+
+  private getIndexStorageWorker(): IndexStorageWorker {
+    this.indexStorageWorker ??= new SQLiteIndexWorkerClient(
+      {
+        databasePath: this.settings.databasePath,
+        logFilePath: this.settings.logFilePath,
+        logLevel: this.settings.logLevel,
+      },
+      this.logger,
+    );
+    return this.indexStorageWorker;
+  }
 
   public isWatching(projectRootPath?: string): boolean {
     if (projectRootPath === undefined) {
@@ -279,47 +477,307 @@ export class IndexCoordinator {
       .sort((left, right) => left.projectRootPath.localeCompare(right.projectRootPath));
   }
 
+  private isAutomaticUpdateGenerationCurrent(generation: number): boolean {
+    return this.automaticUpdatesStarted && this.automaticUpdatesGeneration === generation;
+  }
+
+  private isAutomaticallyOwned(projectRootPath: string): boolean {
+    return (
+      this.automaticProjectRoots.has(projectRootPath) &&
+      !this.pausedProjectRoots.has(projectRootPath) &&
+      !this.suppressedProjectRoots.has(projectRootPath)
+    );
+  }
+
+  private getWatchIntentRevision(projectRootPath: string): number {
+    return this.watchIntentRevisions.get(projectRootPath) ?? 0;
+  }
+
+  private advanceWatchIntentRevision(projectRootPath: string): void {
+    this.watchIntentRevisions.set(projectRootPath, this.getWatchIntentRevision(projectRootPath) + 1);
+  }
+
+  private refreshAutomaticProjectRoots(generation: number): Promise<AutomaticProjectOwnershipSnapshot> {
+    if (!this.isAutomaticUpdateGenerationCurrent(generation)) {
+      return Promise.resolve({ applied: false, generation, projectRootPaths: [], sequence: this.automaticRefreshSequence });
+    }
+
+    const refreshSequence = ++this.automaticRefreshSequence;
+    const promise = this.applyAutomaticProjectRefresh(generation, refreshSequence);
+    this.latestAutomaticRefresh = { generation, promise, sequence: refreshSequence };
+    return this.waitForLatestAutomaticProjectRefresh(generation, refreshSequence, promise);
+  }
+
+  private async applyAutomaticProjectRefresh(
+    generation: number,
+    refreshSequence: number,
+  ): Promise<AutomaticProjectOwnershipSnapshot> {
+    const registeredRoots = [...new Set(
+      this.store.listProjects().map((project) => normalizeAbsolutePath(project.projectRootPath)),
+    )];
+    const aggregateRoots = findAggregateProjectRoots(registeredRoots);
+    const candidates = registeredRoots.filter(
+      (projectRootPath) =>
+        !aggregateRoots.has(projectRootPath) &&
+        !this.pausedProjectRoots.has(projectRootPath) &&
+        !this.suppressedProjectRoots.has(projectRootPath),
+    );
+    const inspections = await Promise.all(
+      candidates.map(async (projectRootPath) => ({
+        projectRootPath,
+        stats: await this.projectDirectoryInspector(projectRootPath),
+      })),
+    );
+
+    if (
+      !this.isAutomaticUpdateGenerationCurrent(generation) ||
+      refreshSequence !== this.automaticRefreshSequence
+    ) {
+      return { applied: false, generation, projectRootPaths: [], sequence: refreshSequence };
+    }
+
+    const nextAutomaticRoots = new Set<string>();
+    for (const inspection of inspections) {
+      if (
+        inspection.stats?.isDirectory() &&
+        !this.pausedProjectRoots.has(inspection.projectRootPath) &&
+        !this.suppressedProjectRoots.has(inspection.projectRootPath)
+      ) {
+        nextAutomaticRoots.add(inspection.projectRootPath);
+      } else if (!inspection.stats?.isDirectory()) {
+        this.logger.warn("automatic index watch skipped", {
+          projectRootPath: inspection.projectRootPath,
+          reason: "project root is missing",
+        });
+      }
+    }
+
+    this.aggregateProjectRoots.clear();
+    for (const projectRootPath of aggregateRoots) {
+      this.aggregateProjectRoots.add(projectRootPath);
+    }
+
+    for (const projectRootPath of [...this.automaticProjectRoots]) {
+      if (nextAutomaticRoots.has(projectRootPath)) {
+        continue;
+      }
+      this.automaticProjectRoots.delete(projectRootPath);
+      this.closeWatcher(projectRootPath);
+    }
+
+    for (const projectRootPath of nextAutomaticRoots) {
+      this.automaticProjectRoots.add(projectRootPath);
+      if (!this.isWatching(projectRootPath)) {
+        this.startWatchingSafely(projectRootPath, "startup");
+      }
+    }
+    this.pendingAutomaticOwnershipRefreshRoots.clear();
+
+    return {
+      applied: true,
+      generation,
+      projectRootPaths: [...this.automaticProjectRoots].sort(),
+      sequence: refreshSequence,
+    };
+  }
+
+  private async waitForLatestAutomaticProjectRefresh(
+    generation: number,
+    initialSequence: number,
+    initialPromise: Promise<AutomaticProjectOwnershipSnapshot>,
+  ): Promise<AutomaticProjectOwnershipSnapshot> {
+    let observedSequence = initialSequence;
+    let snapshot = await initialPromise;
+    while (this.isAutomaticUpdateGenerationCurrent(generation)) {
+      const latestRefresh = this.latestAutomaticRefresh;
+      if (
+        !latestRefresh ||
+        latestRefresh.generation !== generation ||
+        latestRefresh.sequence <= observedSequence
+      ) {
+        return snapshot;
+      }
+      observedSequence = latestRefresh.sequence;
+      snapshot = await latestRefresh.promise;
+    }
+    return { applied: false, generation, projectRootPaths: [], sequence: observedSequence };
+  }
+
+  private restoreAutomaticProjectAfterExplicitIndex(projectRootPath: string): void {
+    if (
+      !this.automaticUpdatesStarted ||
+      !this.automaticWatchAllowed ||
+      this.aggregateProjectRoots.has(projectRootPath) ||
+      this.pausedProjectRoots.has(projectRootPath) ||
+      this.suppressedProjectRoots.has(projectRootPath)
+    ) {
+      return;
+    }
+    this.automaticProjectRoots.add(projectRootPath);
+    if (!this.isWatching(projectRootPath)) {
+      this.startWatchingSafely(projectRootPath, "index");
+    }
+  }
+
+  private async refreshPendingAutomaticProjectOwnership(reason = "index"): Promise<void> {
+    if (!this.automaticUpdatesStarted) {
+      return;
+    }
+    try {
+      await this.refreshAutomaticProjectRoots(this.automaticUpdatesGeneration);
+    } catch (error) {
+      this.logger.warn("automatic project refresh failed", {
+        error: error instanceof Error ? error.message : String(error),
+        reason,
+      });
+    }
+  }
+
+  public async refreshAutomaticProjectOwnership(projectRootPath: string): Promise<void> {
+    if (!this.automaticUpdatesStarted) {
+      return;
+    }
+    this.pendingAutomaticOwnershipRefreshRoots.add(normalizeAbsolutePath(projectRootPath));
+    await this.refreshPendingAutomaticProjectOwnership("topology");
+  }
+
+  private async readGitStatus(
+    projectRootPath: string,
+    lastIndexedCommit?: string,
+  ): Promise<GitStatus> {
+    try {
+      return await this.gitStatusReader(projectRootPath, lastIndexedCommit);
+    } catch (error) {
+      this.logger.warn("git status read failed", {
+        error: error instanceof Error ? error.message : String(error),
+        projectRootPath,
+      });
+      return { isGitRepo: false, reliable: false };
+    }
+  }
+
+  private isPeriodicFastSkipState(projectRootPath: string, state: ProjectWatchState | undefined): boolean {
+    return Boolean(
+      state?.active &&
+      !state.dirty &&
+      state.failureCount === 0 &&
+      !state.processing &&
+      !this.inFlightIndex.has(projectRootPath) &&
+      this.automaticProjectRoots.has(projectRootPath) &&
+      !this.pausedProjectRoots.has(projectRootPath) &&
+      !this.suppressedProjectRoots.has(projectRootPath),
+    );
+  }
+
+  private capturePeriodicFastSkipCandidates(): Map<string, PeriodicFastSkipCandidate> {
+    const candidates = new Map<string, PeriodicFastSkipCandidate>();
+    for (const projectRootPath of this.automaticProjectRoots) {
+      const watchState = this.watchers.get(projectRootPath);
+      if (watchState && this.isPeriodicFastSkipState(projectRootPath, watchState)) {
+        candidates.set(projectRootPath, { generation: watchState.generation, watchState });
+      }
+    }
+    return candidates;
+  }
+
+  private resolveIncrementalIndexMode(projectRootPath: string): IncrementalIndexModeResolution {
+    const projectId = buildStableId([projectRootPath]);
+    try {
+      const persistedProject = this.store.getProjectByRoot(projectRootPath);
+      if (persistedProject && persistedProject.status !== "ready") {
+        return { effectiveMode: "full", latestIndexEventKnown: true };
+      }
+    } catch {
+      // Fake stores and legacy databases may not expose project status; retain the event fallback.
+    }
+    try {
+      const latestIndexEventHasFailures = this.store.latestIndexEventHasFailures(projectId);
+      return {
+        effectiveMode: latestIndexEventHasFailures ? "full" : "incremental",
+        latestIndexEventKnown: latestIndexEventHasFailures !== null,
+      };
+    } catch {
+      return { effectiveMode: "incremental", latestIndexEventKnown: false };
+    }
+  }
+
+  private async getPeriodicIndexDecision(
+    projectRootPath: string,
+    candidate: PeriodicFastSkipCandidate | undefined,
+  ): Promise<PeriodicIndexDecision> {
+    const watchState = this.watchers.get(projectRootPath);
+    if (
+      !candidate ||
+      watchState !== candidate.watchState ||
+      watchState.generation !== candidate.generation ||
+      !this.isPeriodicFastSkipState(projectRootPath, watchState)
+    ) {
+      return "incremental";
+    }
+    const modeResolution = this.resolveIncrementalIndexMode(projectRootPath);
+    if (modeResolution.effectiveMode === "full") {
+      return "full";
+    }
+    if (!modeResolution.latestIndexEventKnown) {
+      return "incremental";
+    }
+
+    const projectId = buildStableId([projectRootPath]);
+    let lastIndexedCommit: string | null;
+    try {
+      lastIndexedCommit = this.store.getLastIndexedCommit(projectId);
+    } catch {
+      return "incremental";
+    }
+    if (!lastIndexedCommit) {
+      return "incremental";
+    }
+
+    const gitStatus = await this.readGitStatus(projectRootPath, lastIndexedCommit);
+    const currentWatchState = this.watchers.get(projectRootPath);
+    if (
+      currentWatchState !== watchState ||
+      currentWatchState?.generation !== candidate.generation ||
+      !this.isPeriodicFastSkipState(projectRootPath, currentWatchState)
+    ) {
+      return "incremental";
+    }
+
+    return (
+      gitStatus.isGitRepo &&
+      gitStatus.reliable &&
+      gitStatus.currentCommit &&
+      gitStatus.changedFiles?.length === 0 &&
+      gitStatus.untrackedFiles?.length === 0
+    ) ? "skip" : "incremental";
+  }
+
   public async startAutomaticUpdates(): Promise<void> {
+    if (this.closing) {
+      throw new AppError(
+        "INDEX_COORDINATOR_CLOSED",
+        "Index coordinator is closing and cannot start automatic updates",
+        { retryable: false, statusCode: 503 },
+      );
+    }
     if (!this.settings.autoWatch || this.automaticUpdatesStarted) {
       return;
     }
 
     this.automaticWatchAllowed = true;
     this.automaticUpdatesStarted = true;
-    let projects: ReturnType<SQLiteStore["listProjects"]>;
+    const generation = ++this.automaticUpdatesGeneration;
     try {
-      projects = this.store.listProjects();
+      await this.refreshAutomaticProjectRoots(generation);
     } catch (error) {
-      this.automaticWatchAllowed = false;
-      this.automaticUpdatesStarted = false;
+      if (this.automaticUpdatesGeneration === generation) {
+        this.automaticWatchAllowed = false;
+        this.automaticUpdatesStarted = false;
+      }
       throw error;
     }
-    for (const project of projects) {
-      if (!this.automaticUpdatesStarted) {
-        return;
-      }
-
-      const projectRootPath = normalizeAbsolutePath(project.projectRootPath);
-      if (this.pausedProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath)) {
-        continue;
-      }
-      const rootStats = await this.projectDirectoryInspector(projectRootPath);
-      if (!this.automaticUpdatesStarted) {
-        return;
-      }
-      if (this.pausedProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath)) {
-        continue;
-      }
-      if (!rootStats?.isDirectory()) {
-        this.logger.warn("automatic index watch skipped", {
-          projectRootPath,
-          reason: "project root is missing",
-        });
-        continue;
-      }
-
-      this.automaticProjectRoots.add(projectRootPath);
-      this.startWatchingSafely(projectRootPath, "startup");
+    if (!this.isAutomaticUpdateGenerationCurrent(generation)) {
+      return;
     }
 
     void this.reconcileWatchedProjects("startup");
@@ -336,11 +794,93 @@ export class IndexCoordinator {
   public stopAutomaticUpdates(): void {
     this.automaticWatchAllowed = false;
     this.automaticUpdatesStarted = false;
+    this.automaticUpdatesGeneration += 1;
+    this.automaticRefreshSequence += 1;
+    this.latestAutomaticRefresh = undefined;
     this.reconcileRequested = false;
+    this.reconciliationPromise = undefined;
     clearInterval(this.reconciliationTimer);
     this.reconciliationTimer = undefined;
-    this.stopWatching();
+    for (const projectRootPath of [...this.watchers.keys()]) {
+      this.closeWatcher(projectRootPath);
+    }
     this.automaticProjectRoots.clear();
+    this.aggregateProjectRoots.clear();
+  }
+
+  public close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+    this.closing = true;
+    this.stopAutomaticUpdates();
+    this.closePromise = (async () => {
+      const drained = await this.drainIndexWork(this.closeDrainTimeoutMs);
+      if (!drained) {
+        this.logger.warn("index drain timed out during shutdown", {
+          activeStorageOperations: this.activeStorageOperations.size,
+          inFlightProjects: this.inFlightIndex.size,
+          queuedProjects: this.projectQueue.size,
+          reason: "drain-timeout",
+          timeoutMs: this.closeDrainTimeoutMs,
+        });
+      }
+      await this.indexStorageWorker?.close();
+    })();
+    return this.closePromise;
+  }
+
+  private async drainIndexWork(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (
+      this.activeStorageOperations.size > 0 ||
+      this.inFlightIndex.size > 0 ||
+      this.projectQueue.size > 0
+    ) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        return false;
+      }
+      const active = new Set<Promise<unknown>>([
+        ...this.activeStorageOperations,
+        ...this.inFlightIndex.values(),
+        ...this.projectQueue.values(),
+      ]);
+      try {
+        await this.withTimeout(
+          Promise.allSettled(active),
+          remainingMs,
+          "index drain timeout",
+        );
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  public ensureSemanticIndex(projectId: string): Promise<void> {
+    if (this.closing) {
+      return Promise.reject(new AppError(
+        "INDEX_COORDINATOR_CLOSED",
+        "Index coordinator is closing and cannot accept semantic warmup requests",
+        { retryable: false, statusCode: 503 },
+      ));
+    }
+    const worker = this.getIndexStorageWorker();
+    worker.acquireLease();
+    const operation = (async () => {
+      try {
+        await worker.ensureSemanticIndex(projectId);
+      } finally {
+        worker.releaseLease();
+      }
+    })();
+    this.activeStorageOperations.add(operation);
+    void operation.finally(() => {
+      this.activeStorageOperations.delete(operation);
+    }).catch(() => {});
+    return operation;
   }
 
   public reconcileWatchedProjects(reason = "manual"): Promise<void> {
@@ -351,24 +891,61 @@ export class IndexCoordinator {
       return this.reconciliationPromise;
     }
 
+    const generation = this.automaticUpdatesGeneration;
     const run = async (): Promise<void> => {
       do {
         this.reconcileRequested = false;
+        let refreshedSnapshot: AutomaticProjectOwnershipSnapshot | undefined;
+        let periodicFastSkipCandidates: Map<string, PeriodicFastSkipCandidate> | undefined;
+        if (reason === "periodic") {
+          periodicFastSkipCandidates = this.capturePeriodicFastSkipCandidates();
+          try {
+            refreshedSnapshot = await this.refreshAutomaticProjectRoots(generation);
+          } catch (error) {
+            this.logger.warn("automatic project refresh failed", {
+              error: error instanceof Error ? error.message : String(error),
+              reason,
+            });
+            return;
+          }
+        }
+        if (
+          reason !== "manual" &&
+          (!this.isAutomaticUpdateGenerationCurrent(generation) || refreshedSnapshot?.applied === false)
+        ) {
+          return;
+        }
         const projectRoots = reason === "manual"
           ? this.getWatchStatuses().map((status) => status.projectRootPath)
-          : [...this.automaticProjectRoots].sort();
+          : refreshedSnapshot?.projectRootPaths ?? [...this.automaticProjectRoots].sort();
         for (const projectRootPath of projectRoots) {
-          if (reason !== "manual" && !this.automaticUpdatesStarted) {
+          if (reason !== "manual" && !this.isAutomaticUpdateGenerationCurrent(generation)) {
             return;
           }
           if (
             reason !== "manual" &&
-            (!this.automaticProjectRoots.has(projectRootPath) || this.suppressedProjectRoots.has(projectRootPath))
+            !this.isAutomaticallyOwned(projectRootPath)
           ) {
             continue;
           }
           try {
-            await this.indexProject(projectRootPath, "incremental", undefined, "automatic");
+            const periodicDecision = reason === "periodic"
+              ? await this.getPeriodicIndexDecision(
+                projectRootPath,
+                periodicFastSkipCandidates?.get(projectRootPath),
+              )
+              : "incremental";
+            if (reason !== "manual" && !this.isAutomaticUpdateGenerationCurrent(generation)) {
+              return;
+            }
+            if (reason !== "manual" && !this.isAutomaticallyOwned(projectRootPath)) {
+              continue;
+            }
+            if (periodicDecision === "skip") {
+              this.logger.debug("periodic index skipped for clean Git project", { projectRootPath });
+              continue;
+            }
+            await this.indexProject(projectRootPath, periodicDecision, undefined, "automatic");
           } catch (error) {
             const state = this.watchers.get(projectRootPath);
             const message = error instanceof Error ? error.message : String(error);
@@ -385,7 +962,10 @@ export class IndexCoordinator {
             });
           }
         }
-      } while (this.reconcileRequested && (reason === "manual" || this.automaticUpdatesStarted));
+      } while (
+        this.reconcileRequested &&
+        (reason === "manual" || this.isAutomaticUpdateGenerationCurrent(generation))
+      );
     };
 
     const promise = run().finally(() => {
@@ -405,9 +985,13 @@ export class IndexCoordinator {
     const wasAutomatic = this.automaticProjectRoots.has(normalizedRoot);
     const wasSuppressed = this.suppressedProjectRoots.has(normalizedRoot);
     const wasWatching = this.isWatching(normalizedRoot);
+    const automaticUpdatesGeneration = this.automaticUpdatesGeneration;
+    const automaticRefreshSequence = this.automaticRefreshSequence;
+    const watchIntentRevision = this.getWatchIntentRevision(normalizedRoot);
     let completed = false;
     this.pausedProjectRoots.add(normalizedRoot);
-    this.stopWatching(normalizedRoot);
+    this.automaticProjectRoots.delete(normalizedRoot);
+    this.closeWatcher(normalizedRoot);
 
     try {
       while (true) {
@@ -427,14 +1011,29 @@ export class IndexCoordinator {
     } finally {
       this.pausedProjectRoots.delete(normalizedRoot);
       if (!completed) {
-        if (!wasSuppressed) {
-          this.suppressedProjectRoots.delete(normalizedRoot);
-        }
-        if (wasAutomatic) {
-          this.automaticProjectRoots.add(normalizedRoot);
-        }
-        if (wasWatching) {
-          this.startWatching(normalizedRoot);
+        const canRestorePreviousState =
+          this.automaticUpdatesGeneration === automaticUpdatesGeneration &&
+          this.automaticRefreshSequence === automaticRefreshSequence &&
+          this.getWatchIntentRevision(normalizedRoot) === watchIntentRevision;
+        if (canRestorePreviousState) {
+          if (!wasSuppressed) {
+            this.suppressedProjectRoots.delete(normalizedRoot);
+          }
+          if (wasAutomatic) {
+            this.automaticProjectRoots.add(normalizedRoot);
+          }
+          if (wasWatching) {
+            this.startWatching(normalizedRoot, true);
+          }
+        } else if (this.automaticUpdatesStarted) {
+          try {
+            await this.refreshAutomaticProjectRoots(this.automaticUpdatesGeneration);
+          } catch (error) {
+            this.logger.warn("automatic project refresh failed", {
+              error: error instanceof Error ? error.message : String(error),
+              reason: "pause",
+            });
+          }
         }
       }
     }
@@ -451,6 +1050,16 @@ export class IndexCoordinator {
     indexResult: IndexProjectResult,
   ): void {
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
+    if (indexResult.failedFileCount > 0 || indexResult.failedFiles.length > 0) {
+      this.lastIndexedAtMs.delete(normalizedRoot);
+      this.lastIndexResult.delete(normalizedRoot);
+      this.watcherDirty.set(normalizedRoot, true);
+      const watchState = this.watchers.get(normalizedRoot);
+      if (watchState) {
+        watchState.dirty = true;
+      }
+      return;
+    }
     this.lastIndexedAtMs.set(normalizedRoot, performance.now());
     this.watcherDirty.set(normalizedRoot, false);
     this.lastIndexResult.set(normalizedRoot, indexResult);
@@ -544,6 +1153,13 @@ export class IndexCoordinator {
   }
 
   public startWatching(projectRootPath: string, automatic = false): void {
+    if (this.closing) {
+      throw new AppError(
+        "INDEX_COORDINATOR_CLOSED",
+        "Index coordinator is closing and cannot start file watchers",
+        { retryable: false, statusCode: 503 },
+      );
+    }
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
     if (this.pausedProjectRoots.has(normalizedRoot)) {
       throw new AppError(
@@ -556,6 +1172,7 @@ export class IndexCoordinator {
       return;
     }
     if (!automatic) {
+      this.advanceWatchIntentRevision(normalizedRoot);
       this.suppressedProjectRoots.delete(normalizedRoot);
     }
     const existingState = this.watchers.get(normalizedRoot);
@@ -616,7 +1233,7 @@ export class IndexCoordinator {
       state.abortController.abort();
       void this.recoverFailedWatcher(normalizedRoot, state);
     });
-    if (this.automaticUpdatesStarted) {
+    if (this.automaticUpdatesStarted && !this.aggregateProjectRoots.has(normalizedRoot)) {
       this.automaticProjectRoots.add(normalizedRoot);
     }
     this.logger.info("file watch started", { projectRootPath: normalizedRoot });
@@ -703,24 +1320,27 @@ export class IndexCoordinator {
     }
   }
 
+  private closeWatcher(projectRootPath: string): void {
+    const state = this.watchers.get(projectRootPath);
+    if (!state) {
+      return;
+    }
+    this.clearWatchTimers(state);
+    state.abortController.abort();
+    this.watchers.delete(projectRootPath);
+    this.logger.info("file watch stopped", { projectRootPath });
+  }
+
   public stopWatching(projectRootPath?: string): void {
     const roots = projectRootPath === undefined
-      ? [...new Set([...this.watchers.keys(), ...this.automaticProjectRoots])]
+      ? [...new Set([...this.watchers.keys(), ...this.automaticProjectRoots, ...this.pausedProjectRoots])]
       : [normalizeAbsolutePath(projectRootPath)];
 
     for (const root of roots) {
+      this.advanceWatchIntentRevision(root);
       this.suppressedProjectRoots.add(root);
-      if (projectRootPath !== undefined) {
-        this.automaticProjectRoots.delete(root);
-      }
-      const state = this.watchers.get(root);
-      if (!state) {
-        continue;
-      }
-      this.clearWatchTimers(state);
-      state.abortController.abort();
-      this.watchers.delete(root);
-      this.logger.info("file watch stopped", { projectRootPath: root });
+      this.automaticProjectRoots.delete(root);
+      this.closeWatcher(root);
     }
   }
 
@@ -848,8 +1468,15 @@ export class IndexCoordinator {
     projectRootPath: string,
     mode: "full" | "incremental" = "incremental",
     onProgress?: IndexProgressCallback,
-    origin: "automatic" | "explicit" = "explicit",
+    origin: IndexOrigin = "explicit",
   ): Promise<IndexProjectResult> {
+    if (this.closing) {
+      throw new AppError(
+        "INDEX_COORDINATOR_CLOSED",
+        "Index coordinator is closing and cannot accept new index requests",
+        { retryable: false, statusCode: 503 },
+      );
+    }
     const normalizedRoot = normalizeAbsolutePath(projectRootPath);
     if (this.pausedProjectRoots.has(normalizedRoot)) {
       throw new AppError(
@@ -873,24 +1500,51 @@ export class IndexCoordinator {
     // But we'll wait for the in-flight one to complete first
     const inFlight = this.inFlightIndex.get(normalizedRoot);
     if (inFlight && !onProgress) {
-      this.inFlightDedupedRequests.set(normalizedRoot, (this.inFlightDedupedRequests.get(normalizedRoot) ?? 0) + 1);
+      const inFlightProgress = this.inFlightProgress.get(inFlight);
+      const inFlightOrigin = inFlightProgress?.origin;
+      if (inFlightProgress) {
+        inFlightProgress.dedupedRequests += 1;
+      }
       this.logger.debug("reusing in-flight index", { projectRootPath: normalizedRoot, mode });
       // v4.3.9: Add timeout when reusing in-flight promise to avoid blocking forever
       try {
-        return await this.withTimeout(inFlight, 60_000, "in-flight index reuse timeout");
+        const result = await this.withTimeout(inFlight, 60_000, "in-flight index reuse timeout");
+        if (origin === "explicit" && inFlightOrigin === "automatic") {
+          if (this.pendingAutomaticOwnershipRefreshRoots.size > 0) {
+            await this.refreshPendingAutomaticProjectOwnership();
+          } else {
+            this.restoreAutomaticProjectAfterExplicitIndex(normalizedRoot);
+          }
+        }
+        return result;
       } catch {
         // Stuck in-flight promise — clear it and start fresh
         this.logger.warn("in-flight index stuck, clearing and restarting", { projectRootPath: normalizedRoot });
-        this.inFlightIndex.delete(normalizedRoot);
-        this.inFlightStartTimes.delete(normalizedRoot);
-        this.inFlightDedupedRequests.delete(normalizedRoot);
+        if (this.inFlightIndex.get(normalizedRoot) === inFlight) {
+          this.inFlightIndex.delete(normalizedRoot);
+        }
       }
     }
 
     // Queue behind any previous request
     const prev = this.projectQueue.get(normalizedRoot) ?? Promise.resolve();
+    const requestedAtMs = Date.now();
+    const progress: IndexProgressState = {
+      current: 0,
+      dedupedRequests: 0,
+      lastProgressAtMs: requestedAtMs,
+      origin,
+      phase: "queued",
+      phaseStartedAtMs: requestedAtMs,
+      projectRootPath: normalizedRoot,
+      requestedAtMs,
+      total: 0,
+    };
     const indexPromise = prev.then(() =>
-      this.withGlobalIndexSlot(() => this.runIndexProject(normalizedRoot, mode, onProgress)),
+      this.withGlobalIndexSlot(() => {
+        progress.runStartedAtMs = Date.now();
+        return this.runIndexProject(normalizedRoot, mode, onProgress, origin, progress);
+      }),
     );
 
     // Track both queue and in-flight state
@@ -899,15 +1553,14 @@ export class IndexCoordinator {
         }); // Swallow errors in queue chain
     this.projectQueue.set(normalizedRoot, queuePromise);
     this.inFlightIndex.set(normalizedRoot, indexPromise);
-    this.inFlightStartTimes.set(normalizedRoot, Date.now());
+    this.inFlightProgress.set(indexPromise, progress);
 
     // Clean up when done
     void indexPromise.finally(() => {
       if (this.inFlightIndex.get(normalizedRoot) === indexPromise) {
         this.inFlightIndex.delete(normalizedRoot);
-        this.inFlightStartTimes.delete(normalizedRoot);
-        this.inFlightDedupedRequests.delete(normalizedRoot);
       }
+      this.inFlightProgress.delete(indexPromise);
       // Only delete from queue if this is still the latest promise
       if (this.projectQueue.get(normalizedRoot) === queuePromise) {
         this.projectQueue.delete(normalizedRoot);
@@ -956,8 +1609,48 @@ export class IndexCoordinator {
     normalizedRoot: string,
     mode: "full" | "incremental",
     onProgress?: IndexProgressCallback,
+    origin: IndexOrigin = "explicit",
+    progress: IndexProgressState = {
+      current: 0,
+      dedupedRequests: 0,
+      lastProgressAtMs: Date.now(),
+      origin,
+      phase: "prepare",
+      phaseStartedAtMs: Date.now(),
+      projectRootPath: normalizedRoot,
+      requestedAtMs: Date.now(),
+      runStartedAtMs: Date.now(),
+      total: 0,
+    },
+  ): Promise<IndexProjectResult> {
+    const indexStorageWorker = this.getIndexStorageWorker();
+    indexStorageWorker.acquireLease();
+    try {
+      return await this.runLeasedIndexProject(
+        normalizedRoot,
+        mode,
+        onProgress,
+        origin,
+        progress,
+        indexStorageWorker,
+      );
+    } finally {
+      indexStorageWorker.releaseLease();
+    }
+  }
+
+  private async runLeasedIndexProject(
+    normalizedRoot: string,
+    mode: "full" | "incremental",
+    onProgress: IndexProgressCallback | undefined,
+    origin: IndexOrigin,
+    progress: IndexProgressState,
+    indexStorageWorker: IndexStorageWorker,
   ): Promise<IndexProjectResult> {
     const startedAtMs = performance.now();
+    const totalStartedAtEpochMs = Date.now();
+    const preflightStartedAtMs = performance.now();
+    this.reportIndexProgress(progress, { phase: "prepare", status: "start" }, onProgress);
     const watchStateAtStart = this.watchers.get(normalizedRoot);
     const watchGenerationAtStart = watchStateAtStart?.generation;
     const rootStats = await stat(normalizedRoot).catch(() => null);
@@ -966,6 +1659,10 @@ export class IndexCoordinator {
     }
 
     const projectId = buildStableId([normalizedRoot]);
+    if (mode === "incremental") {
+      mode = this.resolveIncrementalIndexMode(normalizedRoot).effectiveMode;
+    }
+    const wasRegisteredBeforeIndex = origin !== "explicit" || this.store.getProjectByRoot(normalizedRoot) !== undefined;
     const timestamp = new Date().toISOString();
 
     /**
@@ -982,9 +1679,9 @@ export class IndexCoordinator {
 
     if (mode === "incremental") {
       const lastIndexedCommit = this.store.getLastIndexedCommit(projectId);
-      const gitStatus = await getGitChangedFiles(normalizedRoot, lastIndexedCommit ?? undefined);
+      const gitStatus = await this.readGitStatus(normalizedRoot, lastIndexedCommit ?? undefined);
 
-      if (gitStatus.isGitRepo && gitStatus.currentCommit) {
+      if (gitStatus.isGitRepo && gitStatus.reliable && gitStatus.currentCommit) {
         gitCommit = gitStatus.currentCommit;
 
         // If we have a previous index and git tells us what changed
@@ -1004,26 +1701,43 @@ export class IndexCoordinator {
       }
     }
 
+    this.reportIndexProgress(progress, {
+      phase: "prepare",
+      status: "done",
+      ms: Math.round(performance.now() - preflightStartedAtMs),
+    }, onProgress);
+
     // v4.3.6: Emit collect phase events
-    onProgress?.({ phase: "collect", status: "start" });
+    this.reportIndexProgress(progress, { phase: "collect", status: "start" }, onProgress);
     const collectStartedAtMs = performance.now();
     const ignoreManager = await IgnoreManager.create(normalizedRoot, this.settings.excludePatterns);
     const sourceFiles = await collectSourceFiles(normalizedRoot, this.settings, ignoreManager);
     const collectMs = Math.round(performance.now() - collectStartedAtMs);
-    onProgress?.({ phase: "collect", status: "done", ms: collectMs, detail: `${sourceFiles.length} files scanned` });
+    this.reportIndexProgress(progress, {
+      phase: "collect",
+      status: "done",
+      ms: collectMs,
+      detail: `${sourceFiles.length} files scanned`,
+    }, onProgress);
 
+    this.reportIndexProgress(progress, { phase: "detect", status: "start" }, onProgress);
     const detectStartedAtMs = performance.now();
     const project = await detectProject(normalizedRoot, sourceFiles);
     const detectMs = Math.round(performance.now() - detectStartedAtMs);
+    this.reportIndexProgress(progress, { phase: "detect", status: "done", ms: detectMs }, onProgress);
 
-    this.store.upsertProject(projectId, project, "indexing", timestamp);
+    const indexingStartedAtMs = performance.now();
+    const indexingStartedAtEpochMs = Date.now();
+    this.reportIndexProgress(progress, { phase: "prepare", status: "start", total: sourceFiles.length }, onProgress);
+    const prepareStartedAtMs = performance.now();
+    const preparation = await indexStorageWorker.prepareProjectIndex(projectId, project, timestamp);
 
     const existingFiles = new Map(
-      this.store.listProjectFiles(projectId).map((file) => [file.relativePath, file]),
+      preparation.existingFiles.map((file) => [file.relativePath, file]),
     );
     const currentPaths = new Set(sourceFiles.map((file) => file.relativePath));
     const deletedFiles = [...existingFiles.keys()].filter((relativePath) => !currentPaths.has(relativePath));
-    this.store.deleteFiles(projectId, deletedFiles);
+    await indexStorageWorker.deleteFiles(projectId, deletedFiles);
 
     /**
      * v4.3.3: Smart file filtering
@@ -1047,11 +1761,18 @@ export class IndexCoordinator {
     });
 
     const changedFiles = filesToIndex.length;
-    const indexingStartedAtMs = performance.now();
+    const prepareMs = Math.round(performance.now() - prepareStartedAtMs);
+    this.reportIndexProgress(progress, {
+      phase: "prepare",
+      status: "done",
+      ms: prepareMs,
+      detail: `${changedFiles} files changed, ${deletedFiles.length} files deleted`,
+    }, onProgress);
     let vectorMs = 0;
 
     // v4.3.6: Emit parse phase events
-    onProgress?.({ phase: "parse", status: "start", total: changedFiles });
+    this.reportIndexProgress(progress, { phase: "parse", status: "start", total: changedFiles }, onProgress);
+    const parseStartedAtMs = performance.now();
     let parsedCount = 0;
 
     /**
@@ -1081,7 +1802,12 @@ export class IndexCoordinator {
         // v4.3.6: Emit parse progress (every batch)
         parsedCount++;
         if (parsedCount % this.settings.batchSize === 0 || parsedCount === changedFiles) {
-          onProgress?.({ phase: "parse", status: "progress", current: parsedCount, total: changedFiles });
+          this.reportIndexProgress(progress, {
+            phase: "parse",
+            status: "progress",
+            current: parsedCount,
+            total: changedFiles,
+          }, onProgress);
         }
 
         // v4.3.1: Return data for batch write instead of writing immediately
@@ -1110,20 +1836,27 @@ export class IndexCoordinator {
         };
       }
     });
-    const parseMs = Math.round(performance.now() - indexingStartedAtMs);
-    onProgress?.({ phase: "parse", status: "done", ms: parseMs, detail: `${parsedCount} files parsed` });
+    const parseMs = Math.round(performance.now() - parseStartedAtMs);
+    this.reportIndexProgress(progress, {
+      phase: "parse",
+      status: "done",
+      ms: parseMs,
+      detail: `${parsedCount} files parsed`,
+    }, onProgress);
 
     // v4.3.1: Batch write to database - dramatically reduces transaction overhead
     const successResults = fileResults.filter((r): r is Extract<IndexedFileResult, { indexed: true }> => r.indexed);
 
     // v4.3.6: Emit index (database write) phase events
-    onProgress?.({ phase: "index", status: "start", total: successResults.length });
-    const indexWriteStartMs = performance.now();
+    this.reportIndexProgress(progress, { phase: "index", status: "start", total: successResults.length }, onProgress);
+    let writeMs = 0;
+    let maxWriteBatchMs = 0;
 
     const totalBatches = Math.ceil(successResults.length / DB_WRITE_BATCH_SIZE);
     for (let i = 0; i < successResults.length; i += DB_WRITE_BATCH_SIZE) {
       const batch = successResults.slice(i, i + DB_WRITE_BATCH_SIZE);
-      this.store.writeFileIndexBatch(
+      const batchStartedAtMs = performance.now();
+      await indexStorageWorker.writeFileIndexBatch(
         projectId,
         batch.map((r) => ({
           indexedFile: r.indexedFile,
@@ -1134,25 +1867,37 @@ export class IndexCoordinator {
         })),
         timestamp,
       );
+      const batchWriteMs = Math.round(performance.now() - batchStartedAtMs);
+      writeMs += batchWriteMs;
+      maxWriteBatchMs = Math.max(maxWriteBatchMs, batchWriteMs);
       // v4.3.6: Emit index progress per batch
       const batchNum = Math.floor(i / DB_WRITE_BATCH_SIZE) + 1;
-      onProgress?.({ phase: "index", status: "progress", current: batchNum, total: totalBatches });
+      this.reportIndexProgress(progress, {
+        phase: "index",
+        status: "progress",
+        current: batchNum,
+        total: totalBatches,
+      }, onProgress);
     }
-    const indexWriteMs = Math.round(performance.now() - indexWriteStartMs);
-    onProgress?.({ phase: "index", status: "done", ms: indexWriteMs, detail: `${successResults.length} files indexed` });
+    this.reportIndexProgress(progress, {
+      phase: "index",
+      status: "done",
+      ms: writeMs,
+      detail: `${successResults.length} files indexed`,
+    }, onProgress);
 
     // v4.3.1: Vector indexing (still per-file for now, but after batch write)
     if (this.settings.enableVectorSearch && this.settings.vectorIndexingMode === "eager") {
-      onProgress?.({ phase: "vector", status: "start", total: successResults.length });
+      this.reportIndexProgress(progress, { phase: "vector", status: "start", total: successResults.length }, onProgress);
       let vectoredCount = 0;
       for (const result of successResults) {
         if (result.chunks.length > 0) {
           const provider = this.embeddingProvider;
           const vectorStartedAtMs = performance.now();
           const embeddings = await provider.embedBatch(result.chunks.map((chunk) => chunk.content));
-          vectorMs += Math.round(performance.now() - vectorStartedAtMs);
           result.vectorChunkCount = result.chunks.length;
-          this.store.writeChunkVectors(
+          const vectorWriteStartedAtMs = performance.now();
+          await indexStorageWorker.writeChunkVectors(
             result.chunks.map((chunk, index) => ({
               chunkId: chunk.chunkId,
               embedding: embeddings[index],
@@ -1160,16 +1905,23 @@ export class IndexCoordinator {
             })),
             projectId,
           );
+          const vectorWriteMs = Math.round(performance.now() - vectorWriteStartedAtMs);
+          writeMs += vectorWriteMs;
+          maxWriteBatchMs = Math.max(maxWriteBatchMs, vectorWriteMs);
+          vectorMs += Math.round(performance.now() - vectorStartedAtMs);
         }
         vectoredCount++;
         if (vectoredCount % 10 === 0 || vectoredCount === successResults.length) {
-          onProgress?.({ phase: "vector", status: "progress", current: vectoredCount, total: successResults.length });
+          this.reportIndexProgress(progress, {
+            phase: "vector",
+            status: "progress",
+            current: vectoredCount,
+            total: successResults.length,
+          }, onProgress);
         }
       }
-      onProgress?.({ phase: "vector", status: "done", ms: vectorMs });
+      this.reportIndexProgress(progress, { phase: "vector", status: "done", ms: vectorMs }, onProgress);
     }
-
-    const indexMs = Math.round(performance.now() - indexingStartedAtMs);
     const failedFiles: IndexFailure[] = [];
     let chunkCount = 0;
     let indexedFiles = 0;
@@ -1188,67 +1940,145 @@ export class IndexCoordinator {
       });
     }
 
-    const totalMs = Math.round(performance.now() - startedAtMs);
-    if (changedFiles > 0 || deletedFiles.length > 0) {
+    const hasIndexChanges = changedFiles > 0 || deletedFiles.length > 0;
+    this.reportIndexProgress(progress, {
+      phase: "symbolGraph",
+      status: "start",
+      total: changedFiles + deletedFiles.length,
+    }, onProgress);
+    const symbolGraphStartedAtMs = performance.now();
+    if (hasIndexChanges) {
       // Collect fileIds of changed files for incremental symbol graph resolution
       const changedFileIds = new Set(filesToIndex.map((file) => buildStableId([projectId, file.relativePath])));
       // Also include deleted file IDs (their usages/imports were already removed by deleteFiles)
       for (const deletedPath of deletedFiles) {
         changedFileIds.add(buildStableId([projectId, deletedPath]));
       }
-      this.store.resolveSymbolGraph(projectId, changedFileIds);
+      await indexStorageWorker.resolveSymbolGraph(projectId, [...changedFileIds]);
     }
+    const symbolGraphMs = Math.round(performance.now() - symbolGraphStartedAtMs);
+    this.reportIndexProgress(progress, {
+      phase: "symbolGraph",
+      status: "done",
+      ms: symbolGraphMs,
+    }, onProgress);
 
     // v4.3.6: Emit semantic phase events
     // Pre-build semantic FTS index during indexing so first search doesn't block
-    if (changedFiles > 0 || deletedFiles.length > 0) {
-      onProgress?.({ phase: "semantic", status: "start" });
-      const semanticStart = performance.now();
-      this.store.ensureSemanticIndex(projectId);
-      const semanticMs = Math.round(performance.now() - semanticStart);
-      onProgress?.({ phase: "semantic", status: "done", ms: semanticMs });
-      if (semanticMs > 100) {
-        this.logger.info("semantic index built", { projectRootPath: normalizedRoot, semanticMs });
+    this.reportIndexProgress(progress, { phase: "semantic", status: "start" }, onProgress);
+    const semanticStartedAtMs = performance.now();
+    if (hasIndexChanges) {
+      await indexStorageWorker.ensureSemanticIndex(projectId);
+    }
+    const semanticMs = Math.round(performance.now() - semanticStartedAtMs);
+    this.reportIndexProgress(progress, { phase: "semantic", status: "done", ms: semanticMs }, onProgress);
+    if (semanticMs > 100) {
+      this.logger.info("semantic index built", { projectRootPath: normalizedRoot, semanticMs });
+    }
+
+    this.reportIndexProgress(progress, { phase: "finalize", status: "start" }, onProgress);
+    const finalizeStartedAtMs = performance.now();
+    const finalizeStartedAtEpochMs = Date.now();
+    const bumpIndexVersion = hasIndexChanges;
+
+    if (origin === "explicit") {
+      if (!wasRegisteredBeforeIndex && this.automaticUpdatesStarted) {
+        this.pendingAutomaticOwnershipRefreshRoots.add(normalizedRoot);
+      }
+      if (this.pendingAutomaticOwnershipRefreshRoots.size > 0) {
+        await this.refreshPendingAutomaticProjectOwnership();
+      } else {
+        this.restoreAutomaticProjectAfterExplicitIndex(normalizedRoot);
       }
     }
 
-    const bumpIndexVersion = changedFiles > 0 || deletedFiles.length > 0;
-    // v4.3.3: Save git commit for future incremental indexing
-    const newIndexVersion = this.store.updateProjectAfterIndex(projectId, timestamp, "ready", bumpIndexVersion, gitCommit ?? undefined);
-    // v4.5.7: reconcile only the affected files' vectors and sync the cache version
-    // instead of clearing the whole project's vector cache on every incremental pass.
-    if (bumpIndexVersion) {
-      const affectedPaths = [...filesToIndex.map((file) => file.relativePath), ...deletedFiles];
-      this.store.reconcileVectorCacheAfterIndex(projectId, affectedPaths, newIndexVersion);
-    }
-    this.store.recordIndexEvent(projectId, {
-      changedFiles,
-      chunkCount,
-      createdAt: timestamp,
-      deletedFiles: deletedFiles.length,
-      failedFiles,
-      indexedFiles,
-      metadata: {
-        timings: {
-          collectMs,
-          detectMs,
-          indexMs,
-          totalMs,
-          vectorMs,
+    const baseTimings = {
+      collectMs,
+      detectMs,
+      finalizeMs: Math.round(performance.now() - finalizeStartedAtMs),
+      indexMs: Math.round(performance.now() - indexingStartedAtMs),
+      maxWriteBatchMs,
+      parseMs,
+      prepareMs,
+      semanticMs,
+      symbolGraphMs,
+      totalMs: Math.round(performance.now() - startedAtMs),
+      vectorMs,
+      writeMs,
+    };
+    const finalizeWriteStartedAtMs = Date.now();
+    const finalization = await indexStorageWorker.finalizeProjectIndex(projectId, {
+      bumpIndexVersion,
+      event: {
+        changedFiles,
+        chunkCount,
+        createdAt: timestamp,
+        deletedFiles: deletedFiles.length,
+        failedFiles,
+        indexedFiles,
+        metadata: {
+          vectorIndex: {
+            enabled: this.settings.enableVectorSearch,
+            hydratedChunkCount,
+            mode: this.settings.vectorIndexingMode,
+          },
+          gitOptimization: {
+            enabled: gitOptimized,
+            commit: gitCommit?.slice(0, 8) ?? null,
+          },
         },
-        vectorIndex: {
-          enabled: this.settings.enableVectorSearch,
-          hydratedChunkCount,
-          mode: this.settings.vectorIndexingMode,
-        },
-        // v4.3.3: Track git optimization stats
-        gitOptimization: {
-          enabled: gitOptimized,
-          commit: gitCommit?.slice(0, 8) ?? null,
-        },
+        scannedFiles: sourceFiles.length,
       },
-      scannedFiles: sourceFiles.length,
+      lastIndexedCommit: gitCommit ?? undefined,
+      status: failedFiles.length > 0 ? "error" : "ready",
+      timestamp,
+      timing: {
+        baseTimings,
+        finalizeStartedAtMs: finalizeStartedAtEpochMs,
+        finalizeWriteStartedAtMs,
+        indexStartedAtMs: indexingStartedAtEpochMs,
+        totalStartedAtMs: totalStartedAtEpochMs,
+      },
     });
+    if (bumpIndexVersion) {
+      // Overall invalidation is SQLite-free and avoids materializing vectors on the main thread.
+      this.store.clearProjectVectorCache(projectId, finalization.indexVersion);
+    }
+
+    const timings = finalization.timings;
+    const finalizeMs = timings.finalizeMs ?? Math.round(performance.now() - finalizeStartedAtMs);
+    const indexMs = timings.indexMs;
+    const totalMs = timings.totalMs;
+    writeMs = timings.writeMs ?? writeMs;
+    maxWriteBatchMs = timings.maxWriteBatchMs ?? maxWriteBatchMs;
+    this.reportIndexProgress(progress, { phase: "finalize", status: "done", ms: finalizeMs }, onProgress);
+
+    const indexSucceeded = failedFiles.length === 0;
+    const currentWatchState = this.watchers.get(normalizedRoot);
+    if (indexSucceeded) {
+      this.lastIndexedAtMs.set(normalizedRoot, performance.now());
+    } else {
+      this.lastIndexedAtMs.delete(normalizedRoot);
+    }
+    if (currentWatchState) {
+      const caughtUp = watchStateAtStart
+        ? currentWatchState === watchStateAtStart && currentWatchState.generation === watchGenerationAtStart
+        : currentWatchState.generation === 0;
+      currentWatchState.failureCount = indexSucceeded ? 0 : currentWatchState.failureCount + 1;
+      currentWatchState.lastError = indexSucceeded
+        ? undefined
+        : `${failedFiles.length} file(s) failed to index`;
+      if (indexSucceeded) {
+        currentWatchState.lastSuccessAt = new Date().toISOString();
+      }
+      currentWatchState.dirty = !indexSucceeded || !caughtUp;
+      this.watcherDirty.set(normalizedRoot, currentWatchState.dirty);
+      if (indexSucceeded && caughtUp) {
+        this.clearWatchTimers(currentWatchState);
+      }
+    } else {
+      this.watcherDirty.set(normalizedRoot, !indexSucceeded);
+    }
 
     this.logger.info("project indexed", {
       batchSize: this.settings.batchSize,
@@ -1259,53 +2089,22 @@ export class IndexCoordinator {
       deletedFiles: deletedFiles.length,
       failedFileCount: failedFiles.length,
       gitOptimized,
+      finalizeMs,
       indexMs,
       indexedFiles,
+      maxWriteBatchMs,
+      parseMs,
+      prepareMs,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
+      semanticMs,
+      symbolGraphMs,
       totalMs,
       vectorIndexingMode: this.settings.vectorIndexingMode,
       vectorMs,
       vectorSearchEnabled: this.settings.enableVectorSearch,
+      writeMs,
     });
-
-    if (
-      this.automaticUpdatesStarted &&
-      !this.pausedProjectRoots.has(normalizedRoot) &&
-      !this.suppressedProjectRoots.has(normalizedRoot)
-    ) {
-      this.automaticProjectRoots.add(normalizedRoot);
-    }
-
-    // Update freshness tracking
-    this.lastIndexedAtMs.set(normalizedRoot, performance.now());
-    const currentWatchState = this.watchers.get(normalizedRoot);
-    if (currentWatchState) {
-      const caughtUp = watchStateAtStart
-        ? currentWatchState === watchStateAtStart && currentWatchState.generation === watchGenerationAtStart
-        : currentWatchState.generation === 0;
-      currentWatchState.failureCount = 0;
-      currentWatchState.lastError = undefined;
-      currentWatchState.lastSuccessAt = new Date().toISOString();
-      currentWatchState.dirty = !caughtUp;
-      this.watcherDirty.set(normalizedRoot, !caughtUp);
-      if (caughtUp) {
-        this.clearWatchTimers(currentWatchState);
-      }
-    } else {
-      this.watcherDirty.set(normalizedRoot, false);
-    }
-
-    if (
-      this.settings.autoWatch &&
-      this.automaticUpdatesStarted &&
-      this.automaticWatchAllowed &&
-      !this.pausedProjectRoots.has(normalizedRoot) &&
-      !this.suppressedProjectRoots.has(normalizedRoot) &&
-      !this.isWatching(normalizedRoot)
-    ) {
-      this.startWatchingSafely(normalizedRoot, "index");
-    }
 
     const result: IndexProjectResult = {
       changedFiles,
@@ -1319,13 +2118,7 @@ export class IndexCoordinator {
       projectId,
       projectRootPath: normalizedRoot,
       scannedFiles: sourceFiles.length,
-      timings: {
-        collectMs,
-        detectMs,
-        indexMs,
-        totalMs,
-        vectorMs,
-      },
+      timings,
       vectorIndex: {
         enabled: this.settings.enableVectorSearch,
         hydratedChunkCount,
@@ -1334,14 +2127,18 @@ export class IndexCoordinator {
     };
 
     // v4.3.6: Emit complete event
-    onProgress?.({
+    this.reportIndexProgress(progress, {
       phase: "complete",
       status: "done",
       ms: totalMs,
       detail: `${indexedFiles} files indexed, ${chunkCount} chunks created`,
-    });
+    }, onProgress);
 
-    this.lastIndexResult.set(normalizedRoot, result);
+    if (indexSucceeded) {
+      this.lastIndexResult.set(normalizedRoot, result);
+    } else {
+      this.lastIndexResult.delete(normalizedRoot);
+    }
     return result;
   }
 }

@@ -27,6 +27,7 @@ export function toolCatalog(): Array<{ description: string; name: string }> {
   return [
     { description: "Scan and index a local project for keyword, symbol, and path search.", name: "index_project" },
     { description: "Pre-build vector embeddings for a project to enable fast semantic search.", name: "warm_index" },
+    { description: "Resolve a query to the most relevant indexed projects without indexing every project.", name: "resolve_projects" },
     { description: "Incrementally index the project and return code snippets relevant to a natural language, symbol, path, or semantic query.", name: "search_context" },
     { description: "Incrementally index the project and locate symbol definitions with signatures and snippets.", name: "find_definition" },
     { description: "Incrementally index the project, resolve the best definition, and return likely references.", name: "find_references" },

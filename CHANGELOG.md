@@ -2,7 +2,48 @@
 
 本项目的重要版本变更记录如下。
 
-## Unreleased
+## [4.10.3] - Unreleased
+
+### Fair and bounded project routing
+
+- 全局 FTS 召回改为按项目窗口配额，每项目最多保留 20 条原始匹配；候选评分对同项目重复证据应用边际递减，使相同逻辑同时存在于大、小项目时能共同进入 `multiple` 候选，而不是被重复文件数量主导。
+- SQLite 路由结果显式返回由 FTS highlight 计算的 `matchedTerms`，关键词覆盖不再依赖 32-token snippet 或普通 substring，避免远距离词漏计及 `preorder` 误算 `order`。
+- 路由 IPC 将 query 限为 4096 字符、route terms 限为 32 个、identifiers 限为 16 个，term/identifier 单项限为 120 字符；候选最多返回 10 个、每项目最多输出 5 条证据，每条匹配文本限为 4096 字符，并在生成 snippet 前先收敛有界候选。
+
+### Automatic project maintenance
+
+- 自动维护会识别注册项目层级：拥有两个及以上已登记后代项目的聚合父目录不再启动 watcher、startup catch-up 或 periodic reconciliation，避免父目录与具体子项目重复扫描；单一嵌套子项目和显式父目录索引保持兼容。
+- 项目拓扑在运行期变化时会刷新 ownership；删除子项目成功后立即触发刷新，刷新失败则保留 pending 供后续重试，且单调 refresh sequence 防止旧快照覆盖更新后的拓扑。watcher、排队任务和 in-flight 索引继续使用 generation/Promise identity 防止旧任务清理新状态。
+
+### Git clean fast path
+
+- periodic reconciliation 在 Git 状态与前后 HEAD 读取可靠、worktree clean、watcher active/clean 且没有失败或在途索引时，复用持久化提交元数据并跳过 source collection。
+- startup、dirty/untracked/deleted、watcher inactive、Git 读取失败、HEAD 变化和历史索引失败仍走保守增量或全量路径；持久化文件失败会让所有 incremental 入口升级为 full，直到成功索引恢复一致状态。
+
+### Independent index worker and phase diagnostics
+
+- 索引侧 SQLite 删除、文件/向量批写、symbol graph 和 semantic index 操作移到独立 worker；构建产物使用 `worker_threads`，源码/dev/test 使用 `node --import tsx` IPC 子进程，并与搜索 worker 隔离。
+- worker 请求具备 generation、request id、远端错误栈、idle shutdown 和有界关闭语义；`IndexCoordinator.close()` 停止接收新索引，并等待 active/queued 项目任务收敛后再终止 worker。
+- SQLite search worker 的 pending request 绑定具体 worker identity；幂等 close 会立即拒绝新请求并等待全部 live/terminating worker 收敛，旧 worker 的迟到 error/exit 不会拒绝替代 worker 上的新请求或清除其状态。
+- 项目 prepare 使用 worker-owned immediate transaction 原子更新状态并返回已有文件快照；主线程向量缓存失效使用 generation、`indexVersion` 和向量内容指纹隔离在途 HNSW load/build/save，磁盘清理不再同步扫描目录。
+- `--warm` 现在会在 readiness 前完成向量缓存预载，并通过 coordinator-owned SQLite worker 补齐 semantic FTS；LaunchAgent 默认不启用该标志，正常启动路径不增加暖机等待。
+- source parse 在 batch 间主动 yield，`/health` 分别报告 active/queued 索引的 `phase`、`origin`、进度、`queueMs` 和 `phaseElapsedMs`；完成事件补充 prepare/parse/write/vector/symbolGraph/semantic/finalize 等耗时。
+
+### During-index benchmark and release status
+
+- `release:benchmark` 现在以 `--smoke --during-index` 运行；必须观察到 active indexing，且只在 active 窗口收集至少 20 个 `/health` 和 20 个 `/api/projects/resolve` 样本，并对 p95 与请求超时执行失败门禁。
+- package/runtime/macOS installer 和发布契约更新到 4.10.3。当前条目仍为 Unreleased；commit、tag、push、Gitee Release 和真实下载验证尚未完成。
+- Windows 自包含 ZIP 仍需稍后在 Windows x64 + Node.js 22 主机上构建、运行原生依赖与 smoke 验证；Darwin 主机不宣称该产物已完成。
+
+## [4.10.2] - 2026-07-22
+
+### Automatic project routing
+
+- 新增 `resolve_projects` MCP 工具和 `POST /api/projects/resolve`，使用一次有界的全局 FTS/精确符号查询对已索引项目排序，不再要求调用方先知道 `projectRootPath`，也不会逐项目触发 `ensureFreshIndex`。
+- 项目路由返回 `single`、`multiple` 或 `abstain`，同时提供候选置信度、命中关键词和证据文件；弱通用词、无匹配和相近候选不会被静默强制选成一个项目。
+- 路由默认排除不存在路径、非 ready 项目以及包含多个已登记子项目的聚合父目录；父子目录判断与 Web 全量索引保护复用同一核心规则。
+- Web 项目范围默认使用自动识别；代码搜索和智能问答只在单项目高置信决策后复用现有单项目 API，手动项目路径保持最高优先级，多项目或证据不足时停止并显示解析状态。
+- 新增项目路由 golden 指标，独立统计 decision accuracy、Top-1、Recall@3 和 MRR，不与单项目代码结果质量混为一个分数。
 
 ## [4.10.1] - 2026-07-21
 

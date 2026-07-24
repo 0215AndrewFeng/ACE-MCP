@@ -2,6 +2,7 @@ import type {
   IndexFailure,
   IndexTimingStats,
   IndexVectorStats,
+  IndexedFileRecord,
   Language,
   ProjectInfo,
   ProjectStatus,
@@ -47,6 +48,32 @@ export interface IndexEventPayload {
     };
   };
   scannedFiles: number;
+}
+
+export interface FinalizeProjectIndexPayload {
+  bumpIndexVersion: boolean;
+  event: Omit<IndexEventPayload, "metadata"> & {
+    metadata: Omit<IndexEventPayload["metadata"], "timings">;
+  };
+  lastIndexedCommit?: string;
+  status: ProjectStatus;
+  timestamp: string;
+  timing: {
+    baseTimings: IndexTimingStats;
+    finalizeStartedAtMs: number;
+    finalizeWriteStartedAtMs: number;
+    indexStartedAtMs: number;
+    totalStartedAtMs: number;
+  };
+}
+
+export interface FinalizeProjectIndexResult {
+  indexVersion: number;
+  timings: IndexTimingStats;
+}
+
+export interface PrepareProjectIndexResult {
+  existingFiles: IndexedFileRecord[];
 }
 
 export interface IndexEventRow {
