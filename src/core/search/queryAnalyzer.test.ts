@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { analyzeQuery, buildFtsQuery, estimateOptimalSources } from "./queryAnalyzer.js";
+import {
+  analyzeQuery,
+  boundProjectRouteTerms,
+  buildFtsQuery,
+  estimateOptimalSources,
+} from "./queryAnalyzer.js";
 
 test("analyzeQuery keeps code identifiers dominant in mixed CJK identifier queries", () => {
   const analysis = analyzeQuery("matchForShow接口的具体业务逻辑");
@@ -16,6 +21,15 @@ test("analyzeQuery segments CJK runs into bounded bigrams for search recall", ()
 
   assert.deepEqual(analysis.tokens.slice(0, 5), ["假确认场景", "假确", "确认", "认场", "场景"]);
   assert.equal(analysis.isSymbolLike, false);
+});
+
+test("analyzeQuery preserves mixed ASCII and CJK business terms for exact routing", () => {
+  const analysis = analyzeQuery("退规计算 A转D A转D历史逻辑 refund rule A to D");
+
+  assert.ok(analysis.tokens.includes("a转d"));
+  assert.ok(analysis.naturalLanguage.includes("a转d"));
+  assert.match(analysis.ftsQuery ?? "", /(?:^| OR )a转d\*/);
+  assert.equal(boundProjectRouteTerms(analysis.tokens).includes("to"), false);
 });
 
 test("buildFtsQuery normalizes path and symbol separators into prefix terms", () => {

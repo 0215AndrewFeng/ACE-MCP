@@ -2,6 +2,23 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.4] - 2026-08-03
+
+### Bounded and failure-safe logging
+
+- `logLevel` 现在在任何日志 I/O 前生效，`info` 配置不再把 debug 写进 NDJSON 文件；默认单文件上限 20 MiB，最多保留 3 个归档，主进程与 SQLite workers 使用原子 lock 文件协调轮转。
+- 文件系统错误、循环 metadata 序列化和 stderr EPIPE 均在 Logger 边界内降级，不再从日志路径抛向 `uncaughtException`；macOS LaunchAgent 和 Linux systemd 默认设置 `ACE_MCP_LOG_TO_STDERR=false`，避免结构化文件日志与守护进程 stderr 重复写入。
+- 根因复盘确认 2026-07-31 的异常增长来自 `stderr EPIPE -> uncaughtException logging -> shutdown logging -> launchd KeepAlive restart` 循环，而非正常索引吞吐；新增回归测试覆盖等级过滤、轮转上限、EPIPE 与不可序列化 metadata。
+
+### Mixed-term project routing ownership
+
+- 查询分析保留 `A转D` 等 ASCII/CJK 混合业务概念，并从项目路由词中移除 `to` 等英文停用词，避免关键实体退化成单字“转”和通用词满覆盖。
+- 精确混合概念结合查询命中的仓库 basename 建立 ownership 锚点，并对共享非通用项目族片段且已有代码证据的兄弟仓库加权；复制枚举、测试夹具和泛化退规代码可保留为候选，但不会覆盖明确的仓库归属。
+
+### Release status
+
+- package/runtime/macOS installer 和发布契约更新到 4.10.4；Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机补充构建、原生依赖与 smoke 验证。
+
 ## [4.10.3] - 2026-07-24
 
 ### Fair and bounded project routing

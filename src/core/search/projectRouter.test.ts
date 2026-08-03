@@ -199,6 +199,127 @@ test("project router does not dilute identifier coverage with excluded CJK query
   }
 });
 
+test("project router prefers exact mixed business evidence over generic refund coverage", async () => {
+  const env = await createTestProjectEnvironment({});
+  const preciseProject = path.join(env.tempDir, "tc-flight-tgq-rule");
+  const genericProject = path.join(env.tempDir, "tc-flight-endorse-service");
+
+  try {
+    await mkdir(preciseProject, { recursive: true });
+    await mkdir(genericProject, { recursive: true });
+    const router = new ProjectRouter(
+      {
+        listProjects: () => [preciseProject, genericProject]
+          .map((projectRootPath) => ({ projectRootPath, status: "ready" })),
+      } as never,
+      {
+        searchProjectRouteMatches: async () => [
+          {
+            filePath: "src/XcalcPreConvertADAdjustProc.java",
+            matchedTerms: ["a转d", "refund", "rule"],
+            matchText: "A转D refund rule",
+            projectId: "precise",
+            projectRootPath: preciseProject,
+            rank: 1,
+            source: "lexical" as const,
+          },
+          ...Array.from({ length: 5 }, (_, index) => ({
+            filePath: `src/GenericRefund${index}.java`,
+            matchedTerms: ["转", "历史逻辑", "refund", "rule", "to"],
+            matchText: "转 历史逻辑 refund rule to",
+            projectId: "generic",
+            projectRootPath: genericProject,
+            rank: index + 2,
+            source: "lexical" as const,
+          })),
+        ],
+      } as never,
+    );
+
+    const result = await router.resolve("A转D A转D历史逻辑 refund rule A to D");
+
+    assert.equal(result.decision, "single");
+    assert.deepEqual(result.selectedProjectRootPaths, [preciseProject]);
+    assert.equal(result.candidates[0]?.projectRootPath, preciseProject);
+    assert.ok(result.candidates[0]?.matchedTerms.includes("a转d"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router anchors mixed business evidence to its owning repository family", async () => {
+  const env = await createTestProjectEnvironment({});
+  const ruleProject = path.join(env.tempDir, "tc-flight-tgq-rule");
+  const coreProject = path.join(env.tempDir, "tc-flight-tgq-core");
+  const copiedProject = path.join(env.tempDir, "tc-flight-fdr-core");
+  const testHarnessProject = path.join(env.tempDir, "ace-mcp");
+  const projects = [ruleProject, coreProject, copiedProject, testHarnessProject];
+
+  try {
+    await Promise.all(projects.map((projectRootPath) => mkdir(projectRootPath, { recursive: true })));
+    const genericTerms = ["国内", "机票", "退订", "系统", "退规", "计算", "refund", "rule"];
+    const router = new ProjectRouter(
+      {
+        listProjects: () => projects.map((projectRootPath) => ({ projectRootPath, status: "ready" })),
+      } as never,
+      {
+        searchProjectRouteMatches: async () => [
+          {
+            filePath: "app/common/TgqProcessorEnum.java",
+            matchedTerms: [...genericTerms, "a转d"],
+            matchText: "A转D refund rule",
+            projectId: "rule",
+            projectRootPath: ruleProject,
+            rank: 1,
+            source: "lexical" as const,
+          },
+          {
+            filePath: "app/biz/TgqInstanceHandlerImpl.java",
+            matchedTerms: genericTerms,
+            matchText: "国内 机票 退订 系统 退规 计算 refund rule",
+            projectId: "core",
+            projectRootPath: coreProject,
+            rank: 2,
+            source: "lexical" as const,
+          },
+          {
+            filePath: "src/TgqProcessorEnum.java",
+            matchedTerms: [...genericTerms, "a转d"],
+            matchText: "A转D refund rule",
+            projectId: "copied",
+            projectRootPath: copiedProject,
+            rank: 3,
+            source: "lexical" as const,
+          },
+          {
+            filePath: "src/projectRouter.test.ts",
+            matchedTerms: [...genericTerms, "a转d", "a转d历史逻辑"],
+            matchText: "国内机票退订系统 退规计算 A转D A转D历史逻辑 refund rule",
+            projectId: "harness",
+            projectRootPath: testHarnessProject,
+            rank: 4,
+            source: "lexical" as const,
+          },
+        ],
+      } as never,
+    );
+
+    const result = await router.resolve(
+      "国内机票退订系统 退规计算 A转D A转D历史逻辑 refund rule A to D",
+      { topK: 4 },
+    );
+
+    assert.equal(result.decision, "multiple");
+    assert.deepEqual(result.selectedProjectRootPaths, [ruleProject, coreProject]);
+    assert.deepEqual(
+      new Set(result.candidates.slice(0, 2).map((candidate) => candidate.projectRootPath)),
+      new Set([ruleProject, coreProject]),
+    );
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("project router keeps equally relevant projects when a keyword is shared", async () => {
   const env = await createTestProjectEnvironment({});
   const firstProject = path.join(env.tempDir, "service-a");

@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.10.3`
+当前版本：`v4.10.4`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -31,12 +31,13 @@
 - 查询/任务模板：Web 搜索和智能问答输入框提供“查调用链”“查影响面”“找潜在 bug”“补单元测试”“梳理业务流程”等快捷模板
 - 搜索结果命中解释：Web 搜索结果和问答来源卡片展示 `reason`、`score`、路径/符号/片段/关键词命中，直接说明“为什么命中”
 - 项目级搜索画像：汇总文件、代码块、符号、语言、摘要、向量覆盖和最近索引失败，给出召回诊断建议；画像修复结果可见化，展示修复前后变化和失败文件明细
-- 自动识别项目：Web 搜索和智能问答默认根据问题关键词路由到已索引项目，高置信结果自动继续，多个候选或证据不足时停止并展示状态；候选召回按项目公平配额，项目内重复证据按边际递减计分，避免大项目仅凭重复文件压过同样相关的小项目；手动选择项目仍可覆盖自动路由
+- 自动识别项目：Web 搜索和智能问答默认根据问题关键词路由到已索引项目，高置信结果自动继续，多个候选或证据不足时停止并展示状态；候选召回按项目公平配额，项目内重复证据按边际递减计分；混合 ASCII/CJK 业务词保持完整，精确证据可结合仓库名锚点召回同族项目，避免通用词、复制枚举或测试夹具主导归属；手动选择项目仍可覆盖自动路由
 - 有界路由证据：SQLite 直接返回 FTS 高亮推导出的 `matchedTerms`，关键词覆盖不再从截断 snippet 或子串反推；查询最长 4096 字符，最多传递 32 个 route terms 和 16 个 identifiers（单项最长 120 字符），每项目最多召回 20 条原始证据、输出 5 条证据，每条匹配文本最多 4096 字符
 - 父子项目自动维护：自动索引跳过拥有两个及以上已登记后代项目的聚合父目录，避免父子重复扫描；删除项目后立即刷新 ownership，并用单调 sequence 防止较早的异步刷新覆盖新拓扑；单一嵌套子项目和显式父目录索引仍按原行为工作
 - Git clean fast path：周期校准仅在 watcher 活跃且干净、Git 状态与 HEAD 读取可靠、没有失败或在途任务时跳过文件收集；启动、脏工作区和任何不可靠状态仍走保守增量路径
 - 独立索引 worker：SQLite 索引写入、删除、向量、符号图和语义索引工作移出 Web 主事件循环，解析批次主动 yield；搜索 worker 与索引 worker 相互独立，搜索请求绑定创建它的 worker generation，幂等 close 会拒绝新请求并等待所有存活 worker，旧 worker 的迟到 exit 不会干扰替代 worker
 - 索引 phase 诊断：`/health` 展示 active/queued 索引的 `phase`、`origin`、`queueMs`、`phaseElapsedMs` 和进度，完成事件记录 prepare/parse/write/vector/symbolGraph/semantic/finalize 等分段耗时
+- 有界日志：`logLevel` 同时约束文件与 stderr；结构化日志单文件上限 20 MiB，最多保留 3 个归档，主进程与 SQLite workers 通过原子锁协调轮转；磁盘、序列化和 stderr EPIPE 失败不会反向打崩服务
 
 ### 智能问答 (RAG)
 
@@ -97,17 +98,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-v4.10.3 Gitee Release 发布后，下载 `ace-mcp-4.10.3.tgz` 安装：
+v4.10.4 Gitee Release 发布后，下载 `ace-mcp-4.10.4.tgz` 安装：
 
 ```bash
-npm install -g ./ace-mcp-4.10.3.tgz
+npm install -g ./ace-mcp-4.10.4.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.10.3.tgz
+npm install -g .\ace-mcp-4.10.4.tgz
 ace-mcp-web
 ```
 
@@ -116,13 +117,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.3/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.4/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.10.3 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.3/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.10.4 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.4/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -152,8 +153,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.3/ace-mcp-4.10.3.tgz
-npm install -g ./ace-mcp-4.10.3.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.4/ace-mcp-4.10.4.tgz
+npm install -g ./ace-mcp-4.10.4.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -177,7 +178,7 @@ npm install
 
 ### Windows zip 安装
 
-v4.10.3 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.3-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
+v4.10.4 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.4-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
 start-web.cmd
@@ -191,7 +192,7 @@ MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再�
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.3-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.4-win-x64\\ace-mcp.cmd"
     }
   }
 }
@@ -251,7 +252,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.10.3.tgz
+npm install -g ./ace-mcp-4.10.4.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -262,7 +263,7 @@ Windows zip：
 npm run release:win
 ```
 
-`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.3 Windows ZIP 尚未补齐。
+`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.4 Windows ZIP 尚未补齐。
 
 安装包 smoke test：
 
@@ -295,13 +296,13 @@ npm run security:secrets
 完成 commit、tag、push 和跨平台产物验证后，可用以下命令发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.3
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.4
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.10.3
+npm run release:verify-assets -- --version 4.10.4
 ```
 
 ## 本地运行
@@ -616,7 +617,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.10.3（当前版本）
+### v4.10.4（当前版本）
+
+- **有界日志与等级修复**：`logLevel` 在任何 I/O 前生效，debug 不再绕过 `info` 配置写入文件；日志按 20 MiB 轮转并保留 3 个归档，多个 SQLite worker 使用原子锁协调轮转
+- **异常路径不递归**：文件写入、循环 metadata 序列化和 stderr EPIPE 均被 Logger 边界吸收；LaunchAgent/systemd 默认关闭重复 stderr，避免错误处理再次触发 uncaughtException/KeepAlive 循环
+- **混合业务词路由**：保留 `A转D` 一类 ASCII/CJK 混合概念，过滤 `to` 等路由停用词；精确混合证据结合查询命中的仓库名建立 ownership 锚点，并召回有代码证据的同族仓库
+- **平台状态**：4.10.4 代码与文档进入发布验证；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+
+### v4.10.3
 
 - **父子项目自动维护**：拥有两个及以上已登记后代项目的聚合父目录不再参与自动 catch-up、watcher 校准和周期索引，具体子项目分别维护；显式索引父目录仍可执行
 - **Git clean fast path**：可靠 clean Git 项目的周期校准可在 HEAD 未变化且 watcher 状态干净时跳过昂贵文件收集；启动、dirty、失败和不可靠状态保守回退

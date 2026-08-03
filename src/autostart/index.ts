@@ -66,6 +66,8 @@ ${args.map((arg) => `        <string>${arg}</string>`).join("\n")}
     <dict>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>ACE_MCP_LOG_TO_STDERR</key>
+        <string>false</string>
     </dict>
 </dict>
 </plist>
@@ -94,6 +96,7 @@ ExecStart=${execStart}
 Restart=on-failure
 RestartSec=5
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=ACE_MCP_LOG_TO_STDERR=false
 
 [Install]
 WantedBy=default.target

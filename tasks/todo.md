@@ -1,3 +1,72 @@
+# v4.10.4 Bounded And Failure-Safe Logging
+
+Author: feng.ling
+
+## Goal
+
+Prevent log-level leakage and unbounded disk growth, and ensure a broken stderr pipe cannot drive the LaunchAgent into a recursive uncaught-exception restart loop.
+
+## Plan
+
+- [x] Add regression coverage for file-level filtering, bounded rotation, and EPIPE-safe console output.
+- [x] Make Logger writes non-throwing, apply the configured level before file output, and rotate logs with a cross-process lock.
+- [x] Disable duplicate stderr output for the macOS LaunchAgent while preserving CLI stderr by default.
+- [x] Prepare the mixed-term project-routing correction and logging fix as v4.10.4.
+- [x] Run focused/full tests, build/package/security/smoke/benchmark gates available on macOS.
+- [x] Replace the local LaunchAgent runtime and verify bounded logs plus real project routing.
+- [ ] Commit, tag, push, publish available release artifacts, and record unavailable platform gates precisely.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/common/logger.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:pack`
+- `npm run security:secrets`
+- `npm run release:smoke`
+- `npm run release:benchmark`
+- `bash -n scripts/install-macos.sh`
+- Live LaunchAgent health, log-size/rotation, EPIPE harness, and real `resolve_projects` checks.
+
+## Comments
+
+- 2026-08-03: Logger regression tests passed 4/4, focused tests passed 72/72, full `npm test` passed 317/317, dist-worker tests passed 19/19, and the TypeScript build completed successfully.
+- 2026-08-03: `ace-mcp-4.10.4.tgz` was rebuilt with all 13 required artifacts; secret scan and installer syntax passed. During-index benchmark passed with health p95 7 ms, resolve p95 11 ms, and zero timeouts.
+- 2026-08-03: Windows ZIP creation and `release:smoke` remain pending on Windows x64 + Node.js 22 because the smoke script requires that platform and the bundled native runtime.
+- 2026-08-03: Replaced `com.ace-mcp.server` with v4.10.4 on PID 11226. The plist now sets `ACE_MCP_LOG_TO_STDERR=false`; the 7.8 GiB legacy log rotated to `ace-mcp.log.1`, the active log restarted below 40 KiB, and launchd stderr stopped growing after startup.
+- 2026-08-03: The live routing endpoint selected only `tc-flight-tgq-rule` (0.901) and `tc-flight-tgq-core` (0.7969) for the reported mixed `A转D` query. Existing stdio MCP clients still require reconnecting to load the rebuilt runtime.
+
+# Project Routing For Mixed Business Terms
+
+Author: feng.ling
+
+## Goal
+
+Keep mixed ASCII+CJK business concepts such as `A转D` intact during cross-project routing so exact domain evidence and repository ownership signals outrank generic or copied refund vocabulary.
+
+## Plan
+
+- [x] Add query-analysis and project-routing regression tests for `A转D` plus generic refund noise.
+- [x] Preserve mixed business terms and remove English stop words from project route terms.
+- [x] Give exact mixed-concept evidence enough weight to break generic full-coverage ties.
+- [x] Anchor exact evidence to a query-matching repository name and recall qualified sibling repositories from the same project family.
+- [x] Run focused tests, full tests/build, and a real-index `resolve_projects` smoke check.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/search/queryAnalyzer.test.ts src/core/search/projectRouter.test.ts`
+- `npm test`
+- `npm run build`
+- Real local query: `国内机票退订系统 退规计算 A转D A转D历史逻辑 refund rule A to D`
+
+## Comments
+
+- 2026-08-03: Focused routing/query tests passed (33/33), full `npm test` passed (313/313), `npm run build` passed, and `git diff --check` passed.
+- 2026-08-03: A read-only backup of the live index resolved the real query to `tc-flight-tgq-rule` (0.901 confidence) and `tc-flight-tgq-core` (0.7969 confidence); copied FDR evidence and ace-mcp regression fixtures remained unselected lower-ranked candidates.
+- 2026-08-03: Restarted LaunchAgent `com.ace-mcp.server` on pid `59790`; the live `/api/projects/resolve` endpoint returned the same two selected repositories with a `multiple` decision.
+- 2026-08-03: The stdio MCP process already attached to the current client retained the old in-memory router after the LaunchAgent restart; a client/MCP reconnect is required for that transport to load the rebuilt runtime.
+
 # v4.10.3 Index Scheduling and Responsiveness
 
 Author: feng.ling

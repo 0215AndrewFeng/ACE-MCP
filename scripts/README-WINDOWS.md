@@ -1,8 +1,8 @@
 # ace-mcp Windows 使用说明
 
-适用包名：`ace-mcp-v4.10.3-win-x64.zip`。
+适用包名：`ace-mcp-v4.10.4-win-x64.zip`。
 
-发布状态：v4.10.3 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
+发布状态：v4.10.4 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
 
 ## 系统要求
 
@@ -12,15 +12,17 @@
 
 通过上述 Windows 门禁的发布包应包含同一台构建主机上验证过的 Node.js 22 运行时、生产依赖和 `better-sqlite3` Windows 原生二进制。
 
-## v4.10.3 索引运行行为
+## v4.10.4 路由与日志行为
 
 - 自动维护跳过拥有两个及以上已登记后代项目的聚合父目录，由具体子项目各自 watcher 和周期校准；显式父目录索引仍可执行。
 - 可靠 clean Git 项目的周期校准可在 HEAD 未变化且没有 dirty/失败/in-flight 状态时走 fast path；其他情况保守执行正常索引。
 - SQLite 索引写入使用独立 index worker，source parse batch 会主动 yield；`/health` 可查看 active/queued phase、origin、进度和 queue/phase elapsed 诊断。
+- 项目路由保留 ASCII/CJK 混合业务词，并以仓库名 ownership 锚点召回同族项目，降低复制代码误选。
+- NDJSON 日志遵循配置等级，默认按 20 MiB 轮转并保留 3 个归档；EPIPE、磁盘和 metadata 序列化失败不会打崩进程。
 
 ## 启动 Web 面板
 
-1. 解压 `ace-mcp-v4.10.3-win-x64.zip`。
+1. 解压 `ace-mcp-v4.10.4-win-x64.zip`。
 2. 双击 `start-web.cmd`。
 3. 访问 <http://127.0.0.1:8787/>。
 
@@ -46,7 +48,7 @@ PowerShell 也可以运行：
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.3-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.4-win-x64\\ace-mcp.cmd"
     }
   }
 }

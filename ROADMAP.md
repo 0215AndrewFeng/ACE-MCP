@@ -113,3 +113,5 @@
 62. ✅ **during-index 响应性门禁**：benchmark 必须观察到 active indexing，只在活动窗口采集至少 20 个 health/resolve 样本，并按 p95 和超时阈值失败（v4.10.3）
 63. ✅ **项目路由公平性与证据边界**：FTS 按项目窗口配额召回，重复证据边际递减；SQLite 显式返回 `matchedTerms`，并限制 query、terms、identifiers、候选证据和匹配文本大小，避免大项目规模偏置及 snippet/substring 覆盖误判（v4.10.3）
 64. ✅ **SQLite search worker 生命周期隔离**：pending request 绑定 worker identity，close 幂等并跟踪 live/terminating worker，旧 generation 的迟到 error/exit 不再影响替代 worker（v4.10.3）
+65. ✅ **混合业务词项目归属**：保留 `A转D` 等 ASCII/CJK 混合概念，过滤路由停用词，并用精确证据 + 仓库名锚点 + 有证据的同族兄弟召回修复复制枚举/测试夹具误路由（v4.10.4）
+66. ✅ **有界且异常安全的日志**：文件等级过滤、20 MiB × 3 归档轮转、跨进程原子锁、EPIPE/磁盘/metadata 失败隔离，以及守护进程重复 stderr 抑制（v4.10.4）

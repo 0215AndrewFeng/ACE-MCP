@@ -12,6 +12,22 @@ const ASCII_CJK_BOUNDARY = /(?<=[\x00-\x7F])(?=[^\x00-\x7F])|(?<=[^\x00-\x7F])(?
 const SYMBOL_TOKEN_PATTERN = /^[\p{L}_$][\p{L}\p{N}_$.#-]*$/u;
 const IDENTIFIER_SEGMENT_PATTERN = /^[\p{L}\p{N}_.$/\\#-]+$/u;
 const IDENTIFIER_BOUNDARY_PATTERN = /[._/$\\#-]|[a-z0-9][A-Z]|[A-Z]+[A-Z][a-z]/;
+const PROJECT_ROUTE_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "with",
+]);
 
 function normalizeToken(token: string): string {
   return token.normalize("NFKC").replaceAll("\\", "/").trim().toLowerCase();
@@ -20,7 +36,7 @@ function normalizeToken(token: string): string {
 export function boundProjectRouteTerms(tokens: string[]): string[] {
   return [...new Set(tokens
     .map(normalizeToken)
-    .filter(Boolean)
+    .filter((token) => token.length > 0 && !PROJECT_ROUTE_STOP_WORDS.has(token))
     .map((token) => token.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH)))]
     .slice(0, MAX_PROJECT_ROUTE_TERMS);
 }
@@ -53,6 +69,8 @@ export function buildFtsQuery(tokens: string[], excludeCjk = false): string | nu
       return parts.map((p) => p.trim()).filter((p) => p.length > 0);
     });
   }
+
+  terms = [...new Set(terms)];
 
   return terms.length > 0 ? terms.map((term) => `${term}*`).join(" OR ") : null;
 }
@@ -100,7 +118,7 @@ function segmentCjkTokens(tokens: string[]): string[] {
   const out: string[] = [];
   let cjkBudget = MAX_CJK_TERMS;
   for (const token of tokens) {
-    if (!CJK_PATTERN.test(token)) {
+    if (![...token].every((character) => CJK_PATTERN.test(character))) {
       out.push(token);
       continue;
     }
@@ -117,14 +135,19 @@ function segmentCjkTokens(tokens: string[]): string[] {
 
 export function analyzeQuery(query: string): QueryAnalysis {
   const normalizedQuery = query.normalize("NFKC");
-  const tokens = normalizedQuery
+  const originalTokens = normalizedQuery
     .split(/\s+/)
     .flatMap((part) => part.split(TOKEN_SPLIT_PATTERN))
+    .map(normalizeToken)
+    .filter(isMeaningfulToken);
+  const boundaryTokens = originalTokens
     .flatMap((part) => part.split(ASCII_CJK_BOUNDARY))
     .map(normalizeToken)
     .filter(isMeaningfulToken);
 
-  const uniqueTokens = [...new Set(tokens)];
+  // Keep mixed domain concepts such as A转D intact while retaining boundary
+  // tokens as lower-precision fallback terms for lexical recall.
+  const uniqueTokens = [...new Set([...originalTokens, ...boundaryTokens])];
   // v4.5.13: segment CJK runs into bigrams (whole run kept) so FTS/scoring don't
   // operate on a single degenerate giant token.
   const segmentedTokens = segmentCjkTokens(uniqueTokens);
@@ -138,7 +161,7 @@ export function analyzeQuery(query: string): QueryAnalysis {
   // so camelCase/PascalCase boundaries are preserved for detection
   const identifiers = extractIdentifiersFromRaw(normalizedQuery);
   const identifierSet = new Set(identifiers);
-  const naturalLanguage = uniqueTokens.filter(t => !identifierSet.has(t));
+  const naturalLanguage = [...new Set(originalTokens)].filter(t => !identifierSet.has(t));
 
   return {
     ftsQuery,

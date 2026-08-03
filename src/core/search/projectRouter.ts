@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
@@ -26,6 +27,24 @@ const DUPLICATE_EVIDENCE_DECAY = 0.1;
 const SINGLE_PROJECT_MARGIN_RATIO = 0.25;
 const MIN_SINGLE_PROJECT_SCORE = 0.6;
 const FULL_CONFIDENCE_SCORE = 1.2;
+const EXACT_MIXED_CONCEPT_WEIGHT = 0.3;
+const PROJECT_NAME_ANCHOR_WEIGHT = 0.45;
+const PROJECT_FAMILY_WEIGHT = 0.55;
+const MIN_PROJECT_FAMILY_BASE_SCORE = 0.4;
+const GENERIC_PROJECT_NAME_SEGMENTS = new Set([
+  "admin",
+  "api",
+  "app",
+  "backend",
+  "client",
+  "common",
+  "core",
+  "flight",
+  "gateway",
+  "java",
+  "server",
+  "service",
+]);
 const WEAK_ROUTE_TERMS = new Set([
   "api",
   "class",
@@ -87,6 +106,14 @@ interface CandidateAccumulator {
   projectRootPath: string;
   seenEvidence: Set<string>;
   sources: Set<ProjectRouteMatch["source"]>;
+}
+
+interface CandidateScoreDetails {
+  baseScore: number;
+  candidate: ProjectRouteCandidate;
+  exactMixedCoverage: number;
+  matchedProjectNameTerms: string[];
+  projectNameSegments: string[];
 }
 
 function roundScore(value: number): number {
@@ -189,6 +216,28 @@ function routeConceptCoverage(
   return coveredConcepts / routeConcepts.length;
 }
 
+function exactMixedConceptCoverage(
+  routeConcepts: string[],
+  matchedRouteTerms: Set<string>,
+): number {
+  const mixedConcepts = routeConcepts.filter(
+    (concept) => /[a-z0-9]/i.test(concept) && CJK_PATTERN.test(concept),
+  );
+  if (mixedConcepts.length === 0) {
+    return 0;
+  }
+
+  return mixedConcepts.filter((concept) => matchedRouteTerms.has(concept)).length / mixedConcepts.length;
+}
+
+function projectNameSegments(projectRootPath: string): string[] {
+  return [...new Set(basename(projectRootPath)
+    .normalize("NFKC")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((segment) => segment.length >= 3 && !GENERIC_PROJECT_NAME_SEGMENTS.has(segment)))];
+}
+
 function hasStrongRouteSignal(query: string, analysis: QueryAnalysis): boolean {
   if (analysis.identifiers.length > 0) {
     return true;
@@ -218,6 +267,10 @@ export class ProjectRouter {
         ? analysis.identifiers
         : [...analysis.identifiers, ...analysis.naturalLanguage],
     );
+    const projectNameQueryTerms = new Set(boundProjectRouteTerms([
+      ...routeTerms,
+      ...analysis.semanticTerms,
+    ]));
     if (!hasStrongRouteSignal(normalizedQuery, analysis)) {
       return this.buildResolution(normalizedQuery, [], "abstain", [], startedAt);
     }
@@ -270,19 +323,63 @@ export class ProjectRouter {
       accumulators.set(match.projectRootPath, accumulator);
     }
 
-    const candidates = [...accumulators.values()]
+    const scoredCandidates: CandidateScoreDetails[] = [...accumulators.values()]
       .map((item) => {
         const tokenCoverage = routeConceptCoverage(routeConcepts, item.matchedTerms);
+        const mixedConceptCoverage = exactMixedConceptCoverage(routeConcepts, item.matchedTerms);
         const sourceDiversity = item.sources.size;
-        const score = scoreProjectEvidence(item.evidence) + tokenCoverage * 0.45 + Math.max(0, sourceDiversity - 1) * 0.15;
+        const baseScore = scoreProjectEvidence(item.evidence)
+          + tokenCoverage * 0.45
+          + mixedConceptCoverage * EXACT_MIXED_CONCEPT_WEIGHT
+          + Math.max(0, sourceDiversity - 1) * 0.15;
+        const nameSegments = projectNameSegments(item.projectRootPath);
+        const matchedProjectNameTerms = nameSegments.filter((segment) => projectNameQueryTerms.has(segment));
         return {
-          confidence: scoreToConfidence(score),
-          evidence: item.evidence,
-          matchedTerms: [...item.matchedTerms],
-          projectRootPath: item.projectRootPath,
-          score: roundScore(score),
-        } satisfies ProjectRouteCandidate;
-      })
+          baseScore,
+          candidate: {
+            confidence: scoreToConfidence(baseScore),
+            evidence: item.evidence,
+            matchedTerms: [...item.matchedTerms],
+            projectRootPath: item.projectRootPath,
+            score: roundScore(baseScore),
+          },
+          exactMixedCoverage: mixedConceptCoverage,
+          matchedProjectNameTerms,
+          projectNameSegments: nameSegments,
+        };
+      });
+
+    const ownershipAnchor = scoredCandidates
+      .filter((item) => item.exactMixedCoverage > 0 && item.matchedProjectNameTerms.length > 0)
+      .sort((left, right) =>
+        right.baseScore - left.baseScore
+        || left.candidate.projectRootPath.localeCompare(right.candidate.projectRootPath))[0];
+    const ownershipFamilySegments = new Set(
+      ownershipAnchor?.projectNameSegments.filter(
+        (segment) => !ownershipAnchor.matchedProjectNameTerms.includes(segment),
+      ) ?? [],
+    );
+    const ownershipProjectRootPaths = new Set<string>();
+
+    for (const item of scoredCandidates) {
+      let score = item.baseScore;
+      if (item === ownershipAnchor) {
+        score += PROJECT_NAME_ANCHOR_WEIGHT;
+        ownershipProjectRootPaths.add(item.candidate.projectRootPath);
+      } else if (
+        ownershipFamilySegments.size > 0
+        && item.baseScore >= MIN_PROJECT_FAMILY_BASE_SCORE
+        && item.projectNameSegments.some((segment) => ownershipFamilySegments.has(segment))
+      ) {
+        score += PROJECT_FAMILY_WEIGHT;
+        ownershipProjectRootPaths.add(item.candidate.projectRootPath);
+      }
+      item.candidate.score = roundScore(score);
+      item.candidate.confidence = scoreToConfidence(score);
+    }
+
+    const candidates = scoredCandidates
+      .map((item) => item.candidate)
       .sort((left, right) => right.score - left.score || left.projectRootPath.localeCompare(right.projectRootPath))
       .slice(0, topK);
 
@@ -294,6 +391,19 @@ export class ProjectRouter {
     const second = candidates[1];
     if (top.score < MIN_SINGLE_PROJECT_SCORE) {
       return this.buildResolution(normalizedQuery, candidates, "abstain", [], startedAt);
+    }
+    const ownedCandidates = candidates.filter(
+      (candidate) => candidate.score >= MIN_SINGLE_PROJECT_SCORE
+        && ownershipProjectRootPaths.has(candidate.projectRootPath),
+    );
+    if (ownedCandidates.length > 0) {
+      return this.buildResolution(
+        normalizedQuery,
+        candidates,
+        ownedCandidates.length === 1 ? "single" : "multiple",
+        ownedCandidates.map((candidate) => candidate.projectRootPath),
+        startedAt,
+      );
     }
     if (!second || (top.score - second.score) / Math.max(top.score, Number.EPSILON) >= SINGLE_PROJECT_MARGIN_RATIO) {
       return this.buildResolution(normalizedQuery, candidates, "single", [top.projectRootPath], startedAt);
