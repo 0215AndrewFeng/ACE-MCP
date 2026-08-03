@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 5-21
+tasks/todo.md
+  s_2f2753d1d3101c::t_9f017a5c0b018f 50-54,62-66
+  s_2f2753d1d3101c::t_deb55f55f708d0 68
+  s_2f2753d1d3101c::t_dfe82e994e87e9 40-45,47-49,55-61,69
+  s_2f2753d1d3101c::t_3e040393593995 11-16,31-38
+  s_2f2753d1d3101c::t_2d63c0b074c157 67
+  s_2f2753d1d3101c::t_cedfc39a7bf625 1-10,17-30,39
+  s_2f2753d1d3101c::t_f3b9288ee85f77 46
+docs/release-checklist.md
+  s_2f2753d1d3101c::t_af4f21ba1c88f0 3,37,64,79-91,110,112,115,120,126
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 109
+README.md
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 5,34,40,101,104,111,120,126,156-157,181,195,255,266,299,305,620-627
+ROADMAP.md
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 116-117
+scripts/install-macos.sh
+  s_2f2753d1d3101c::t_af4f21ba1c88f0 4
+src/core/common/logger.test.ts
+  s_2f2753d1d3101c::t_f6611a6c834075 84-100
+  s_2f2753d1d3101c::t_cedfc39a7bf625 1-83
+src/core/search/queryAnalyzer.ts
+  s_2f2753d1d3101c::t_d142f3e7ad5936 15-30,39,121,138,141-143,148-150,164
+  s_2f2753d1d3101c::t_524bd7002cb5fd 73-74
+src/core/search/projectRouter.ts
+  s_2f2753d1d3101c::t_d142f3e7ad5936 30,219-223,225-230,239-240,329,332-334
+  s_2f2753d1d3101c::t_3945676e501429 224,395-398
+  s_2f2753d1d3101c::t_00ba915e414b13 2,31-47,111-118,231-238,270-273,326,331,335-336,338-382,399-407
+tasks/lessons.md
+  s_2f2753d1d3101c::t_3e040393593995 3
+  s_2f2753d1d3101c::t_9f017a5c0b018f 4
+src/autostart/index.ts
+  s_2f2753d1d3101c::t_2582b2813cff98 69-70,99
+scripts/README-WINDOWS.md
+  s_2f2753d1d3101c::t_af4f21ba1c88f0 3,5,25,51
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 15,20-21
+package.json
+  s_2f2753d1d3101c::t_5b6683978aa69a 35
+  s_2f2753d1d3101c::t_d67c186a479f06 3
+src/config/packageManifest.test.ts
+  s_2f2753d1d3101c::t_24bbf2eabee60e 609,632
+  s_2f2753d1d3101c::t_02e7ffe4a209c4 33,36,446-447,454,477-478,481-484,487-489,511,515,522,531,534,546,549,556-567
+  s_2f2753d1d3101c::t_5b6683978aa69a 31,60,68-69
+src/version.ts
+  s_2f2753d1d3101c::t_2961f4fce5a3a8 2
+src/core/common/logger.ts
+  s_2f2753d1d3101c::t_c32f5891619008 1-13,25-38,45-48,52,55-58,82-85,108-116,118-167,169-176,178-185
+  s_2f2753d1d3101c::t_e5ebac2cc3aa9d 86,92-106,117
+  s_2f2753d1d3101c::t_89080aa752d86a 107
+src/core/search/queryAnalyzer.test.ts
+  s_2f2753d1d3101c::t_dfe82e994e87e9 4-9,26-32
+  s_2f2753d1d3101c::t_7c8b2ab54c5e6f 33-34
+src/core/search/projectRouter.test.ts
+  s_2f2753d1d3101c::t_dfe82e994e87e9 202-249
+  s_2f2753d1d3101c::t_f3b9288ee85f77 250-322
+package-lock.json
+  s_2f2753d1d3101c::t_15e9f87d115d70 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "358befed03d235887f5c8551d393f2f7c537f852",
+  "prompts": {},
+  "sessions": {
+    "s_2f2753d1d3101c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc63b-3dfc-7111-a0e2-20b705a5baa3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
