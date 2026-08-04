@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_2f2753d1d3101c::t_69b0c9fad4f1b4 20-21
+README.md
+  s_2f2753d1d3101c::t_1f3363fa8c1f5e 101,625
+docs/release-checklist.md
+  s_2f2753d1d3101c::t_40d3316878a166 3,5
+tasks/todo.md
+  s_2f2753d1d3101c::t_3cf30ad005ab3f 17,39-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "363079a181d5fa6daa16bd42ee7adb49beee02d6",
+  "prompts": {},
+  "sessions": {
+    "s_2f2753d1d3101c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc63b-3dfc-7111-a0e2-20b705a5baa3",
+        "model": "unknown"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
