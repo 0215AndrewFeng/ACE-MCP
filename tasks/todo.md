@@ -14,7 +14,7 @@ Prevent log-level leakage and unbounded disk growth, and ensure a broken stderr 
 - [x] Prepare the mixed-term project-routing correction and logging fix as v4.10.4.
 - [x] Run focused/full tests, build/package/security/smoke/benchmark gates available on macOS.
 - [x] Replace the local LaunchAgent runtime and verify bounded logs plus real project routing.
-- [ ] Commit, tag, push, publish available release artifacts, and record unavailable platform gates precisely.
+- [x] Commit, tag, push, publish available release artifacts, and record unavailable platform gates precisely.
 
 ## Validation Plan
 
@@ -36,6 +36,8 @@ Prevent log-level leakage and unbounded disk growth, and ensure a broken stderr 
 - 2026-08-03: Windows ZIP creation and `release:smoke` remain pending on Windows x64 + Node.js 22 because the smoke script requires that platform and the bundled native runtime.
 - 2026-08-03: Replaced `com.ace-mcp.server` with v4.10.4 on PID 11226. The plist now sets `ACE_MCP_LOG_TO_STDERR=false`; the 7.8 GiB legacy log rotated to `ace-mcp.log.1`, the active log restarted below 40 KiB, and launchd stderr stopped growing after startup.
 - 2026-08-03: The live routing endpoint selected only `tc-flight-tgq-rule` (0.901) and `tc-flight-tgq-core` (0.7969) for the reported mixed `A转D` query. Existing stdio MCP clients still require reconnecting to load the rebuilt runtime.
+- 2026-08-03: Created release commit `358befe` with verified author/committer `andrew <lf1980250960@163.com>`, pushed `master` and annotated tag `v4.10.4`, and created Gitee Release #773731 with tgz attachment #2994323 (438660 bytes).
+- 2026-08-03: Public tgz download is byte-identical to the local artifact with SHA-256 `f7cf82713674e13ae37686d7292c4932cb02688cafeb849e6a876f4f5fa431e7` and SHA-1 `cf990381f3cda49e7bb8f6e27f88107bc52de482`; the tag-fixed macOS installer is publicly reachable. The Release body explicitly marks the Windows ZIP as pending.
 
 # Project Routing For Mixed Business Terms
 

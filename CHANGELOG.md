@@ -17,7 +17,8 @@
 
 ### Release status
 
-- package/runtime/macOS installer 和发布契约更新到 4.10.4；Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机补充构建、原生依赖与 smoke 验证。
+- package/runtime/macOS installer 和发布契约更新到 4.10.4；source commit `358befe`、tag、`master` 和 Gitee Release tgz 已发布，公开下载 SHA-256 为 `f7cf82713674e13ae37686d7292c4932cb02688cafeb849e6a876f4f5fa431e7`。
+- Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机补充构建、原生依赖与 smoke 验证。
 
 ## [4.10.3] - 2026-07-24
 

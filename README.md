@@ -98,7 +98,7 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-v4.10.4 Gitee Release 发布后，下载 `ace-mcp-4.10.4.tgz` 安装：
+从 v4.10.4 Gitee Release 下载 `ace-mcp-4.10.4.tgz` 安装：
 
 ```bash
 npm install -g ./ace-mcp-4.10.4.tgz
@@ -622,7 +622,7 @@ Web 面板提供完整的可视化调试体验：
 - **有界日志与等级修复**：`logLevel` 在任何 I/O 前生效，debug 不再绕过 `info` 配置写入文件；日志按 20 MiB 轮转并保留 3 个归档，多个 SQLite worker 使用原子锁协调轮转
 - **异常路径不递归**：文件写入、循环 metadata 序列化和 stderr EPIPE 均被 Logger 边界吸收；LaunchAgent/systemd 默认关闭重复 stderr，避免错误处理再次触发 uncaughtException/KeepAlive 循环
 - **混合业务词路由**：保留 `A转D` 一类 ASCII/CJK 混合概念，过滤 `to` 等路由停用词；精确混合证据结合查询命中的仓库名建立 ownership 锚点，并召回有代码证据的同族仓库
-- **平台状态**：4.10.4 代码与文档进入发布验证；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+- **平台状态**：4.10.4 source commit、tag、`master` 和 Gitee tgz Release 已发布并通过公开下载校验；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
 
 ### v4.10.3
 

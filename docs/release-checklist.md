@@ -1,8 +1,8 @@
 # ace-mcp Release Checklist
 
-## v4.10.4（发布准备）
+## v4.10.4（当前发布状态）
 
-本清单描述待执行的发布步骤，不表示 commit、tag、push、Gitee Release 或跨平台产物已经完成。
+source commit `358befe`、annotated tag `v4.10.4`、`master` 和 Gitee Release tgz 已发布并通过公开下载校验；下列清单保留完整发布步骤。Windows ZIP 和 `release:smoke` 仍待 Windows x64 + Node.js 22 环境完成，不得把当前 Darwin 验证记录成跨平台门禁通过。
 
 Windows 产物补齐后，在 Windows x64 + Node.js 22 主机运行 `npm run release:check` 可串行执行完整组合门禁。该命令包含 `release:win` 和 Windows ZIP smoke，因此 Darwin 主机应按下文分别运行可用门禁，不能把部分通过记录成完整 release check 通过。
 
