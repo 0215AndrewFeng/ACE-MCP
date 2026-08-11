@@ -1,0 +1,54 @@
+scripts/configure-codex.mjs
+  s_735bf060adb8a1::t_aae79e81031b80 1-173
+src/version.ts
+  s_735bf060adb8a1::t_05c967c7d890b5 2
+README.md
+  s_735bf060adb8a1::t_6be068ad2e2f9f 5,103,106,113,122,128,158-159,183,197,257,268,301,307
+  s_735bf060adb8a1::t_8d70ae46cae15f 472-496,647-654
+CHANGELOG.md
+  s_735bf060adb8a1::t_4d2f6812693dd6 5-17
+package.json
+  s_735bf060adb8a1::t_82305bb581cdb4 36
+  s_735bf060adb8a1::t_05c967c7d890b5 3
+  s_735bf060adb8a1::t_aae79e81031b80 17-18
+ROADMAP.md
+  s_735bf060adb8a1::t_4d2f6812693dd6 120
+scripts/smoke-release.mjs
+  s_735bf060adb8a1::t_869f0fb04b600d 10,245,256-259,266-272
+docs/release-checklist.md
+  s_735bf060adb8a1::t_acc3bbbc9785aa 3,5,37,64,70,80-92,104,110-111,113,116,121,127
+scripts/README-WINDOWS.md
+  s_735bf060adb8a1::t_2c87a14faba89c 3,5,15-19,40,66
+scripts/install-macos.sh
+  s_735bf060adb8a1::t_05c967c7d890b5 4
+  s_735bf060adb8a1::t_aae79e81031b80 120-130,136
+tasks/todo.md
+  s_735bf060adb8a1::t_82305bb581cdb4 1-10,16-26,34
+  s_735bf060adb8a1::t_42c2d24c17e3b2 11-15,27-33
+src/config/packageManifest.test.ts
+  s_735bf060adb8a1::t_869f0fb04b600d 385-386
+  s_735bf060adb8a1::t_82beb2431873d3 525
+  s_735bf060adb8a1::t_6f3a6f7a0795ce 33,36,40,69,434,439,442,451-455,458-459,466-468,491-492,495-498,501-503,529,536,545,548,560-561,564,569-572,574-575,578
+  s_735bf060adb8a1::t_803f2fac6f7a20 601,654,677
+src/test/configureCodexCli.test.mjs
+  s_735bf060adb8a1::t_82305bb581cdb4 1-70,95-109,117
+  s_735bf060adb8a1::t_95af64bbc06181 71-94,110-116,118-125
+package-lock.json
+  s_735bf060adb8a1::t_bc4f68fb0ce4ab 3,9,23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "217c9d3c3a624f4ce37ae2ec50d954396bfddaa1",
+  "prompts": {},
+  "sessions": {
+    "s_735bf060adb8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019feea6-96c6-7112-b796-6b36aff2c17f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
