@@ -181,6 +181,36 @@ test("SQLiteStore.deleteProject removes registration and cascades indexed rows",
   }
 });
 
+test("SQLiteStore coordinates an expiring index maintenance lease across connections", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const secondStore = new SQLiteStore(env.settings.databasePath, {
+    debug() {},
+    info() {},
+    warn() {},
+  } as never);
+  secondStore.initialize();
+  const nowMs = Date.now();
+
+  try {
+    assert.equal(env.store.tryAcquireIndexMaintenanceLease("web-a", nowMs + 60_000, nowMs), true);
+    assert.deepEqual(secondStore.getActiveIndexMaintenanceLease(nowMs + 1), {
+      expiresAtMs: nowMs + 60_000,
+      ownerId: "web-a",
+    });
+    assert.equal(secondStore.tryAcquireIndexMaintenanceLease("web-b", nowMs + 90_000, nowMs + 1), false);
+
+    assert.equal(secondStore.tryAcquireIndexMaintenanceLease("web-b", nowMs + 120_000, nowMs + 60_001), true);
+    assert.equal(env.store.releaseIndexMaintenanceLease("web-a"), false);
+    assert.equal(env.store.renewIndexMaintenanceLease("web-a", nowMs + 180_000), false);
+    assert.equal(secondStore.releaseIndexMaintenanceLease("web-b"), true);
+    assert.equal(env.store.getActiveIndexMaintenanceLease(nowMs + 60_002), null);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("SQLiteStore project routing excludes roots before applying one total result limit", async () => {
   const env = await createTestProjectEnvironment({
     "src/SharedThing.ts": "export class SharedThing { routeKeyword(): void {} }\n",

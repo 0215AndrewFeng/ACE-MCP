@@ -29,6 +29,21 @@ export interface SQLiteIndexFileBatch {
 export type SQLiteIndexWorkerRequest =
   | {
       id: number;
+      method: "tryAcquireIndexMaintenanceLease";
+      payload: { expiresAtMs: number; nowMs: number; ownerId: string };
+    }
+  | {
+      id: number;
+      method: "renewIndexMaintenanceLease";
+      payload: { expiresAtMs: number; nowMs: number; ownerId: string };
+    }
+  | {
+      id: number;
+      method: "releaseIndexMaintenanceLease";
+      payload: { ownerId: string };
+    }
+  | {
+      id: number;
       method: "deleteFiles";
       payload: { projectId: string; relativePaths: string[] };
     }
@@ -67,7 +82,7 @@ export type SQLiteIndexWorkerRequest =
     };
 
 export type SQLiteIndexWorkerResponse =
-  | { id: number; ok: true; result: FinalizeProjectIndexResult | PrepareProjectIndexResult | null }
+  | { id: number; ok: true; result: boolean | FinalizeProjectIndexResult | PrepareProjectIndexResult | null }
   | {
       error: { message: string; stack?: string };
       id: number;

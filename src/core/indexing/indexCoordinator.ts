@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { watch } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -190,8 +191,11 @@ export interface IndexStorageWorker {
     project: ProjectInfo,
     timestamp: string,
   ): Promise<PrepareProjectIndexResult>;
+  releaseIndexMaintenanceLease(ownerId: string): Promise<boolean>;
   releaseLease(): void;
+  renewIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs: number): Promise<boolean>;
   resolveSymbolGraph(projectId: string, changedFileIds: string[]): Promise<void>;
+  tryAcquireIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs: number): Promise<boolean>;
   writeChunkVectors(
     entries: Array<{ chunkId: string; embedding: number[]; modelName: string }>,
     projectId: string,
@@ -206,7 +210,10 @@ export function createSynchronousIndexStorageWorker(
     | "ensureSemanticIndex"
     | "finalizeProjectIndex"
     | "prepareProjectIndex"
+    | "releaseIndexMaintenanceLease"
+    | "renewIndexMaintenanceLease"
     | "resolveSymbolGraph"
+    | "tryAcquireIndexMaintenanceLease"
     | "writeChunkVectors"
     | "writeFileIndexBatch"
   >,
@@ -226,9 +233,18 @@ export function createSynchronousIndexStorageWorker(
     async prepareProjectIndex(projectId, project, timestamp) {
       return store.prepareProjectIndex(projectId, project, timestamp);
     },
+    async releaseIndexMaintenanceLease(ownerId) {
+      return store.releaseIndexMaintenanceLease(ownerId);
+    },
     releaseLease() {},
+    async renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return store.renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
+    },
     async resolveSymbolGraph(projectId, changedFileIds) {
       store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return store.tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async writeChunkVectors(entries, projectId) {
       store.writeChunkVectors(entries, projectId);
@@ -289,6 +305,8 @@ type IndexedFileResult =
  */
 const DB_WRITE_BATCH_SIZE = 50;
 const INDEX_CLOSE_DRAIN_TIMEOUT_MS = 30_000;
+const INDEX_MAINTENANCE_LEASE_TTL_MS = 60_000;
+const INDEX_MAINTENANCE_LEASE_HEARTBEAT_MS = 10_000;
 const CJK_DECODE_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 export function scoreDecodedContent(content: string): number {
@@ -338,6 +356,12 @@ export class IndexCoordinator {
   private automaticUpdatesGeneration = 0;
   private automaticWatchAllowed = true;
   private automaticUpdatesStarted = false;
+  private automaticMaintenanceLeaseExpiresAtMs = 0;
+  private automaticMaintenanceLeaseHeartbeat?: Promise<void>;
+  private automaticMaintenanceLeaseHeartbeatTimer?: NodeJS.Timeout;
+  private readonly automaticMaintenanceLeaseOwnerId = `${process.pid}:${randomUUID()}`;
+  private automaticMaintenanceLeaseReady?: Promise<boolean>;
+  private automaticMaintenanceLeaseUsers = 0;
   private closing = false;
   private closePromise?: Promise<void>;
   private closeDrainTimeoutMs = INDEX_CLOSE_DRAIN_TIMEOUT_MS;
@@ -883,6 +907,132 @@ export class IndexCoordinator {
     return operation;
   }
 
+  private startAutomaticMaintenanceLeaseHeartbeat(worker: IndexStorageWorker): void {
+    clearInterval(this.automaticMaintenanceLeaseHeartbeatTimer);
+    this.automaticMaintenanceLeaseHeartbeatTimer = setInterval(() => {
+      if (this.automaticMaintenanceLeaseHeartbeat) {
+        return;
+      }
+      const nowMs = Date.now();
+      const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
+      const heartbeat = worker
+        .renewIndexMaintenanceLease(this.automaticMaintenanceLeaseOwnerId, expiresAtMs, nowMs)
+        .then((renewed) => {
+          this.automaticMaintenanceLeaseExpiresAtMs = renewed ? expiresAtMs : 0;
+          if (!renewed) {
+            this.logger.warn("automatic index maintenance lease lost", {
+              ownerId: this.automaticMaintenanceLeaseOwnerId,
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (Date.now() >= this.automaticMaintenanceLeaseExpiresAtMs) {
+            this.automaticMaintenanceLeaseExpiresAtMs = 0;
+          }
+          this.logger.warn("automatic index maintenance lease renewal failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          if (this.automaticMaintenanceLeaseHeartbeat === heartbeat) {
+            this.automaticMaintenanceLeaseHeartbeat = undefined;
+          }
+        });
+      this.automaticMaintenanceLeaseHeartbeat = heartbeat;
+    }, INDEX_MAINTENANCE_LEASE_HEARTBEAT_MS);
+    this.automaticMaintenanceLeaseHeartbeatTimer.unref();
+  }
+
+  private async enterAutomaticMaintenanceLease(): Promise<boolean> {
+    this.automaticMaintenanceLeaseUsers += 1;
+    if (!this.automaticMaintenanceLeaseReady) {
+      const worker = this.getIndexStorageWorker();
+      worker.acquireLease();
+      this.automaticMaintenanceLeaseReady = (async () => {
+        const nowMs = Date.now();
+        const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
+        try {
+          const acquired = await worker.tryAcquireIndexMaintenanceLease(
+            this.automaticMaintenanceLeaseOwnerId,
+            expiresAtMs,
+            nowMs,
+          );
+          if (!acquired) {
+            worker.releaseLease();
+            return false;
+          }
+          this.automaticMaintenanceLeaseExpiresAtMs = expiresAtMs;
+          this.startAutomaticMaintenanceLeaseHeartbeat(worker);
+          return true;
+        } catch (error) {
+          worker.releaseLease();
+          throw error;
+        }
+      })();
+    }
+
+    const ready = this.automaticMaintenanceLeaseReady;
+    try {
+      const acquired = await ready;
+      const valid = acquired && this.automaticMaintenanceLeaseExpiresAtMs > Date.now();
+      if (!valid) {
+        this.automaticMaintenanceLeaseUsers -= 1;
+        if (this.automaticMaintenanceLeaseUsers === 0 && this.automaticMaintenanceLeaseReady === ready) {
+          this.automaticMaintenanceLeaseReady = undefined;
+        }
+      }
+      return valid;
+    } catch (error) {
+      this.automaticMaintenanceLeaseUsers -= 1;
+      if (this.automaticMaintenanceLeaseUsers === 0 && this.automaticMaintenanceLeaseReady === ready) {
+        this.automaticMaintenanceLeaseReady = undefined;
+      }
+      throw error;
+    }
+  }
+
+  private async exitAutomaticMaintenanceLease(): Promise<void> {
+    this.automaticMaintenanceLeaseUsers -= 1;
+    if (this.automaticMaintenanceLeaseUsers > 0) {
+      return;
+    }
+
+    const ready = this.automaticMaintenanceLeaseReady;
+    this.automaticMaintenanceLeaseReady = undefined;
+    clearInterval(this.automaticMaintenanceLeaseHeartbeatTimer);
+    this.automaticMaintenanceLeaseHeartbeatTimer = undefined;
+    await this.automaticMaintenanceLeaseHeartbeat?.catch(() => undefined);
+    this.automaticMaintenanceLeaseHeartbeat = undefined;
+    const worker = this.getIndexStorageWorker();
+    try {
+      if (await ready) {
+        await worker.releaseIndexMaintenanceLease(this.automaticMaintenanceLeaseOwnerId);
+      }
+    } finally {
+      this.automaticMaintenanceLeaseExpiresAtMs = 0;
+      worker.releaseLease();
+    }
+  }
+
+  private async withAutomaticMaintenanceLease<T>(operation: () => Promise<T>): Promise<T> {
+    if (typeof this.store.getActiveIndexMaintenanceLease !== "function") {
+      return operation();
+    }
+    const acquired = await this.enterAutomaticMaintenanceLease();
+    if (!acquired) {
+      throw new AppError(
+        "INDEX_MAINTENANCE_BUSY",
+        "Another process owns automatic index maintenance",
+        { retryable: true, statusCode: 409 },
+      );
+    }
+    try {
+      return await operation();
+    } finally {
+      await this.exitAutomaticMaintenanceLease();
+    }
+  }
+
   public reconcileWatchedProjects(reason = "manual"): Promise<void> {
     if (this.reconciliationPromise) {
       if (reason === "manual") {
@@ -919,6 +1069,13 @@ export class IndexCoordinator {
           ? this.getWatchStatuses().map((status) => status.projectRootPath)
           : refreshedSnapshot?.projectRootPaths ?? [...this.automaticProjectRoots].sort();
         for (const projectRootPath of projectRoots) {
+          if (
+            this.automaticMaintenanceLeaseReady &&
+            this.automaticMaintenanceLeaseExpiresAtMs <= Date.now()
+          ) {
+            this.logger.warn("automatic index reconciliation stopped after maintenance lease expiry", { reason });
+            return;
+          }
           if (reason !== "manual" && !this.isAutomaticUpdateGenerationCurrent(generation)) {
             return;
           }
@@ -968,12 +1125,25 @@ export class IndexCoordinator {
       );
     };
 
-    const promise = run().finally(() => {
+    const maintainedRun = async (): Promise<void> => {
+      try {
+        await this.withAutomaticMaintenanceLease(run);
+      } catch (error) {
+        if (error instanceof AppError && error.code === "INDEX_MAINTENANCE_BUSY") {
+          this.logger.debug("automatic index reconciliation deferred to active owner", { reason });
+          return;
+        }
+        throw error;
+      }
+    };
+    const promise = maintainedRun().finally(() => {
       if (this.reconciliationPromise === promise) {
         this.reconciliationPromise = undefined;
       }
+      this.activeStorageOperations.delete(promise);
     });
     this.reconciliationPromise = promise;
+    this.activeStorageOperations.add(promise);
     return promise;
   }
 
@@ -1065,6 +1235,49 @@ export class IndexCoordinator {
     this.lastIndexResult.set(normalizedRoot, indexResult);
   }
 
+  private createIndexFallback(normalizedRoot: string, totalMs = 0): IndexProjectResult {
+    return {
+      projectRootPath: normalizedRoot,
+      projectId: "",
+      project: { rootPath: normalizedRoot, projectType: "single-language" as const, languages: [], markers: [] },
+      scannedFiles: 0,
+      indexedFiles: 0,
+      changedFiles: 0,
+      deletedFiles: 0,
+      chunkCount: 0,
+      failedFileCount: 0,
+      failedFiles: [],
+      createdAt: new Date().toISOString(),
+      timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs },
+      vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" as const },
+    };
+  }
+
+  private getMaintenanceIndexFallback(normalizedRoot: string): IndexProjectResult | null {
+    try {
+      const lease = this.store.getActiveIndexMaintenanceLease();
+      if (!lease) {
+        return null;
+      }
+      const fallback = this.lastIndexResult.get(normalizedRoot)
+        ?? this.store.getLatestSuccessfulIndexResult(normalizedRoot)
+        ?? this.createIndexFallback(normalizedRoot);
+      this.lastIndexResult.set(normalizedRoot, fallback);
+      this.logger.debug("freshness indexing deferred to automatic maintenance owner", {
+        leaseExpiresAtMs: lease.expiresAtMs,
+        leaseOwnerId: lease.ownerId,
+        projectRootPath: normalizedRoot,
+      });
+      return fallback;
+    } catch (error) {
+      this.logger.warn("automatic index maintenance lease check failed", {
+        error: error instanceof Error ? error.message : String(error),
+        projectRootPath: normalizedRoot,
+      });
+      return null;
+    }
+  }
+
   /**
    * Ensure the project index is fresh enough according to the configured freshness policy.
    * Returns a cached or real IndexProjectResult.
@@ -1078,6 +1291,10 @@ export class IndexCoordinator {
     const policy = this.settings.indexFreshness;
 
     if (policy === "always") {
+      const fallback = this.getMaintenanceIndexFallback(normalizedRoot);
+      if (fallback) {
+        return fallback;
+      }
       return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
     }
 
@@ -1085,6 +1302,10 @@ export class IndexCoordinator {
       const cached = this.lastIndexResult.get(normalizedRoot);
       if (cached) {
         return cached;
+      }
+      const fallback = this.getMaintenanceIndexFallback(normalizedRoot);
+      if (fallback) {
+        return fallback;
       }
       return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
     }
@@ -1107,6 +1328,10 @@ export class IndexCoordinator {
       }
     }
 
+    const fallback = this.getMaintenanceIndexFallback(normalizedRoot);
+    if (fallback) {
+      return fallback;
+    }
     return this.indexProjectWithTimeout(normalizedRoot, "incremental", timeoutMs);
   }
 
@@ -1133,22 +1358,7 @@ export class IndexCoordinator {
       if (cached) {
         return cached;
       }
-      // Minimal fallback stub
-      return {
-        projectRootPath: normalizedRoot,
-        projectId: "",
-        project: { rootPath: normalizedRoot, projectType: "single-language" as const, languages: [], markers: [] },
-        scannedFiles: 0,
-        indexedFiles: 0,
-        changedFiles: 0,
-        deletedFiles: 0,
-        chunkCount: 0,
-        failedFileCount: 0,
-        failedFiles: [],
-        createdAt: new Date().toISOString(),
-        timings: { collectMs: 0, detectMs: 0, indexMs: 0, vectorMs: 0, totalMs: timeoutMs },
-        vectorIndex: { enabled: false, hydratedChunkCount: 0, mode: "lazy" as const },
-      };
+      return this.createIndexFallback(normalizedRoot, timeoutMs);
     }
   }
 
@@ -1543,7 +1753,8 @@ export class IndexCoordinator {
     const indexPromise = prev.then(() =>
       this.withGlobalIndexSlot(() => {
         progress.runStartedAtMs = Date.now();
-        return this.runIndexProject(normalizedRoot, mode, onProgress, origin, progress);
+        const run = () => this.runIndexProject(normalizedRoot, mode, onProgress, origin, progress);
+        return origin === "automatic" ? this.withAutomaticMaintenanceLease(run) : run();
       }),
     );
 

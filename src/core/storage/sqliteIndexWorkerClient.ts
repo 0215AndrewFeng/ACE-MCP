@@ -19,7 +19,7 @@ const SQLITE_INDEX_WORKER_IDLE_MS = 1_000;
 interface PendingRequest {
   method: SQLiteIndexWorkerRequest["method"];
   reject: (error: Error) => void;
-  resolve: (value: FinalizeProjectIndexResult | PrepareProjectIndexResult | null) => void;
+  resolve: (value: boolean | FinalizeProjectIndexResult | PrepareProjectIndexResult | null) => void;
   worker: ChildProcess | Worker;
 }
 
@@ -106,6 +106,30 @@ export class SQLiteIndexWorkerClient {
 
   public deleteFiles(projectId: string, relativePaths: string[]): Promise<void> {
     return this.request<void>({ id: 0, method: "deleteFiles", payload: { projectId, relativePaths } });
+  }
+
+  public tryAcquireIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs: number): Promise<boolean> {
+    return this.request<boolean>({
+      id: 0,
+      method: "tryAcquireIndexMaintenanceLease",
+      payload: { expiresAtMs, nowMs, ownerId },
+    });
+  }
+
+  public renewIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs: number): Promise<boolean> {
+    return this.request<boolean>({
+      id: 0,
+      method: "renewIndexMaintenanceLease",
+      payload: { expiresAtMs, nowMs, ownerId },
+    });
+  }
+
+  public releaseIndexMaintenanceLease(ownerId: string): Promise<boolean> {
+    return this.request<boolean>({
+      id: 0,
+      method: "releaseIndexMaintenanceLease",
+      payload: { ownerId },
+    });
   }
 
   public finalizeProjectIndex(

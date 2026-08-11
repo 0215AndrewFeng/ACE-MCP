@@ -34,8 +34,25 @@ function toErrorPayload(error: unknown): { message: string; stack?: string } {
 function handleRequest(request: SQLiteIndexWorkerRequest): void {
   let response: SQLiteIndexWorkerResponse;
   try {
-    let result: FinalizeProjectIndexResult | PrepareProjectIndexResult | null = null;
+    let result: boolean | FinalizeProjectIndexResult | PrepareProjectIndexResult | null = null;
     switch (request.method) {
+      case "tryAcquireIndexMaintenanceLease":
+        result = store.tryAcquireIndexMaintenanceLease(
+          request.payload.ownerId,
+          request.payload.expiresAtMs,
+          request.payload.nowMs,
+        );
+        break;
+      case "renewIndexMaintenanceLease":
+        result = store.renewIndexMaintenanceLease(
+          request.payload.ownerId,
+          request.payload.expiresAtMs,
+          request.payload.nowMs,
+        );
+        break;
+      case "releaseIndexMaintenanceLease":
+        result = store.releaseIndexMaintenanceLease(request.payload.ownerId);
+        break;
       case "deleteFiles":
         store.deleteFiles(request.payload.projectId, request.payload.relativePaths);
         break;

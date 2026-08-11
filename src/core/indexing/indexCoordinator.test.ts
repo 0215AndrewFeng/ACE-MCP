@@ -10,6 +10,7 @@ import { mapInBatches } from "../common/batch.js";
 import type { IndexProjectResult, Settings } from "../common/types.js";
 import { InMemoryEmbeddingProvider } from "../search/embedding.js";
 import type { EmbeddingProvider } from "../search/embedding.js";
+import { SQLiteStore } from "../storage/sqliteStore.js";
 import { createTestProjectEnvironment } from "../../test/helpers.js";
 import {
   createSynchronousIndexStorageWorker,
@@ -259,6 +260,106 @@ test("manual freshness also reuses a restored cached result", async () => {
   coordinator.restoreFreshnessState(process.cwd(), result);
 
   assert.equal(await coordinator.ensureFreshIndex(process.cwd(), 1), result);
+});
+
+test("stdio freshness reuses the last successful index during Web startup catch-up", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const initial = await environment.indexCoordinator.indexProject(environment.projectRootPath, "full");
+  environment.settings.autoWatch = true;
+  environment.settings.indexFreshness = "always";
+  const releaseWebPrepare = deferred<void>();
+  const webPrepareStarted = deferred<void>();
+  const webWorker = createSynchronousIndexStorageWorker(environment.store);
+  const originalWebPrepare = webWorker.prepareProjectIndex.bind(webWorker);
+  webWorker.prepareProjectIndex = async (...args) => {
+    webPrepareStarted.resolve();
+    await releaseWebPrepare.promise;
+    return originalWebPrepare(...args);
+  };
+  const webCoordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    webWorker,
+  );
+  const stdioStore = new SQLiteStore(
+    environment.settings.databasePath,
+    { debug() {}, info() {}, warn() {} } as never,
+  );
+  stdioStore.initialize();
+  const stdioWorker = createSynchronousIndexStorageWorker(stdioStore);
+  const originalStdioPrepare = stdioWorker.prepareProjectIndex.bind(stdioWorker);
+  let stdioPrepareCalls = 0;
+  stdioWorker.prepareProjectIndex = async (...args) => {
+    stdioPrepareCalls += 1;
+    return originalStdioPrepare(...args);
+  };
+  const stdioCoordinator = new IndexCoordinator(
+    environment.settings,
+    stdioStore,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    stdioWorker,
+  );
+
+  try {
+    await webCoordinator.startAutomaticUpdates();
+    await webPrepareStarted.promise;
+
+    assert.ok(stdioStore.getActiveIndexMaintenanceLease());
+    const fallback = await stdioCoordinator.ensureFreshIndex(environment.projectRootPath);
+
+    assert.equal(stdioPrepareCalls, 0);
+    assert.equal(fallback.projectId, initial.projectId);
+    assert.equal(fallback.createdAt, initial.createdAt);
+  } finally {
+    releaseWebPrepare.resolve();
+    await Promise.allSettled([webCoordinator.close(), stdioCoordinator.close()]);
+    await environment.cleanup();
+  }
+});
+
+test("expired Web maintenance lease does not suppress stdio freshness indexing", async () => {
+  const environment = await createTestProjectEnvironment({
+    "src/index.ts": "export const value = 1;\n",
+  });
+  const ownerId = "crashed-web-owner";
+  const nowMs = Date.now();
+  environment.store.tryAcquireIndexMaintenanceLease(ownerId, nowMs - 1, nowMs - 2);
+  const worker = createSynchronousIndexStorageWorker(environment.store);
+  const originalPrepare = worker.prepareProjectIndex.bind(worker);
+  let prepareCalls = 0;
+  worker.prepareProjectIndex = async (...args) => {
+    prepareCalls += 1;
+    return originalPrepare(...args);
+  };
+  const coordinator = new IndexCoordinator(
+    environment.settings,
+    environment.store,
+    { debug() {}, info() {}, warn() {} } as never,
+    environment.embeddingProvider,
+    noOpWatchFactory,
+    undefined,
+    undefined,
+    worker,
+  );
+
+  try {
+    await coordinator.ensureFreshIndex(environment.projectRootPath);
+    assert.equal(prepareCalls, 1);
+  } finally {
+    await coordinator.close();
+    await environment.cleanup();
+  }
 });
 
 test("watches multiple projects and stops one project independently", async () => {
@@ -3195,14 +3296,23 @@ test("coordinator awaits the injected index worker and preserves progress and ti
       environment.store.upsertProject(projectId, project, "indexing", timestamp);
       return { existingFiles: environment.store.listProjectFiles(projectId) };
     },
+    async releaseIndexMaintenanceLease(ownerId) {
+      return environment.store.releaseIndexMaintenanceLease(ownerId);
+    },
     releaseLease() {
       activeLeases -= 1;
       calls.push("releaseLease");
+    },
+    async renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async resolveSymbolGraph(projectId, changedFileIds) {
       calls.push("resolveSymbolGraph");
       await delay();
       environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async writeChunkVectors(entries, projectId) {
       calls.push("writeChunkVectors");
@@ -3414,12 +3524,21 @@ test("close drains an active index before closing its storage worker", async () 
       environment.store.upsertProject(projectId, project, "indexing", timestamp);
       return { existingFiles: environment.store.listProjectFiles(projectId) };
     },
+    async releaseIndexMaintenanceLease(ownerId) {
+      return environment.store.releaseIndexMaintenanceLease(ownerId);
+    },
     releaseLease() {
       calls.push("releaseLease");
+    },
+    async renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async resolveSymbolGraph(projectId, changedFileIds) {
       calls.push("resolveSymbolGraph");
       environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async writeChunkVectors(entries, projectId) {
       environment.store.writeChunkVectors(entries, projectId);
@@ -3506,9 +3625,18 @@ test("close force closes after a bounded drain grace and leaves recovery state n
       environment.store.upsertProject(projectId, project, "indexing", timestamp);
       return { existingFiles: environment.store.listProjectFiles(projectId) };
     },
+    async releaseIndexMaintenanceLease(ownerId) {
+      return environment.store.releaseIndexMaintenanceLease(ownerId);
+    },
     releaseLease() {},
+    async renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.renewIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
+    },
     async resolveSymbolGraph(projectId, changedFileIds) {
       environment.store.resolveSymbolGraph(projectId, new Set(changedFileIds));
+    },
+    async tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs) {
+      return environment.store.tryAcquireIndexMaintenanceLease(ownerId, expiresAtMs, nowMs);
     },
     async writeChunkVectors(entries, projectId) {
       environment.store.writeChunkVectors(entries, projectId);

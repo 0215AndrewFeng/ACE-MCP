@@ -211,6 +211,27 @@ test("source index worker prepares and atomically finalizes project metadata", a
   }
 });
 
+test("source index worker owns the cross-process index maintenance lease writes", async () => {
+  const fixture = await createFixture();
+  const client = new SQLiteIndexWorkerClient(fixture.data, fixture.logger);
+  const nowMs = Date.now();
+
+  try {
+    assert.equal(await client.tryAcquireIndexMaintenanceLease("web-owner", nowMs + 60_000, nowMs), true);
+    assert.deepEqual(fixture.store.getActiveIndexMaintenanceLease(nowMs + 1), {
+      expiresAtMs: nowMs + 60_000,
+      ownerId: "web-owner",
+    });
+    assert.equal(await client.renewIndexMaintenanceLease("web-owner", nowMs + 90_000, nowMs + 1), true);
+    assert.equal(fixture.store.getActiveIndexMaintenanceLease(nowMs + 2)?.expiresAtMs, nowMs + 90_000);
+    assert.equal(await client.releaseIndexMaintenanceLease("web-owner"), true);
+    assert.equal(fixture.store.getActiveIndexMaintenanceLease(nowMs + 2), null);
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
 test("a blocking index worker leaves timers and the search worker independent", async () => {
   const fixture = await createFixture();
   const indexClient = new SQLiteIndexWorkerClient(fixture.data, fixture.logger, { workerUrl: fixtureWorkerUrl });

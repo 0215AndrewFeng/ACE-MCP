@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.6] - 2026-08-11
+
+### Cross-process index write coordination
+
+- Web startup/periodic catch-up 和 watcher 自动索引现在持有可续租的 SQLite maintenance lease；lease 写入继续由独立 index worker 执行，多个进程不会再仅依赖进程内队列判断写入 ownership。
+- stdio MCP freshness 检查发现有效的 Web maintenance lease 时不再启动第二个索引 writer，而是立即复用数据库中最后一次成功索引，查询可继续读取现有 SQLite/WAL 数据。
+- lease 每 10 秒续租、60 秒过期；Web owner 异常退出或失去 lease 后，stdio 按需索引可自动恢复，不会永久跳过 freshness。回归测试覆盖独立 SQLite 连接、真实 worker IPC、startup catch-up 竞争和过期接管。
+
+### Release status
+
+- package/runtime/macOS installer 和发布契约已更新到 4.10.6；source、tag 和发布资产状态以 release checklist 与远端实际结果为准。
+- Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机构建并完成 smoke 验证。
+
 ## [4.10.5] - 2026-08-11
 
 ### Stable Git dirty reconciliation

@@ -14,6 +14,7 @@ import type {
   DefinitionMatch,
   ImportInfo,
   IndexEventSummary,
+  IndexProjectResult,
   IndexTimingStats,
   IndexVectorStats,
   IndexedFileRecord,
@@ -465,6 +466,13 @@ export class SQLiteStore {
         FOREIGN KEY(event_id) REFERENCES index_event(event_id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS index_maintenance_lease (
+        lease_name TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        expires_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_file_project_id ON file(project_id);
       CREATE INDEX IF NOT EXISTS idx_file_relative_path ON file(relative_path);
       CREATE INDEX IF NOT EXISTS idx_index_event_project_created_at ON index_event(project_id, created_at DESC);
@@ -687,6 +695,45 @@ export class SQLiteStore {
       return null;
     }
 
+    return this.hydrateIndexEvent(event, failureLimit);
+  }
+
+  public getLatestSuccessfulIndexResult(projectRootPath: string): IndexProjectResult | null {
+    const project = this.getProjectByRoot(projectRootPath);
+    if (!project) {
+      return null;
+    }
+    const event = this.db
+      .prepare(
+        `SELECT event_id, indexed_files, changed_files, deleted_files, chunk_count, scanned_files, metadata_json, created_at
+         FROM index_event e
+         WHERE project_id = ?
+           AND NOT EXISTS (
+             SELECT 1 FROM index_event_failure f WHERE f.event_id = e.event_id
+           )
+         ORDER BY created_at DESC, event_id DESC
+         LIMIT 1`,
+      )
+      .get(project.project_id) as IndexEventRow | undefined;
+    if (!event) {
+      return null;
+    }
+
+    return {
+      ...this.hydrateIndexEvent(event, 20),
+      project: {
+        languages: safeJsonParse<Language[]>(project.languages, [], this.logger, "project.languages"),
+        markers: [],
+        projectType: project.project_type,
+        rootPath: project.project_root_path,
+      },
+      projectId: project.project_id,
+      projectRootPath: project.project_root_path,
+    };
+  }
+
+  private hydrateIndexEvent(event: IndexEventRow, failureLimit: number): IndexEventSummary {
+
     const failedFileCount = (
       this.db
         .prepare(
@@ -736,7 +783,7 @@ export class SQLiteStore {
         hydratedChunkCount: 0,
         mode: "lazy",
       },
-      };
+    };
   }
 
   public latestIndexEventHasFailures(projectId: string): boolean | null {
@@ -754,6 +801,58 @@ export class SQLiteStore {
       )
       .get(projectId) as { has_failures: number } | undefined;
     return row ? row.has_failures === 1 : null;
+  }
+
+  public tryAcquireIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs = Date.now()): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT INTO index_maintenance_lease (lease_name, owner_id, expires_at_ms, updated_at_ms)
+         VALUES ('automatic-index-maintenance', ?, ?, ?)
+         ON CONFLICT(lease_name) DO UPDATE SET
+           owner_id = excluded.owner_id,
+           expires_at_ms = excluded.expires_at_ms,
+           updated_at_ms = excluded.updated_at_ms
+         WHERE index_maintenance_lease.owner_id = excluded.owner_id
+            OR index_maintenance_lease.expires_at_ms <= ?`,
+      )
+      .run(ownerId, expiresAtMs, nowMs, nowMs);
+    return result.changes === 1;
+  }
+
+  public renewIndexMaintenanceLease(ownerId: string, expiresAtMs: number, nowMs = Date.now()): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE index_maintenance_lease
+         SET expires_at_ms = ?, updated_at_ms = ?
+         WHERE lease_name = 'automatic-index-maintenance'
+           AND owner_id = ?
+           AND expires_at_ms > ?`,
+      )
+      .run(expiresAtMs, nowMs, ownerId, nowMs);
+    return result.changes === 1;
+  }
+
+  public releaseIndexMaintenanceLease(ownerId: string): boolean {
+    const result = this.db
+      .prepare(
+        `DELETE FROM index_maintenance_lease
+         WHERE lease_name = 'automatic-index-maintenance'
+           AND owner_id = ?`,
+      )
+      .run(ownerId);
+    return result.changes === 1;
+  }
+
+  public getActiveIndexMaintenanceLease(nowMs = Date.now()): { expiresAtMs: number; ownerId: string } | null {
+    const row = this.db
+      .prepare(
+        `SELECT owner_id, expires_at_ms
+         FROM index_maintenance_lease
+         WHERE lease_name = 'automatic-index-maintenance'
+           AND expires_at_ms > ?`,
+      )
+      .get(nowMs) as { expires_at_ms: number; owner_id: string } | undefined;
+    return row ? { expiresAtMs: row.expires_at_ms, ownerId: row.owner_id } : null;
   }
 
   private listProjectSymbols(projectId: string): SymbolRow[] {

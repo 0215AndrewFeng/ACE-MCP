@@ -1,3 +1,39 @@
+# v4.10.6 Cross-Process Index Write Coordination
+
+Author: feng.ling
+
+## Goal
+
+Keep MCP queries responsive while the Web owner performs startup or periodic catch-up by preventing freshness checks in other processes from starting competing SQLite index writes, with automatic recovery after owner failure.
+
+## Plan
+
+- [x] Trace Web catch-up and stdio freshness calls to the process-local indexing queues and confirm the missing cross-process coordination boundary.
+- [x] Add regression coverage for active maintenance fallback, last-success reuse, expired-owner recovery, and no-owner freshness behavior.
+- [x] Add a renewable cross-process background-maintenance lease and make freshness checks defer writes while it is valid.
+- [x] Update current-version carriers and release documentation to v4.10.6.
+- [x] Run focused tests, the full suite, build/package gates, and runtime verification.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/storage/sqliteStore.test.ts src/core/storage/sqliteIndexWorker.test.ts src/core/indexing/indexCoordinator.test.ts`
+- `node --import tsx --test src/config/packageManifest.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:pack`
+- `npm run security:secrets`
+- `npm run release:benchmark`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-11: Root cause confirmed: per-project queues and in-flight deduplication are process-local, so stdio freshness cannot observe Web startup catch-up and starts a second SQLite writer.
+- 2026-08-11: RED reproduced with independent Web/stdio coordinators: startup catch-up reached prepare while no shared maintenance owner was visible, so stdio would start its own prepare. GREEN returns the persisted last successful index without a second writer; an expired owner still permits on-demand indexing.
+- 2026-08-11: Focused storage/worker/coordinator tests passed 123/123, release contracts passed 37/37, full `npm test` passed 325/325, and built dist-worker tests passed 20/20.
+- 2026-08-11: Build, tgz pack, secret scan, installer syntax, real doctor, and during-index benchmark passed. Benchmark observed active indexing with health p95 6 ms, resolve p95 25 ms, and zero timeouts.
+- 2026-08-11: `ace-mcp-4.10.6.tgz` SHA-256 is `85a285ac0e1cb4c780f181e4f629db00dfdbcdef0a0e8992c3e56860c52b61ab`. Windows ZIP and `release:smoke` remain pending on Windows x64 with Node.js 22.
+
 # v4.10.5 Stable Git Dirty Reconciliation
 
 Author: feng.ling
