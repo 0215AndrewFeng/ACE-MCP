@@ -1,3 +1,37 @@
+# v4.10.5 Stable Git Dirty Reconciliation
+
+Author: feng.ling
+
+## Goal
+
+Prevent periodic Git reconciliation from repeatedly rebuilding unchanged dirty and untracked files while preserving indexing for new files and real content changes.
+
+## Plan
+
+- [x] Confirm the Git candidate set bypasses the existing file fingerprint check.
+- [x] Add regression coverage and verify it fails on v4.10.4.
+- [x] Require Git dirty and untracked candidates to pass file-change detection before indexing.
+- [x] Update current-version carriers and release documentation to v4.10.5.
+- [x] Run focused tests, the full suite, build/package gates, and diff checks.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/indexing/indexCoordinator.test.ts`
+- `node --import tsx --test src/config/packageManifest.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:pack`
+- `npm run security:secrets`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-11: RED reproduced for both a tracked dirty file and an already-indexed untracked file; v4.10.4 reported `changedFiles=1` on an unchanged second incremental index.
+- 2026-08-11: GREEN passed both regressions, the full coordinator suite passed 92/92, and the v4.10.5 release contract suite passed 36/36.
+- 2026-08-11: Full `npm test` passed 320/320, dist-worker passed 19/19, build/release pack, secret scan, installer syntax, benchmark, and diff checks passed. The during-index benchmark observed active indexing with health p95 9 ms, resolve p95 10 ms, and zero timeouts.
+- 2026-08-11: `ace-mcp-4.10.5.tgz` SHA-256 is `6847a908dca940c9449d2813fef8029f1c211c644d27e86878137b09145d8994`. Windows ZIP and `release:smoke` remain pending on Windows x64 with Node.js 22.
+
 # v4.10.4 Bounded And Failure-Safe Logging
 
 Author: feng.ling

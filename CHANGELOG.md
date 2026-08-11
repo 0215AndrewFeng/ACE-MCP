@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.5] - 2026-08-11
+
+### Stable Git dirty reconciliation
+
+- Git 增量索引不再把持续存在的 dirty 和 untracked 路径视为内容已经变化；这些路径现在与其他增量候选一样继续经过文件指纹校验。
+- 周期性 `autoWatch` 校准会跳过指纹未变化的已索引文件，不再每 600 秒重建长期未提交的工作区；新增文件和指纹真实变化的文件仍正常索引。
+- coordinator 回归测试同时覆盖已跟踪 dirty 文件和已建立索引的 untracked 文件。
+
+### Release status
+
+- package/runtime/macOS installer 和发布契约已更新到 4.10.5；source、tag 和发布资产状态以 release checklist 与远端实际结果为准。
+- Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机构建并完成 smoke 验证。
+
 ## [4.10.4] - 2026-08-03
 
 ### Bounded and failure-safe logging

@@ -1675,7 +1675,6 @@ export class IndexCoordinator {
      */
     let gitCommit: string | null = null;
     let gitOptimized = false;
-    let gitChangedPaths: Set<string> | null = null;
 
     if (mode === "incremental") {
       const lastIndexedCommit = this.store.getLastIndexedCommit(projectId);
@@ -1686,10 +1685,6 @@ export class IndexCoordinator {
 
         // If we have a previous index and git tells us what changed
         if (lastIndexedCommit && gitStatus.changedFiles && gitStatus.untrackedFiles) {
-          gitChangedPaths = new Set([
-            ...gitStatus.changedFiles,
-            ...gitStatus.untrackedFiles,
-          ]);
           gitOptimized = true;
           this.logger.debug("using git diff for incremental index", {
             changedFiles: gitStatus.changedFiles.length,
@@ -1740,22 +1735,16 @@ export class IndexCoordinator {
     await indexStorageWorker.deleteFiles(projectId, deletedFiles);
 
     /**
-     * v4.3.3: Smart file filtering
+     * Smart file filtering
      * - Full mode: index all files
-     * - Incremental + git optimized: only files in git diff + files with changed mtime
-     * - Incremental fallback: files with changed mtime/sha256
+     * - Incremental mode: index new files and files with a changed fingerprint
+     * - Git status identifies candidates but does not prove their content changed
      */
     const filesToIndex = sourceFiles.filter((file) => {
       if (mode === "full") {
         return true;
       }
 
-      // v4.3.3: If git tells us this file changed, always re-index
-      if (gitOptimized && gitChangedPaths?.has(file.relativePath)) {
-        return true;
-      }
-
-      // Fall back to mtime/sha256 check
       const existing = existingFiles.get(file.relativePath);
       return hasFileChanged(existing, file);
     });

@@ -115,3 +115,4 @@
 64. ✅ **SQLite search worker 生命周期隔离**：pending request 绑定 worker identity，close 幂等并跟踪 live/terminating worker，旧 generation 的迟到 error/exit 不再影响替代 worker（v4.10.3）
 65. ✅ **混合业务词项目归属**：保留 `A转D` 等 ASCII/CJK 混合概念，过滤路由停用词，并用精确证据 + 仓库名锚点 + 有证据的同族兄弟召回修复复制枚举/测试夹具误路由（v4.10.4）
 66. ✅ **有界且异常安全的日志**：文件等级过滤、20 MiB × 3 归档轮转、跨进程原子锁、EPIPE/磁盘/metadata 失败隔离，以及守护进程重复 stderr 抑制（v4.10.4）
+67. ✅ **Git dirty 重复索引修复**：Git dirty/untracked 路径不再被直接判定为必须重建，而是继续经过已有文件指纹校验；长期未提交工作区不会在每次 periodic reconciliation 中重复索引未变化文件（v4.10.5）

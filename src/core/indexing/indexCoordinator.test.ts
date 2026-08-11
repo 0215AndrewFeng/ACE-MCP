@@ -437,6 +437,59 @@ test("a successful index clears watch dirtiness only for its captured generation
   }
 });
 
+for (const gitChange of [
+  { changedFiles: ["source.ts"], name: "a tracked dirty file", untrackedFiles: [] },
+  { changedFiles: [], name: "an untracked file", untrackedFiles: ["source.ts"] },
+]) {
+  test(`incremental Git indexing does not rebuild unchanged content for ${gitChange.name}`, async () => {
+    const environment = await createTestProjectEnvironment({
+      "source.ts": "export const value = 1;",
+    });
+    let coordinator: IndexCoordinator | undefined;
+
+    try {
+      const initial = await environment.indexCoordinator.indexProject(
+        environment.projectRootPath,
+        "full",
+      );
+      environment.store.updateProjectAfterIndex(
+        initial.projectId,
+        initial.createdAt,
+        "ready",
+        false,
+        "indexed-commit",
+      );
+      coordinator = new IndexCoordinator(
+        environment.settings,
+        environment.store,
+        { debug() {}, info() {}, warn() {} } as never,
+        environment.embeddingProvider,
+        noOpWatchFactory,
+        async () => ({ isDirectory: () => true }),
+        async () => ({
+          changedFiles: gitChange.changedFiles,
+          currentCommit: "current-commit",
+          isGitRepo: true,
+          reliable: true,
+          untrackedFiles: gitChange.untrackedFiles,
+        }),
+        createSynchronousIndexStorageWorker(environment.store),
+      );
+
+      const result = await coordinator.indexProject(
+        environment.projectRootPath,
+        "incremental",
+      );
+
+      assert.equal(result.changedFiles, 0);
+      assert.equal(result.indexedFiles, 0);
+    } finally {
+      await coordinator?.close();
+      await environment.cleanup();
+    }
+  });
+}
+
 test("limits indexing concurrency across projects", async () => {
   const releaseEmbeddings = deferred<void>();
 
