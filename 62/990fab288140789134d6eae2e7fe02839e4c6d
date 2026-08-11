@@ -1,0 +1,74 @@
+README.md
+  s_735bf060adb8a1::t_a5005c3c5440a0 5,39
+  s_735bf060adb8a1::t_910577a14a93c0 103,106,113,122,128,158-159,183,197,257,268,301,307,622-630
+docs/release-checklist.md
+  s_735bf060adb8a1::t_ef6d0ea53a0e53 3,5,37,64,79-91,109-110,112,115,120,126
+  s_735bf060adb8a1::t_11a9287d6384db 105
+scripts/README-WINDOWS.md
+  s_735bf060adb8a1::t_ef6d0ea53a0e53 3,5,15-19,35,61
+tasks/todo.md
+  s_735bf060adb8a1::t_98619f7f77afc2 12-15,32-35
+  s_735bf060adb8a1::t_ea1ea8c223f298 1-11,16-31,36
+src/core/storage/sqliteIndexWorker.test.ts
+  s_735bf060adb8a1::t_8c85e0f30acd6b 214-234
+package.json
+  s_735bf060adb8a1::t_0fb0f14fe25c1c 3
+src/core/storage/sqliteIndexWorkerProtocol.ts
+  s_735bf060adb8a1::t_a60792932bb5fb 30-44,85
+src/version.ts
+  s_735bf060adb8a1::t_a5005c3c5440a0 2
+src/core/storage/sqliteStore.ts
+  s_735bf060adb8a1::t_a60792932bb5fb 17,698-736,786
+  s_735bf060adb8a1::t_a6b9d651ed52c8 469-475,806-856
+  s_735bf060adb8a1::t_54dec68a3f6e9e 857
+CHANGELOG.md
+  s_735bf060adb8a1::t_a5005c3c5440a0 5-17
+src/core/indexing/indexCoordinator.ts
+  s_735bf060adb8a1::t_945cd91cbaf368 977-978,984
+  s_735bf060adb8a1::t_f99fe25b0e30d9 359-364
+  s_735bf060adb8a1::t_45f0fb73aec2ef 1072-1075
+  s_735bf060adb8a1::t_3a8b31aa8196a3 1238-1280,1294-1297,1306-1309,1331-1334,1361
+  s_735bf060adb8a1::t_ad9fa186103a21 1756-1757
+  s_735bf060adb8a1::t_7404228cab189f 1,308-309
+  s_735bf060adb8a1::t_444471d80caf87 1018-1020
+  s_735bf060adb8a1::t_8c85e0f30acd6b 1076-1078
+  s_735bf060adb8a1::t_e519408297612f 194,196,198,213-214,216,236-238,240-242,246-248
+  s_735bf060adb8a1::t_faf3bc58df836f 910-976,979-983,985-1017,1021-1035
+  s_735bf060adb8a1::t_284da52c8102fe 1128-1139,1143,1146
+ROADMAP.md
+  s_735bf060adb8a1::t_a5005c3c5440a0 119
+src/config/packageManifest.test.ts
+  s_735bf060adb8a1::t_77c6d0d1883543 33,36,446-447,454,477-478,481-484,487-489,511,515,522,531,534,546,549,554-567,581
+  s_735bf060adb8a1::t_11a9287d6384db 634,657
+src/core/storage/sqliteIndexWorker.ts
+  s_735bf060adb8a1::t_a60792932bb5fb 37,39-55
+src/core/indexing/indexCoordinator.test.ts
+  s_735bf060adb8a1::t_a327b3bb9240bc 13,265-363
+  s_735bf060adb8a1::t_9b2a95dba7c09c 3299-3301,3306-3308,3314-3316,3527-3529,3533-3535,3540-3542,3628-3630,3632-3634,3638-3640
+  s_735bf060adb8a1::t_e6472d00ca6d48 364
+src/core/storage/sqliteStore.test.ts
+  s_735bf060adb8a1::t_1cd26c42d4e3d5 184-213
+scripts/install-macos.sh
+  s_735bf060adb8a1::t_a5005c3c5440a0 4
+src/core/storage/sqliteIndexWorkerClient.ts
+  s_735bf060adb8a1::t_a60792932bb5fb 22,111-133
+  s_735bf060adb8a1::t_117414c9a64e4d 134
+package-lock.json
+  s_735bf060adb8a1::t_28fbdcbb334779 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "62990fab288140789134d6eae2e7fe02839e4c6d",
+  "prompts": {},
+  "sessions": {
+    "s_735bf060adb8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019feea6-96c6-7112-b796-6b36aff2c17f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
