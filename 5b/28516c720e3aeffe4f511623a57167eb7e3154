@@ -1,0 +1,50 @@
+scripts/README-WINDOWS.md
+  s_735bf060adb8a1::t_668e5da72336cb 3,5,15-19,30,56
+package.json
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 3
+scripts/install-macos.sh
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 4
+src/config/packageManifest.test.ts
+  s_735bf060adb8a1::t_ec2f20767cca64 33,36,446-447,454,477-478,481-484,487-489,511,515,522,531,534,546-559,569-570,622,645
+src/version.ts
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 2
+ROADMAP.md
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 118
+src/core/indexing/indexCoordinator.ts
+  s_735bf060adb8a1::t_f4ab09c8b67bce 1738,1740-1741
+tasks/todo.md
+  s_735bf060adb8a1::t_59e6e8678eafd4 1-11,16-26,34
+  s_735bf060adb8a1::t_914bd82b927208 12,27-30
+  s_735bf060adb8a1::t_74cbf565ad28e1 15,32-33
+  s_735bf060adb8a1::t_adc396ec71008c 13-14,31
+CHANGELOG.md
+  s_735bf060adb8a1::t_74cbf565ad28e1 15
+  s_735bf060adb8a1::t_ce7db0e6f33a98 9-11,16
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 5-8,12-14,17
+src/core/indexing/indexCoordinator.test.ts
+  s_735bf060adb8a1::t_4729edf3aba497 440-492
+README.md
+  s_735bf060adb8a1::t_e9b456cc9dcfcd 5,38,102,105,112,121,127,157-158,182,196,256,267,300,306,621-625,627-628
+  s_735bf060adb8a1::t_74cbf565ad28e1 626
+docs/release-checklist.md
+  s_735bf060adb8a1::t_74cbf565ad28e1 5
+  s_735bf060adb8a1::t_668e5da72336cb 3,37,64,79-91,109-110,112,115,120,126
+package-lock.json
+  s_735bf060adb8a1::t_d4dcb171735ec6 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "5b28516c720e3aeffe4f511623a57167eb7e3154",
+  "prompts": {},
+  "sessions": {
+    "s_735bf060adb8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019feea6-96c6-7112-b796-6b36aff2c17f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
