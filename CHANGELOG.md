@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.7] - 2026-08-11
+
+### Codex sandbox initialization
+
+- 新增全局命令 `ace-mcp-configure-codex`，原子且幂等地把 `~/.ace-mcp` 合并到 Codex `[sandbox_workspace_write].writable_roots`，保留已有 writable roots 和其他 TOML 配置。
+- macOS 一键安装脚本检测到 Codex CLI 或现有 `~/.codex/config.toml` 时自动执行配置，避免 ace-mcp 首次创建或更新 `~/.ace-mcp/data/index.db` 时出现 `SqliteError: attempt to write a readonly database`。
+- 配置器覆盖新建配置、已有 section、已有多行 roots、重复执行和损坏 TOML 拒绝覆盖；完成后明确提示重启 Codex 或重连 MCP。
+
+### Release status
+
+- package/runtime/macOS installer 和发布契约已更新到 4.10.7；source、tag 和发布资产状态以 release checklist 与远端实际结果为准。
+- Windows 自包含 ZIP 仍需在 Windows x64 + Node.js 22 主机构建并完成 smoke 验证。
+
 ## [4.10.6] - 2026-08-11
 
 ### Cross-process index write coordination

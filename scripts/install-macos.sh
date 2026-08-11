@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ACE_MCP_VERSION="${ACE_MCP_VERSION:-4.10.6}"
+ACE_MCP_VERSION="${ACE_MCP_VERSION:-4.10.7}"
 ACE_MCP_MIN_NODE_VERSION="${ACE_MCP_MIN_NODE_VERSION:-18.18.0}"
 ACE_MCP_RELEASE_BASE_URL="${ACE_MCP_RELEASE_BASE_URL:-https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v${ACE_MCP_VERSION}}"
 ACE_MCP_TGZ_URL="${ACE_MCP_TGZ_URL:-${ACE_MCP_RELEASE_BASE_URL}/ace-mcp-${ACE_MCP_VERSION}.tgz}"
@@ -117,11 +117,23 @@ verify_install() {
   log "Install complete. Start the Web panel with: ace-mcp-web"
 }
 
+configure_codex() {
+  local codex_home="${CODEX_HOME:-${HOME}/.codex}"
+  if command -v codex >/dev/null 2>&1 || [[ -f "${codex_home}/config.toml" ]]; then
+    log "Configuring the Codex workspace-write sandbox for ~/.ace-mcp..."
+    ace-mcp-configure-codex
+    return
+  fi
+
+  log "Codex was not detected. Run ace-mcp-configure-codex before using ace-mcp from Codex."
+}
+
 main() {
   require_macos
   require_command "curl" "curl is bundled with macOS; install Command Line Tools if it is missing."
   ensure_node
   install_package
+  configure_codex
   verify_install
 }
 

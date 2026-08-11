@@ -2,7 +2,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.10.6`
+当前版本：`v4.10.7`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -100,17 +100,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 v4.10.6 Gitee Release 下载 `ace-mcp-4.10.6.tgz` 安装：
+从 v4.10.7 Gitee Release 下载 `ace-mcp-4.10.7.tgz` 安装：
 
 ```bash
-npm install -g ./ace-mcp-4.10.6.tgz
+npm install -g ./ace-mcp-4.10.7.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.10.6.tgz
+npm install -g .\ace-mcp-4.10.7.tgz
 ace-mcp-web
 ```
 
@@ -119,13 +119,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.6/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.7/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.10.6 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.6/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.10.7 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.7/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -155,8 +155,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.6/ace-mcp-4.10.6.tgz
-npm install -g ./ace-mcp-4.10.6.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.7/ace-mcp-4.10.7.tgz
+npm install -g ./ace-mcp-4.10.7.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -180,7 +180,7 @@ npm install
 
 ### Windows zip 安装
 
-v4.10.6 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.6-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
+v4.10.7 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.7-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
 start-web.cmd
@@ -194,7 +194,7 @@ MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再�
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.6-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.7-win-x64\\ace-mcp.cmd"
     }
   }
 }
@@ -254,7 +254,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.10.6.tgz
+npm install -g ./ace-mcp-4.10.7.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -265,7 +265,7 @@ Windows zip：
 npm run release:win
 ```
 
-`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.6 Windows ZIP 尚未补齐。
+`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.7 Windows ZIP 尚未补齐。
 
 安装包 smoke test：
 
@@ -298,13 +298,13 @@ npm run security:secrets
 完成 commit、tag、push 和跨平台产物验证后，可用以下命令发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.6
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.7
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.10.6
+npm run release:verify-assets -- --version 4.10.7
 ```
 
 ## 本地运行
@@ -469,6 +469,31 @@ Windows 全局安装后，如果 MCP 宿主找不到 PATH 中的命令，可使�
 }
 ```
 
+### Codex 沙箱初始化
+
+Codex 使用 `workspace-write` 沙箱时，默认只能写当前项目和自身声明的可写目录。ace-mcp 的共享数据库位于项目目录外的 `~/.ace-mcp/data/index.db`；如果没有额外授权，首次索引会报 `SqliteError: attempt to write a readonly database`。
+
+npm/tgz 或 macOS 一键安装后运行：
+
+```bash
+ace-mcp-configure-codex
+```
+
+源码目录可运行：
+
+```bash
+node scripts/configure-codex.mjs
+```
+
+该命令会保留 `~/.codex/config.toml` 中的其他配置，并幂等地创建或合并：
+
+```toml
+[sandbox_workspace_write]
+writable_roots = ["/Users/<用户名>/.ace-mcp"]
+```
+
+已有 `writable_roots` 不会被覆盖。macOS 一键安装脚本检测到 Codex CLI 或现有 `~/.codex/config.toml` 时会自动执行配置；手工安装则需要运行一次上述命令。修改后请完全重启 Codex 或重连 MCP，使新进程获得更新后的沙箱权限。
+
 ### 宿主升级与重连建议
 
 - 升级 `dist/` 或切换到新版本包后，需在 MCP 宿主侧执行一次 **reload / reconnect**，让宿主拉起新的 `ace-mcp` 进程。
@@ -619,7 +644,14 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.10.6（当前版本）
+### v4.10.7（当前版本）
+
+- **Codex 沙箱初始化**：新增 `ace-mcp-configure-codex`，原子且幂等地把 `~/.ace-mcp` 合并到 `[sandbox_workspace_write].writable_roots`，保留已有 roots 和其他 Codex 配置
+- **macOS 安装闭环**：一键安装检测到 Codex 后自动配置数据目录写权限，避免首次初始化 SQLite 时出现 `attempt to write a readonly database`
+- **失败保护**：Codex TOML 已损坏或 `writable_roots` 类型不合法时拒绝覆盖，并给出明确错误；配置更新后提示重启 Codex
+- **平台状态**：4.10.7 source、tag 和发布资产状态以 release checklist 与远端实际结果为准；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+
+### v4.10.6
 
 - **跨进程写入 ownership**：Web startup/periodic catch-up 与 watcher 自动索引在完整维护窗口持有 SQLite maintenance lease，进程内队列不再是唯一协调边界
 - **查询优先复用旧索引**：stdio MCP freshness 发现有效 lease 时不启动第二个 writer，立即使用数据库中最后一次成功索引继续搜索

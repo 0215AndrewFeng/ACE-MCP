@@ -7,6 +7,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import TOML from "@iarna/toml";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8"));
@@ -241,6 +242,7 @@ async function main() {
   ]);
 
   const aceMcpBin = getBinPath("ace-mcp");
+  const configureCodexBin = getBinPath("ace-mcp-configure-codex");
   const aceMcpWebBin = getBinPath("ace-mcp-web");
 
   if (!existsSync(aceMcpBin)) {
@@ -251,12 +253,23 @@ async function main() {
     fail(`Missing installed ace-mcp-web binary at ${aceMcpWebBin}`);
   }
 
+  if (!existsSync(configureCodexBin)) {
+    fail(`Missing installed ace-mcp-configure-codex binary at ${configureCodexBin}`);
+  }
+
   const reportedVersion = runBin("ace-mcp --version", aceMcpBin, ["--version"]);
   if (reportedVersion !== version) {
     fail(`ace-mcp --version returned ${reportedVersion}, expected ${version}`);
   }
 
   runBin("ace-mcp --doctor", aceMcpBin, ["--doctor"]);
+  runBin("ace-mcp-configure-codex", configureCodexBin, []);
+  const codexConfigPath = path.join(homeDir, ".codex", "config.toml");
+  const codexConfig = TOML.parse(readFileSync(codexConfigPath, "utf8"));
+  const expectedDataDir = path.join(homeDir, ".ace-mcp");
+  if (!codexConfig.sandbox_workspace_write?.writable_roots?.includes(expectedDataDir)) {
+    fail(`Codex config does not grant workspace-write access to ${expectedDataDir}`);
+  }
   const npmPort = await smokeWeb("npm ace-mcp-web", aceMcpWebBin, tempRoot, env);
 
   run("extract Windows zip", "tar.exe", ["-xf", winZipPath, "-C", windowsExtractDir]);

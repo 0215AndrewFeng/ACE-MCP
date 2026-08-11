@@ -1,3 +1,37 @@
+# v4.10.7 Codex Sandbox Initialization
+
+Author: feng.ling
+
+## Goal
+
+Prevent Codex workspace-write sandbox sessions from failing ace-mcp initialization with a read-only SQLite database by configuring `~/.ace-mcp` as a writable root without overwriting existing Codex settings.
+
+## Plan
+
+- [x] Add RED coverage for new config creation, existing-root merge, unrelated-config preservation, and idempotency.
+- [x] Add a packaged Codex configuration helper and run it from the macOS installer.
+- [x] Document the required TOML section, manual recovery, and Codex restart requirement.
+- [x] Update release carriers and documentation to v4.10.7.
+- [x] Run focused, full, build, package, installer, and runtime verification.
+
+## Validation Plan
+
+- `node --test src/test/configureCodexCli.test.mjs`
+- `node --import tsx --test src/config/packageManifest.test.ts`
+- `npm test`
+- `npm run build`
+- `npm run release:pack`
+- `npm run security:secrets`
+- `bash -n scripts/install-macos.sh`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-11: RED reproduced all configuration scenarios with the packaged helper absent; GREEN passed new config, existing multiline roots, existing section without roots, idempotency, unrelated config preservation, and invalid TOML no-overwrite coverage (5/5).
+- 2026-08-11: Focused package/configuration contracts passed 42/42, full `npm test` passed 330/330, and built dist-worker tests passed 20/20.
+- 2026-08-11: Build, tgz pack, secret scan, installer syntax, real doctor, actual-config idempotency, and isolated global-install configuration smoke passed. During-index benchmark observed health p95 6 ms, resolve p95 11 ms, and zero timeouts.
+- 2026-08-11: `ace-mcp-4.10.7.tgz` SHA-256 is `caf40df93d9ddb5404c86589b5b2e6453f86495ee87c1d8d4dc89a095ac3f5e4`. Windows ZIP and `release:smoke` remain pending on Windows x64 with Node.js 22.
+
 # v4.10.6 Cross-Process Index Write Coordination
 
 Author: feng.ling
