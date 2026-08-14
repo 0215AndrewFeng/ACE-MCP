@@ -10,7 +10,7 @@
 
 架构图见 [`ace-mcp-architecture.html`](./ace-mcp-architecture.html)。
 
-仓库地址：[Gitee](https://gitee.com/AndrewFengCode/ace-mcp)
+仓库地址：[Gitee](https://gitee.com/AndrewFengCode/ace-mcp) · [GitHub](https://github.com/0215AndrewFeng/ACE-MCP)
 
 ## 核心功能
 
