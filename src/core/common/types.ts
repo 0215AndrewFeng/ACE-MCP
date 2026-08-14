@@ -48,6 +48,9 @@ export interface Settings {
   indexConcurrency: number;
   searchCacheTtlMs: number;
   searchCacheMaxSize: number;
+  searchWorkerPoolSize: number;
+  searchWorkerQueueMaxPending: number;
+  searchWorkerQueueDeadlineMs: number;
   vectorCacheMaxProjects: number;
   searchFanoutLimit: number;
   llmApiUrl: string;

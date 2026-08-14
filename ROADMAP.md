@@ -11,6 +11,11 @@
 5. ✅ **HNSW searchLayer 用 Array.sort 替代 heap**：实现 MinHeap/MaxHeap 替代，搜索复杂度从 O(ef·n·log n) 降至 O(ef·log n)（v4.5.3）
 6. ✅ **N+1 关联子查询 → CTE**：getFilePreviewResults/searchByPath 用 CTE + LEFT JOIN 替代 3N 次子查询（v4.5.3）
 7. ✅ **增量索引 vector 缓存全量清空**：`reconcileVectorCacheAfterIndex` 只失效受影响文件的向量并同步 `index_version`，避免改几个文件就全量重载 10 万向量；HNSW 标记 stale 后按需异步重建（v4.5.7）
+8. ✅ **v4.10.8 watcher 资源止血**：默认最多 8 个 root-only watcher，其余项目使用 periodic-only reconciliation；创建/runtime `EMFILE` 具备 single-flight、退避、重试上限和全局熔断，49 项目 soak 的 FD 维持低位且无重试风暴。
+9. ✅ **v4.10.8 maintenance lease 活性**：lease 控制独立于 bulk SQLite worker，并在持久化阶段间按剩余 TTL 主动续租和 fencing；真实长事务及 49 项目 soak 均未出现 expiry、foreign-owner 误报或 lease loss。
+10. ✅ **v4.10.8 启动维护队列限流**：startup/periodic 自动维护有界串行排队，显式索引优先获取全局 slot；真实 49 项目 startup 在约 4 分 36 秒内完成 49/49。
+11. ✅ **v4.10.8 搜索并发执行模型收口**：候选策略合并为一次 bounded worker 请求，默认 2-reader pool 提供 pending cap、总 deadline、in-flight 复用、生命周期隔离和显式 503 overload/timeout。
+12. ✅ **v4.10.8 搜索并发验收门禁**：真实 8/16/32 idle 与 during-index 基准均满足 5 秒 p95/p99 门槛，timeout/error 为 0、结果非空且稳定，并已纳入 `release:benchmark` fail-closed 契约。
 
 ## P1 — 性能/体验
 
@@ -82,6 +87,7 @@
 37. ✅ **CJK 语义 FTS 词数**：`buildSemanticFtsQuery` 截断改为 CJK 感知——含 CJK 词上限 15（配合 v4.5.13 bigram 分词），纯 ASCII 维持 8；中文查询 semantic 候选 15→18（v4.5.15）
 38. ✅ **Error/AppError 统一**：llmClient（未配置/API 错/空响应/超时）与 summaryGenerator（未配置/未索引）六处裸 Error 改 AppError，Web 出口按 statusCode/code 返回而非一律 500；CLI/autostart/HNSW 内部错误维持原状（v4.6.0）
 39. ✅ **SSE 连接超时**：实际缺口为「断连未中止上游」——超时与断连检测此前已存在，但断连后 streamComplete 的 fetch 未 abort、上游 LLM 继续生成。现 `res.on("close")` 触发 AbortController 接入 `options.signal`，并在 LLM 阶段前断连早退（v4.6.0）
+40. **Qdrant 条件式评估**：仅在搜索并发模型、调度隔离和可重复基准完成后开展 SQLite/HNSW 与 Qdrant 对照；以大规模向量、过滤 ANN、8/16/32 并发 p95/p99、吞吐、索引/重建成本、资源占用、部署与故障恢复复杂度为准入依据。若达到预设收益门槛，采用 SQLite 保留项目/文件/FTS5/符号/调用图、Qdrant 仅承载向量与过滤 payload 的混合架构，并提供双写一致性、全量重建、灰度切换和一键回退路径。
 
 ## QA 问答（召回质量 / 性能）
 
@@ -118,3 +124,58 @@
 67. ✅ **Git dirty 重复索引修复**：Git dirty/untracked 路径不再被直接判定为必须重建，而是继续经过已有文件指纹校验；长期未提交工作区不会在每次 periodic reconciliation 中重复索引未变化文件（v4.10.5）
 68. ✅ **跨进程索引写入协调**：Web startup/periodic catch-up 和 watcher 自动索引持有可续租 maintenance lease；stdio freshness 在有效 lease 期间直接复用最后成功索引，owner 崩溃或 lease 过期后自动恢复按需索引（v4.10.6）
 69. ✅ **Codex 沙箱初始化闭环**：新增 `ace-mcp-configure-codex` 原子合并 `~/.ace-mcp` 到 `[sandbox_workspace_write].writable_roots`；macOS 一键安装检测到 Codex 后自动配置，避免 SQLite 数据库因沙箱目录未授权而只读（v4.10.7）
+
+## v4.10.8 运行时稳定性、搜索并发与启动调度
+
+Owner: feng.ling
+
+目标：先消除 watcher/lease 后台风暴，再完成搜索并发和 50 项目启动调度隔离，确保下个版本的并发提升建立在稳定运行时上。Qdrant 不属于本版本交付范围，仅在本版本完成后按 P3 准入条件评估。
+
+### Phase 0 - RED 基线与验收契约（工具与 idle/active 数据完成，warm/cold 标注待补）
+
+- **实施**：复用 `scripts/benchmark-search.mjs` 的请求、percentile、active-index 观察和 JSON 输出模式，新增真实并发搜索场景；从 `/health` 和 worker 客户端补齐 active/pending/queueMs，不先改执行模型。
+- **参考**：`scripts/benchmark-search.mjs`、`src/test/benchmarkSearchCli.test.mjs`、`src/core/search/searchServiceConcurrency.test.ts`、`src/core/storage/sqliteSearchWorkerClient.ts`。
+- **验证**：在小型仓库和生产量级 SQLite 副本上分别采集 warm/cold、idle/active-index、1/8/16/32 并发；每档必须有足够样本、非空结果和稳定结果集合，并记录 CPU、RSS、DB/WAL 大小与超时。
+- **禁止**：不把当前 `--concurrency` 的 health probe 数量误当成搜索并发；不凭单次 28 秒样本设定性能目标；基线采集不得成为推迟 Phase 1-3 的理由。
+
+### Phase 1 - 合并候选请求与有限 worker pool（P0，完成）
+
+- **实施**：沿用 `SQLiteSearchWorkerProtocol` 的 discriminated union 和 `handleRequest` dispatch 模式，新增一次返回 lexical/semantic/unicode/symbol/path 分组结果的 bounded request；随后复用现有 worker identity/generation/close/idle 模式扩展为有限池，增加确定性负载分配、pending cap、排队 deadline、同 key in-flight 合并和显式 overload 错误。将 `ensureSemanticIndex` 补写移出 search reader pool，把 pool close 接入生产 shutdown；definition/reference/call graph 等仍在主线程同步读 SQLite 的路径必须纳入同轮基准，迁移到有界 worker 执行或以明确门禁证明不构成阻塞。默认 pool 大小从 2 个 reader 起测，以 1/2/4 worker 实测确定最终默认值。
+- **参考**：`src/core/search/searchService.ts` 的五路候选召回，`src/core/storage/sqliteSearchWorkerProtocol.ts`、`sqliteSearchWorkerClient.ts`、`sqliteSearchWorker.ts` 的现有 IPC 契约。
+- **验证**：增加协议边界、过滤透传、策略失败隔离和结果等价测试；覆盖 pool 全关闭、生产 shutdown、单 worker 崩溃替换、迟到响应隔离、队列满、同 key 冷并发合并、并发公平性，以及超时请求不继续形成 queue debt；证明 search reader 不执行 semantic FTS 写入，结构化搜索不会阻塞主事件循环。
+- **禁止**：不把五类结果提前混成不可解释的单列表；不改变打分或过滤语义换性能；不建立无界 worker/连接池；不把 semantic FTS 写操作放入并行 reader；不因每个 `SQLiteStore` 自带 vector cache 而重复加载向量，ANN 仍留在原主进程路径。
+
+### Phase 2 - watcher FD 资源与失败恢复（P0，完成）
+
+- **实施**：为 watcher 创建/runtime `EMFILE` 增加 per-project 单一恢复任务、指数退避+jitter、重试上限和全局熔断；失败期间依赖 periodic reconciliation 保证最终一致性，不再为每次 watcher 重建先执行一次增量索引。选择并验证有界 watcher 策略，避免对 `.git`、`node_modules`、`target`、`dist` 等无关目录分配递归监听资源；补充 FD 预算诊断，并把 macOS 服务的文件描述符软限制提升作为安装/运行时缓解措施。
+- **参考**：`src/core/indexing/indexCoordinator.ts` 的 `defaultWatchFactory`、`startWatching`、`recoverFailedWatcher`、现有 watch-triggered index backoff，以及 `startAutomaticUpdates` 的 periodic reconciliation fallback。
+- **验证**：严格 TDD 覆盖同步创建失败与异步连续 `EMFILE`；证明不会热循环、不会因 watcher 重试反复索引、同项目只有一个恢复任务、stop/close 清理计时器、熔断后 periodic reconciliation 仍工作，且资源恢复后可重新监听。用至少 50 个登记项目做 macOS FD/CPU/日志速率验收。
+- **禁止**：不只提高 `ulimit` 掩盖无界恢复；不向 Node `fs.watch` 发明不存在的 ignore 参数；不把失败重试绑定到一次完整索引；不丢失 null filename、rename 和 Git/project control-file 变更的最终一致性。
+
+### Phase 3 - maintenance lease 活性与真实状态（P0，完成）
+
+- **实施**：让 lease acquisition/renewal 不再排在 bulk index write 的无界 FIFO 后方，并约束单次写 batch/事务占用；定义 foreign-owner busy、same-owner expired/lost、renewal failure 的独立状态与安全重获/fencing 规则，在 `/health` 暴露 owner、expiry、renewal 和 lost 原因。lease 失效后停止新的 automatic work，避免 stdio freshness 立即形成竞争写入反馈环。
+- **参考**：`src/core/indexing/indexCoordinator.ts` 的 `startAutomaticMaintenanceLeaseHeartbeat`、`enter/exitAutomaticMaintenanceLease`、`withAutomaticMaintenanceLease`，`src/core/storage/sqliteStore.ts` 的 lease CAS，以及 `SQLiteIndexWorkerClient` 请求队列。
+- **验证**：严格 TDD 覆盖超过 TTL 的 worker 排队、真实 SQLite 写锁/长 batch、same-owner expiry、foreign owner、owner 崩溃和 shutdown；证明续租或安全停止在门限内发生，状态文案真实，owner 恢复后无双写。仅拆独立 worker 不算通过，必须用真实锁竞争测试证明设计有效。
+- **禁止**：不靠放大 TTL 隐藏心跳饥饿；不把本进程 lease 过期继续映射为 `Another process owns...`；不允许失效 owner 继续批量提交 automatic work；不以破坏跨进程单写者约束换取恢复速度。
+
+### Phase 4 - 50 项目启动队列限流（P0，完成）
+
+- **实施**：保留现有 per-project serialize/dedupe、`indexConcurrency`、watch generation 和 maintenance lease，给 search/resolve/health 及 explicit/freshness 更高服务优先级；约 50 项目的 startup catch-up 和后续 periodic/watcher 使用有界低优先队列、分批提交、资源预算与背压，并暴露 active/pending/queueMs、合并、等待和退避指标。
+- **参考**：`src/core/indexing/indexCoordinator.ts` 的 `withGlobalIndexSlot`、`projectQueue`、`reconcileWatchedProjects`、watcher follow-up 和 lease 实现，以及对应 coordinator tests。
+- **验证**：用至少 50 个登记项目复现启动 catch-up；证明后台队列饱和时 search/resolve/health 仍满足门槛，显式索引不会被长期饿死，周期任务保持 coalescing，单项目不会并发写，owner 失效后仍能恢复。
+- **禁止**：不重复实现已有的启动串行和全局索引并发限制；不破坏跨进程单一 maintenance owner；不以无限提高 `indexConcurrency` 缩短 catch-up。
+
+### Phase 5 - 8/16/32 并发与 during-index 门禁（P0，完成）
+
+- **实施**：将真实 8/16/32 并发搜索和 50 项目 startup/active-index 场景固化为 benchmark CLI 与测试契约；记录 search p50/p95/p99、吞吐、queueMs、timeout/error、结果稳定性，以及 health/resolve p95 和相对 idle 的退化比例，在实测后固化明确阈值。
+- **参考**：`scripts/benchmark-search.mjs` 的 during-index 样本门禁、`src/test/benchmarkSearchCli.test.mjs` 的失败契约、`package.json` 的 `release:benchmark`/`release:check`。
+- **验证**：先证明 watcher 无重试风暴且 lease 无丢失，再补齐生产规模 Phase 0 基线；三个并发档位和 during-index 场景都必须使用足量非空、稳定结果样本并满足门槛。完整运行 focused tests、`npm test`、`npm run build` 和 `git diff --check`。门禁必须能对超阈值、超时、空结果、lease loss、watcher 热循环和未观察到 active indexing 返回非零退出码。
+- **禁止**：不只测 health/resolve，不用单样本或空结果判定通过，不把环境差异隐藏在汇总数字里；任一并发档位未通过，v4.10.8 不标记完成。
+
+### 后续 - Qdrant ADR 与可回退 PoC（P3，条件触发）
+
+- **准入条件**：Phase 1-3 已完成，且向量搜索在目标规模/过滤场景中成为主要延迟或吞吐瓶颈；先根据 Qdrant 官方文档锁定部署模式、Node client 版本和实际 API，写 ADR 后再实现。
+- **实施**：SQLite 继续作为项目、文件、chunk 文本、FTS5、符号和调用图的事实源；Qdrant point 使用稳定 `chunkId`，payload 只承载 project/model/path/language/indexVersion 等过滤与一致性字段。PoC 必须支持 feature flag、SQLite/HNSW 基线、可重放全量重建、校验式双写和快速回退。
+- **验证**：用相同语料、embedding、query 和过滤条件做质量等价与 1/8/16/32 并发对照；测 p95/p99、吞吐、索引/增量更新/重建时间、磁盘/RSS/CPU、故障注入和恢复时间，并把运维成本计入决策。
+- **禁止**：不让 Qdrant 取代 FTS5、符号或调用图；不在请求链做无法恢复的非原子双写；不假设客户端 API、过滤语法或一致性级别，必须以选定版本官方文档为准。

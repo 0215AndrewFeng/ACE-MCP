@@ -4,7 +4,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.10.7`
+当前版本：`v4.10.8`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -39,6 +39,11 @@
 - Git clean fast path：周期校准仅在 watcher 活跃且干净、Git 状态与 HEAD 读取可靠、没有失败或在途任务时跳过文件收集；启动、脏工作区和任何不可靠状态仍走保守增量路径
 - Git dirty 稳定增量：dirty 和 untracked 路径仍经过已有文件指纹校验，长期未提交但内容未再变化的文件不会在每次周期校准中重复重建；新增文件和真实指纹变化仍会正常索引
 - 跨进程索引写入协调：Web startup/periodic catch-up 和 watcher 自动索引持有可续租 maintenance lease；stdio MCP freshness 在有效 lease 期间直接复用最后成功索引，Web owner 异常退出或 lease 过期后恢复按需索引
+- 有限 SQLite search worker pool：一次 worker 请求合并 lexical、semantic FTS、unicode、symbol、path 和 identifier boost 候选，默认 2 个 reader、最多排队 64 个请求，并以 5 秒总 deadline 和显式 503 overload/timeout 保护服务
+- watcher 资源预算：自动维护默认只保留 8 个 root-only watcher，超额项目降级为 `periodic-only` 并继续参加 startup/periodic reconciliation；创建失败采用有界退避、重试上限和全局熔断，避免 `EMFILE` 热循环
+- maintenance lease 主动续租：lease 控制使用独立 SQLite worker，每个持久化阶段前校验 fencing，并在剩余 TTL 不足时主动续租，长事务不再把本进程误报为其他 owner
+- 有界启动维护：约 50 个项目的 startup catch-up 一次只提交一个自动任务，显式索引优先于后台维护，`/health` 暴露 active/pending/completed 和当前项目
+- 8/16/32 并发门禁：`release:benchmark` 同时验证 idle 与 during-index 搜索 p95/p99、吞吐、队列、超时、错误、非空稳定结果以及 health/resolve 响应性，并对 watcher/lease 异常 fail closed
 - 独立索引 worker：SQLite 索引写入、删除、向量、符号图和语义索引工作移出 Web 主事件循环，解析批次主动 yield；搜索 worker 与索引 worker 相互独立，搜索请求绑定创建它的 worker generation，幂等 close 会拒绝新请求并等待所有存活 worker，旧 worker 的迟到 exit 不会干扰替代 worker
 - 索引 phase 诊断：`/health` 展示 active/queued 索引的 `phase`、`origin`、`queueMs`、`phaseElapsedMs` 和进度，完成事件记录 prepare/parse/write/vector/symbolGraph/semantic/finalize 等分段耗时
 - 有界日志：`logLevel` 同时约束文件与 stderr；结构化日志单文件上限 20 MiB，最多保留 3 个归档，主进程与 SQLite workers 通过原子锁协调轮转；磁盘、序列化和 stderr EPIPE 失败不会反向打崩服务
@@ -102,17 +107,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 v4.10.7 Gitee Release 下载 `ace-mcp-4.10.7.tgz` 安装：
+从 v4.10.8 Gitee Release 下载 `ace-mcp-4.10.8.tgz` 安装：
 
 ```bash
-npm install -g ./ace-mcp-4.10.7.tgz
+npm install -g ./ace-mcp-4.10.8.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.10.7.tgz
+npm install -g .\ace-mcp-4.10.8.tgz
 ace-mcp-web
 ```
 
@@ -121,13 +126,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.7/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.8/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.10.7 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.7/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.10.8 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.8/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -157,8 +162,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.7/ace-mcp-4.10.7.tgz
-npm install -g ./ace-mcp-4.10.7.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.8/ace-mcp-4.10.8.tgz
+npm install -g ./ace-mcp-4.10.8.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -182,7 +187,7 @@ npm install
 
 ### Windows zip 安装
 
-v4.10.7 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.7-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
+v4.10.8 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.8-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
 start-web.cmd
@@ -196,7 +201,7 @@ MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再�
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.7-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.8-win-x64\\ace-mcp.cmd"
     }
   }
 }
@@ -256,7 +261,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.10.7.tgz
+npm install -g ./ace-mcp-4.10.8.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -267,7 +272,7 @@ Windows zip：
 npm run release:win
 ```
 
-`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.7 Windows ZIP 尚未补齐。
+`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.8 Windows ZIP 尚未补齐。
 
 安装包 smoke test：
 
@@ -300,13 +305,13 @@ npm run security:secrets
 完成 commit、tag、push 和跨平台产物验证后，可用以下命令发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.7
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.8
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.10.7
+npm run release:verify-assets -- --version 4.10.8
 ```
 
 ## 本地运行
@@ -526,6 +531,9 @@ indexFreshnessSeconds = 30
 maxFileSizeKb = 1024
 maxLinesPerChunk = 220
 logLevel = "info"
+searchWorkerPoolSize = 2
+searchWorkerQueueMaxPending = 64
+searchWorkerQueueDeadlineMs = 5000
 textExtensions = [".java", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte", ".cs", ".py", ".md"]
 excludePatterns = [".git", "node_modules", "dist", "build", "target", "bin", "obj", "__pycache__", ".venv"]
 vectorIndexingMode = "lazy"
@@ -561,6 +569,9 @@ llmTemperature = 0.0
 - `ACE_MCP_WATCH_DEBOUNCE_MS`
 - `ACE_MCP_WATCH_MAX_WAIT_MS`
 - `ACE_MCP_WATCH_RECONCILE_SECONDS`
+- `ACE_MCP_SEARCH_WORKER_POOL_SIZE` - SQLite search reader 数量（默认 2，最大 16）
+- `ACE_MCP_SEARCH_WORKER_QUEUE_MAX_PENDING` - 等待执行的搜索请求上限（默认 64，最大 1024）
+- `ACE_MCP_SEARCH_WORKER_QUEUE_DEADLINE_MS` - 搜索从入队到 reader 完成的最长时间（默认 5000ms，最大 60000ms）
 - `ACE_MCP_LLM_API_URL`
 - `ACE_MCP_LLM_API_KEY`
 - `ACE_MCP_LLM_MODEL`
@@ -646,7 +657,15 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.10.7（当前版本）
+### v4.10.8（当前版本）
+
+- **有限 search worker pool**：lexical、semantic FTS、unicode、symbol、path 与 identifier boost 合并为一次 bounded worker 请求；默认 2 个 reader，队列上限 64，总 deadline 5 秒，overload/timeout 保持为可重试 503
+- **watcher 有界覆盖**：默认最多 8 个 root-only watcher，其余自动项目使用 `periodic-only` 覆盖；失败恢复具备单项目 single-flight、指数退避、重试上限和全局熔断，避免 `EMFILE` 重建风暴
+- **lease 与长事务修复**：FTS5 按文件批量删除 `UNINDEXED chunk_id`，maintenance lease 在持久化阶段间主动续租并执行 fencing，消除 heartbeat 饥饿及错误的 foreign-owner 状态
+- **启动与并发门禁**：49 项目 startup 队列有界收敛；8/16/32 并发和 during-index 基准纳入 `release:benchmark`，超时、错误、空结果、watcher storm 或 lease loss 均 fail closed
+- **平台状态**：4.10.8 source、tag 和发布资产状态以 release checklist 与远端实际结果为准；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+
+### v4.10.7
 
 - **Codex 沙箱初始化**：新增 `ace-mcp-configure-codex`，原子且幂等地把 `~/.ace-mcp` 合并到 `[sandbox_workspace_write].writable_roots`，保留已有 roots 和其他 Codex 配置
 - **macOS 安装闭环**：一键安装检测到 Codex 后自动配置数据目录写权限，避免首次初始化 SQLite 时出现 `attempt to write a readonly database`

@@ -2396,8 +2396,6 @@ export class SQLiteStore {
       return;
     }
 
-    const deleteChunkFts = this.db.prepare("DELETE FROM chunk_fts WHERE chunk_id = ?");
-    const deleteChunkSemanticFts = this.db.prepare("DELETE FROM chunk_semantic_fts WHERE chunk_id = ?");
     const deleteImports = this.db.prepare("DELETE FROM import_alias WHERE file_id = ?");
     const deleteSymbols = this.db.prepare("DELETE FROM symbol WHERE file_id = ?");
     const deleteUsages = this.db.prepare("DELETE FROM symbol_usage WHERE file_id = ?");
@@ -2445,9 +2443,11 @@ export class SQLiteStore {
       for (const { indexedFile, chunks, symbols, imports, usages } of files) {
         // Delete old data
         const oldChunkIds = selectChunkIds.all(indexedFile.fileId) as Array<{ chunk_id: string }>;
-        for (const chunkId of oldChunkIds) {
-          deleteChunkFts.run(chunkId.chunk_id);
-          deleteChunkSemanticFts.run(chunkId.chunk_id);
+        if (oldChunkIds.length > 0) {
+          const chunkIds = oldChunkIds.map((chunk) => chunk.chunk_id);
+          const placeholders = chunkIds.map(() => "?").join(", ");
+          this.db.prepare(`DELETE FROM chunk_fts WHERE chunk_id IN (${placeholders})`).run(...chunkIds);
+          this.db.prepare(`DELETE FROM chunk_semantic_fts WHERE chunk_id IN (${placeholders})`).run(...chunkIds);
         }
 
         deleteImports.run(indexedFile.fileId);

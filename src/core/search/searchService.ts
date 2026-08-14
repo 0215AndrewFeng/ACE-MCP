@@ -40,7 +40,11 @@ import { readFileSnippet } from "../project/fileSnippet.js";
 import { analyzeQuery, boundProjectRouteTerms, buildFtsQuery } from "./queryAnalyzer.js";
 import type { EmbeddingProvider } from "./embedding.js";
 import { SQLiteStore } from "../storage/sqliteStore.js";
-import { SQLiteSearchWorkerClient } from "../storage/sqliteSearchWorkerClient.js";
+import {
+  SQLiteSearchWorkerClient,
+  SQLiteSearchWorkerOverloadError,
+  SQLiteSearchWorkerQueueTimeoutError,
+} from "../storage/sqliteSearchWorkerClient.js";
 import { collectPositiveStructuredTerms, parseStructuredQuery, type StructuredQueryTerm } from "./structuredQuery.js";
 import {
   SEARCH_FANOUT_LIMIT,
@@ -80,9 +84,34 @@ interface SearchCacheEntry {
   timestamp: number;
 }
 
+function getSearchWorkerCapacityError(error: unknown): AppError | null {
+  if (
+    error instanceof AppError &&
+    (error.code === "SEARCH_OVERLOADED" || error.code === "SEARCH_TIMEOUT")
+  ) {
+    return error;
+  }
+  if (error instanceof SQLiteSearchWorkerOverloadError) {
+    return new AppError("SEARCH_OVERLOADED", error.message, {
+      cause: error,
+      retryable: true,
+      statusCode: 503,
+    });
+  }
+  if (error instanceof SQLiteSearchWorkerQueueTimeoutError) {
+    return new AppError("SEARCH_TIMEOUT", error.message, {
+      cause: error,
+      retryable: true,
+      statusCode: 503,
+    });
+  }
+  return null;
+}
+
 export class SearchService {
   /** Nested cache: projectId -> (cacheKey -> entry) for efficient per-project eviction */
   private readonly searchCache = new Map<string, Map<string, SearchCacheEntry>>();
+  private readonly inFlightSearches = new Map<string, Promise<SearchResponse>>();
   private readonly sqliteSearchWorker: SQLiteSearchWorkerClient;
   private searchCacheSize = 0;
 
@@ -107,6 +136,11 @@ export class SearchService {
         logLevel: this.settings.logLevel,
       },
       this.logger,
+      {
+        poolSize: this.settings.searchWorkerPoolSize,
+        queueDeadlineMs: this.settings.searchWorkerQueueDeadlineMs,
+        queueMaxPending: this.settings.searchWorkerQueueMaxPending,
+      },
     );
   }
 
@@ -178,6 +212,10 @@ export class SearchService {
     };
   }
 
+  public getWorkerDiagnostics() {
+    return this.sqliteSearchWorker.getDiagnostics();
+  }
+
   public clearSearchCache(projectId?: string): void {
     if (projectId) {
       const entries = this.searchCache.get(projectId);
@@ -196,7 +234,7 @@ export class SearchService {
     await this.sqliteSearchWorker.close();
   }
 
-  public searchProjectRouteMatches(
+  public async searchProjectRouteMatches(
     query: string,
     limit: number,
     excludedProjectRootPaths: string[] = [],
@@ -211,13 +249,17 @@ export class SearchService {
     const boundedExactSymbols = exactSymbols
       .slice(0, MAX_PROJECT_ROUTE_IDENTIFIERS)
       .map((symbol) => symbol.slice(0, MAX_PROJECT_ROUTE_TERM_LENGTH));
-    return this.sqliteSearchWorker.searchProjectRoutes(
-      buildFtsQuery(routeTerms, analysis.hasIdentifierLikeSegments && !analysis.isPathLike),
-      boundedExactSymbols,
-      limit,
-      excludedProjectRootPaths,
-      routeTerms,
-    );
+    try {
+      return await this.sqliteSearchWorker.searchProjectRoutes(
+        buildFtsQuery(routeTerms, analysis.hasIdentifierLikeSegments && !analysis.isPathLike),
+        boundedExactSymbols,
+        limit,
+        excludedProjectRootPaths,
+        routeTerms,
+      );
+    } catch (error: unknown) {
+      throw getSearchWorkerCapacityError(error) ?? error;
+    }
   }
 
   private async ensureProjectVectors(projectId: string, modelName: string): Promise<number> {
@@ -247,7 +289,57 @@ export class SearchService {
     return hydratedChunkCount;
   }
 
-  private async searchPlainQuery(
+  private searchPlainQuery(
+    projectRootPath: string,
+    query: string,
+    mode: SearchMode,
+    topK: number,
+    includeContextLines = DEFAULT_INCLUDE_CONTEXT_LINES,
+    filters?: SearchFilters,
+    resultMode: SearchResultMode = "full",
+    budget: SearchBudget = DEFAULT_SEARCH_BUDGET,
+  ): Promise<SearchResponse> {
+    const project = this.store.getProjectByRoot(projectRootPath);
+    if (!project) {
+      return Promise.reject(new AppError("PROJECT_NOT_INDEXED", `Project has not been indexed yet: ${projectRootPath}`));
+    }
+    const { key: cacheKey } = this.buildCacheKey(
+      project.project_id,
+      project.index_version,
+      query,
+      mode,
+      topK,
+      filters,
+      resultMode,
+    );
+    const key = JSON.stringify({ budget, cacheKey, includeContextLines });
+    const existing = this.inFlightSearches.get(key);
+    if (existing) {
+      return existing;
+    }
+    const operation = this.executePlainQuery(
+      projectRootPath,
+      query,
+      mode,
+      topK,
+      includeContextLines,
+      filters,
+      resultMode,
+      budget,
+    );
+    this.inFlightSearches.set(key, operation);
+    void operation.then(
+      () => {
+        if (this.inFlightSearches.get(key) === operation) this.inFlightSearches.delete(key);
+      },
+      () => {
+        if (this.inFlightSearches.get(key) === operation) this.inFlightSearches.delete(key);
+      },
+    );
+    return operation;
+  }
+
+  private async executePlainQuery(
     projectRootPath: string,
     query: string,
     mode: SearchMode,
@@ -383,53 +475,91 @@ export class SearchService {
     const symbolEnabled = mode === "auto" || mode === "symbol" || mode === "hybrid" || analysis.isSymbolLike;
     const pathEnabled = mode === "auto" || mode === "hybrid" || analysis.isPathLike;
 
-    // v4.2.3: Run FTS phases in parallel for better performance
+    const idFtsQuery = analysis.identifiers.length > 0 && analysis.naturalLanguage.length > 0
+      ? buildFtsQuery(analysis.identifiers, false)
+      : null;
     const parallelStartedAt = performance.now();
-    const [lexicalResults, semanticFtsResults, unicodeResults, symbolResults, pathResults] = await Promise.all([
-      runPhase(
-        "lexical",
-        lexicalEnabled,
-        () => this.sqliteSearchWorker.searchByText(project.project_id, analysis.ftsQuery ?? "", fanoutLimit, normalizedFilters),
-        analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
-        budget.ftsMs,
-      ),
-      runPhase(
-        "semantic-fts",
-        semanticFtsEnabled,
-        () => this.sqliteSearchWorker.searchBySemantic(project.project_id, analysis.semanticTerms, fanoutLimit, normalizedFilters),
-        analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
-        budget.ftsMs,
-      ),
-      runPhase(
-        "unicode-substring",
-        unicodeEnabled,
-        () =>
-          this.sqliteSearchWorker.searchByTextSubstrings(
-            project.project_id,
-            buildExpandedUnicodeTokens(analysis),
-            fanoutLimit,
-            normalizedFilters,
-          ),
-        containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
-        budget.ftsMs,
-      ),
-      runPhase(
-        "symbol",
-        symbolEnabled,
-        () => this.sqliteSearchWorker.searchBySymbols(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
-        "mode-disabled",
-        budget.symbolMs,
-      ),
-      runPhase(
-        "path",
-        pathEnabled,
-        () => this.sqliteSearchWorker.searchByPath(project.project_id, analysis.tokens, fanoutLimit, normalizedFilters),
-        analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
-        budget.symbolMs,
-      ),
-    ]);
+    const emptyCandidatePhase = () => ({ durationMs: 0, results: [] as SearchResult[] });
+    const emptyCandidateGroups = () => ({
+      identifierBoost: emptyCandidatePhase(),
+      lexical: emptyCandidatePhase(),
+      path: emptyCandidatePhase(),
+      semanticFts: emptyCandidatePhase(),
+      symbol: emptyCandidatePhase(),
+      unicodeSubstring: emptyCandidatePhase(),
+    });
+    const remainingMs = Math.max(0, deadline - performance.now());
+    const candidateBudgetMs = Math.min(remainingMs, Math.max(budget.ftsMs, budget.symbolMs));
+    let candidateGroups = emptyCandidateGroups();
+    let candidateRequestTimedOut = false;
+    let candidateRequestError: string | undefined;
+    if (candidateBudgetMs <= 0) {
+      candidateRequestTimedOut = true;
+    } else {
+      try {
+        const candidateOperation = this.sqliteSearchWorker.searchCandidates(
+          project.project_id,
+          {
+            identifierBoost: idFtsQuery ? { ftsQuery: idFtsQuery, limit: topK * 3 } : undefined,
+            lexical: lexicalEnabled ? { ftsQuery: analysis.ftsQuery ?? "", limit: fanoutLimit } : undefined,
+            path: pathEnabled ? { limit: fanoutLimit, tokens: analysis.tokens } : undefined,
+            semanticFts: semanticFtsEnabled
+              ? { limit: fanoutLimit, semanticTerms: analysis.semanticTerms }
+              : undefined,
+            symbol: symbolEnabled ? { limit: fanoutLimit, tokens: analysis.tokens } : undefined,
+            unicodeSubstring: unicodeEnabled
+              ? { limit: fanoutLimit, tokens: buildExpandedUnicodeTokens(analysis) }
+              : undefined,
+          },
+          normalizedFilters,
+          candidateBudgetMs,
+        );
+        candidateGroups = await candidateOperation;
+      } catch (error: unknown) {
+        const capacityError = getSearchWorkerCapacityError(error);
+        if (capacityError) throw capacityError;
+        candidateRequestError = error instanceof Error ? error.message : String(error);
+        notes.push(`SQLite candidate request failed: ${candidateRequestError}`);
+      }
+    }
+
+    const recordCandidatePhase = (
+      name: string,
+      enabled: boolean,
+      phase: { durationMs: number; error?: string; results: SearchResult[] },
+      disabledReason: string,
+    ): SearchResult[] => {
+      const timedOut = enabled && candidateRequestTimedOut;
+      if (timedOut) timedOutPhases.push(name);
+      executedStrategies.push({
+        candidateCount: phase.results.length,
+        durationMs: phase.durationMs,
+        error: enabled ? phase.error ?? candidateRequestError : undefined,
+        name,
+        reason: enabled ? undefined : disabledReason,
+        skipped: !enabled,
+        timedOut: timedOut || undefined,
+      });
+      if (phase.error) notes.push(`${name} failed: ${phase.error}`);
+      return phase.results;
+    };
+    const lexicalResults = recordCandidatePhase(
+      "lexical", lexicalEnabled, candidateGroups.lexical, analysis.ftsQuery ? "mode-disabled" : "no-fts-query",
+    );
+    const semanticFtsResults = recordCandidatePhase(
+      "semantic-fts", semanticFtsEnabled, candidateGroups.semanticFts,
+      analysis.semanticTerms.length > 0 ? "mode-disabled" : "no-semantic-terms",
+    );
+    const unicodeResults = recordCandidatePhase(
+      "unicode-substring", unicodeEnabled, candidateGroups.unicodeSubstring,
+      containsUnicodeToken(analysis.tokens) ? "mode-disabled" : "no-unicode-tokens",
+    );
+    const symbolResults = recordCandidatePhase("symbol", symbolEnabled, candidateGroups.symbol, "mode-disabled");
+    const pathResults = recordCandidatePhase(
+      "path", pathEnabled, candidateGroups.path, analysis.isPathLike ? "mode-disabled" : "query-not-path-like",
+    );
     const parallelDurationMs = Math.round(performance.now() - parallelStartedAt);
-    notes.push(`Parallel FTS phases completed in ${parallelDurationMs}ms`);
+    notes.push(`Combined SQLite candidate request completed in ${parallelDurationMs}ms`);
 
     resultSets.push(lexicalResults, semanticFtsResults, unicodeResults, symbolResults, pathResults);
 
@@ -502,13 +632,9 @@ export class SearchService {
     // v4.5.1: Identifier-priority boost. When the query contains both code identifiers
     // and natural language (CJK or English), the FTS match is diluted by NL tokens.
     // Run a focused identifier-only FTS search and boost matching results' scores.
-    if (analysis.identifiers.length > 0 && analysis.naturalLanguage.length > 0) {
+    if (idFtsQuery) {
       try {
-        const idFtsQuery = buildFtsQuery(analysis.identifiers, false);
-        if (idFtsQuery) {
-          const idResults = await this.sqliteSearchWorker.searchByText(
-            project.project_id, idFtsQuery, topK * 3, normalizedFilters,
-          );
+          const idResults = candidateGroups.identifierBoost.results;
           if (idResults.length > 0) {
             const boostMap = new Map<string, number>();
             for (const r of idResults) {
@@ -523,7 +649,6 @@ export class SearchService {
             rerankedResults.sort((a, b) => b.score - a.score);
             notes.push(`Identifier boost applied: ${idResults.length} id-matches, ${boostMap.size} boosted`);
           }
-        }
       } catch {
         // Identifier boost is best-effort; never fail the main search
       }
@@ -683,9 +808,9 @@ export class SearchService {
     const normalizedIncludeContextLines = normalizeIncludeContextLines(includeContextLines);
     const normalizedFilters = normalizeSearchFilters(filters);
     const fanoutLimit = Math.max(SEARCH_FANOUT_LIMIT, Math.min(STRUCTURED_SEARCH_FANOUT_LIMIT, topK * 10));
+    const projectFiles = await this.sqliteSearchWorker.listProjectFiles(project.project_id);
     const universe = new Set(
-      this.store
-        .listProjectFiles(project.project_id)
+      projectFiles
         .filter((file) => matchesIndexedFileFilters(file, normalizedFilters))
         .map((file) => file.relativePath),
     );
@@ -712,6 +837,8 @@ export class SearchService {
           reason: term.value,
         });
       } catch (error: unknown) {
+        const capacityError = getSearchWorkerCapacityError(error);
+        if (capacityError) throw capacityError;
         const message = error instanceof Error ? error.message : String(error);
         executedStrategies.push({
           candidateCount: 0,
@@ -798,9 +925,13 @@ export class SearchService {
     filters?: SearchFilters,
     resultMode: SearchResultMode = "full",
   ): Promise<SearchResponse> {
-    return parseStructuredQuery(query)
-      ? this.searchStructuredQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode)
-      : this.searchPlainQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode);
+    try {
+      return await (parseStructuredQuery(query)
+        ? this.searchStructuredQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode)
+        : this.searchPlainQuery(projectRootPath, query, mode, topK, includeContextLines, filters, resultMode));
+    } catch (error: unknown) {
+      throw getSearchWorkerCapacityError(error) ?? error;
+    }
   }
 
   public async findDefinitions(

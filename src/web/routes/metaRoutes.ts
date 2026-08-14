@@ -14,6 +14,78 @@ import type { WebAppDependencies } from "../types.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const staticPath = path.join(__dirname, "..", "static");
 
+function getWatchHealth(indexCoordinator: WebAppDependencies["indexCoordinator"]) {
+  const summary = indexCoordinator.getWatchHealthSummary?.();
+  if (summary) {
+    return summary;
+  }
+  const watching = indexCoordinator.isWatching();
+  return {
+    active: watching ? 1 : 0,
+    circuitOpen: false,
+    expected: watching ? 1 : 0,
+    exhausted: 0,
+    periodicOnly: 0,
+    retrying: 0,
+    status: watching ? "healthy" : "disabled",
+  };
+}
+
+function getMaintenanceLeaseHealth(indexCoordinator: WebAppDependencies["indexCoordinator"]) {
+  return indexCoordinator.getAutomaticMaintenanceLeaseStatus?.() ?? {
+    expiresAt: null,
+    lastError: null,
+    lastLostReason: null,
+    lastRenewedAt: null,
+    observedOwnerId: null,
+    ownerId: null,
+    state: "unavailable",
+  };
+}
+
+function getIndexSchedulerHealth(
+  indexCoordinator: WebAppDependencies["indexCoordinator"],
+  indexConcurrency: number,
+) {
+  return indexCoordinator.getIndexSchedulerStatus?.() ?? {
+    active: 0,
+    concurrency: Math.max(1, Math.floor(indexConcurrency || 1)),
+    oldestQueueMs: 0,
+    pending: 0,
+    pendingAutomatic: 0,
+    pendingExplicit: 0,
+  };
+}
+
+function getMaintenanceQueueHealth(indexCoordinator: WebAppDependencies["indexCoordinator"]) {
+  return indexCoordinator.getAutomaticMaintenanceQueueStatus?.() ?? {
+    active: false,
+    coalescedRequests: 0,
+    completed: 0,
+    currentProjectRootPath: null,
+    elapsedMs: 0,
+    pending: 0,
+    reason: null,
+    startedAt: null,
+    total: 0,
+  };
+}
+
+function getSearchWorkerHealth(searchService: WebAppDependencies["searchService"]) {
+  return searchService.getWorkerDiagnostics?.() ?? {
+    activeRequests: 0,
+    liveWorkers: 0,
+    pendingRequests: 0,
+    queueMs: {
+      currentMax: 0,
+      last: 0,
+      max: 0,
+      samples: 0,
+      total: 0,
+    },
+  };
+}
+
 export function registerMetaRoutes(app: Express, dependencies: WebAppDependencies): void {
   // Health check - keep this path free of per-project SQLite stats reads.
   app.get("/health", (_req: Request, res: Response) => {
@@ -29,7 +101,15 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         status: "ok",
         ...buildRuntimeStatus(dependencies.runtime),
         dataHealth: buildProjectListDataHealth(projects),
+        indexScheduler: getIndexSchedulerHealth(
+          dependencies.indexCoordinator,
+          dependencies.settings.indexConcurrency,
+        ),
+        maintenanceLease: getMaintenanceLeaseHealth(dependencies.indexCoordinator),
+        maintenanceQueue: getMaintenanceQueueHealth(dependencies.indexCoordinator),
+        searchWorker: getSearchWorkerHealth(dependencies.searchService),
         watching: dependencies.indexCoordinator.isWatching(),
+        watchHealth: getWatchHealth(dependencies.indexCoordinator),
         watchers: dependencies.indexCoordinator.getWatchStatuses?.() ?? [],
         projects: {
           total: projects.length,
@@ -53,7 +133,15 @@ export function registerMetaRoutes(app: Express, dependencies: WebAppDependencie
         status: "ok",
         ...buildRuntimeStatus(dependencies.runtime),
         dataHealth: buildDataHealthReport([unavailableDataHealthCheck("PROJECT_LIST_UNAVAILABLE", error)]),
+        indexScheduler: getIndexSchedulerHealth(
+          dependencies.indexCoordinator,
+          dependencies.settings.indexConcurrency,
+        ),
+        maintenanceLease: getMaintenanceLeaseHealth(dependencies.indexCoordinator),
+        maintenanceQueue: getMaintenanceQueueHealth(dependencies.indexCoordinator),
+        searchWorker: getSearchWorkerHealth(dependencies.searchService),
         watching: dependencies.indexCoordinator.isWatching(),
+        watchHealth: getWatchHealth(dependencies.indexCoordinator),
         watchers: dependencies.indexCoordinator.getWatchStatuses?.() ?? [],
         projects: {
           total: 0,

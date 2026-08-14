@@ -184,6 +184,50 @@ test("health and config expose automatic index update state", async () => {
     const config = await configResponse.json();
 
     assert.equal(health.watching, true);
+    assert.equal(health.maintenanceLease.state, "idle");
+    assert.match(health.maintenanceLease.ownerId, /^\d+:/);
+    assert.equal(health.maintenanceLease.observedOwnerId, null);
+    assert.equal(health.maintenanceLease.expiresAt, null);
+    assert.deepEqual(health.indexScheduler, {
+      active: 0,
+      concurrency: 1,
+      oldestQueueMs: 0,
+      pending: 0,
+      pendingAutomatic: 0,
+      pendingExplicit: 0,
+    });
+    assert.deepEqual(health.maintenanceQueue, {
+      active: false,
+      coalescedRequests: 0,
+      completed: 0,
+      currentProjectRootPath: null,
+      elapsedMs: 0,
+      pending: 0,
+      reason: null,
+      startedAt: null,
+      total: 0,
+    });
+    assert.deepEqual(health.watchHealth, {
+      active: 1,
+      circuitOpen: false,
+      expected: 1,
+      exhausted: 0,
+      periodicOnly: 0,
+      retrying: 0,
+      status: "healthy",
+    });
+    assert.deepEqual(health.searchWorker, {
+      activeRequests: 0,
+      liveWorkers: 0,
+      pendingRequests: 0,
+      queueMs: {
+        currentMax: 0,
+        last: 0,
+        max: 0,
+        samples: 0,
+        total: 0,
+      },
+    });
     assert.equal(health.watchers.length, 1);
     assert.equal(health.watchers[0].projectRootPath, env.projectRootPath);
     assert.equal(config.autoWatch, false);

@@ -11,6 +11,9 @@ test("loads automatic index update defaults and environment overrides", async ()
   const environmentKeys = [
     "HOME",
     "ACE_MCP_INDEX_CONCURRENCY",
+    "ACE_MCP_SEARCH_WORKER_POOL_SIZE",
+    "ACE_MCP_SEARCH_WORKER_QUEUE_MAX_PENDING",
+    "ACE_MCP_SEARCH_WORKER_QUEUE_DEADLINE_MS",
     "ACE_MCP_WATCH_DEBOUNCE_MS",
     "ACE_MCP_WATCH_MAX_WAIT_MS",
     "ACE_MCP_WATCH_RECONCILE_SECONDS",
@@ -20,6 +23,9 @@ test("loads automatic index update defaults and environment overrides", async ()
   try {
     process.env.HOME = tempHome;
     process.env.ACE_MCP_INDEX_CONCURRENCY = "2";
+    process.env.ACE_MCP_SEARCH_WORKER_POOL_SIZE = "4";
+    process.env.ACE_MCP_SEARCH_WORKER_QUEUE_MAX_PENDING = "24";
+    process.env.ACE_MCP_SEARCH_WORKER_QUEUE_DEADLINE_MS = "750";
     process.env.ACE_MCP_WATCH_DEBOUNCE_MS = "125";
     process.env.ACE_MCP_WATCH_MAX_WAIT_MS = "900";
     process.env.ACE_MCP_WATCH_RECONCILE_SECONDS = "45";
@@ -28,10 +34,16 @@ test("loads automatic index update defaults and environment overrides", async ()
     const generatedToml = await readFile(settings.settingsFilePath, "utf8");
 
     assert.equal(settings.indexConcurrency, 2);
+    assert.equal(settings.searchWorkerPoolSize, 4);
+    assert.equal(settings.searchWorkerQueueMaxPending, 24);
+    assert.equal(settings.searchWorkerQueueDeadlineMs, 750);
     assert.equal(settings.watchDebounceMs, 125);
     assert.equal(settings.watchMaxWaitMs, 900);
     assert.equal(settings.watchReconcileSeconds, 45);
     assert.match(generatedToml, /^indexConcurrency = 1$/m);
+    assert.match(generatedToml, /^searchWorkerPoolSize = 2$/m);
+    assert.match(generatedToml, /^searchWorkerQueueMaxPending = 64$/m);
+    assert.match(generatedToml, /^searchWorkerQueueDeadlineMs = 5_?000$/m);
     assert.match(generatedToml, /^watchDebounceMs = 2_?000$/m);
     assert.match(generatedToml, /^watchMaxWaitMs = 10_?000$/m);
     assert.match(generatedToml, /^watchReconcileSeconds = 600$/m);

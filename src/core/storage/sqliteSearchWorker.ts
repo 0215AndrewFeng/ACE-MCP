@@ -1,8 +1,11 @@
 import { parentPort, workerData } from "node:worker_threads";
 
 import { Logger } from "../common/logger.js";
+import type { SearchResult } from "../common/types.js";
 import { SQLiteStore } from "./sqliteStore.js";
 import type {
+  SQLiteSearchCandidateGroups,
+  SQLiteSearchCandidatePhaseResult,
   SQLiteSearchWorkerData,
   SQLiteSearchWorkerRequest,
   SQLiteSearchWorkerResponse,
@@ -38,11 +41,62 @@ function handleRequest(request: SQLiteSearchWorkerRequest): void {
 
   try {
     switch (request.method) {
+      case "searchCandidates": {
+        const runCandidatePhase = (operation?: () => SearchResult[]): SQLiteSearchCandidatePhaseResult => {
+          if (!operation) {
+            return { durationMs: 0, results: [] };
+          }
+          const startedAt = Date.now();
+          try {
+            const results = operation();
+            return {
+              durationMs: Math.max(0, Date.now() - startedAt),
+              results,
+            };
+          } catch (error: unknown) {
+            return {
+              durationMs: Math.max(0, Date.now() - startedAt),
+              error: error instanceof Error ? error.message : String(error),
+              results: [],
+            };
+          }
+        };
+        const { filters, projectId, strategies } = request.payload;
+        const result: SQLiteSearchCandidateGroups = {
+          lexical: runCandidatePhase(strategies.lexical
+            ? () => store.searchByText(projectId, strategies.lexical!.ftsQuery, strategies.lexical!.limit, filters)
+            : undefined),
+          semanticFts: runCandidatePhase(strategies.semanticFts
+            ? () => store.searchBySemantic(projectId, strategies.semanticFts!.semanticTerms, strategies.semanticFts!.limit, filters)
+            : undefined),
+          unicodeSubstring: runCandidatePhase(strategies.unicodeSubstring
+            ? () => store.searchByTextSubstrings(projectId, strategies.unicodeSubstring!.tokens, strategies.unicodeSubstring!.limit, filters)
+            : undefined),
+          symbol: runCandidatePhase(strategies.symbol
+            ? () => store.searchBySymbols(projectId, strategies.symbol!.tokens, strategies.symbol!.limit, filters)
+            : undefined),
+          path: runCandidatePhase(strategies.path
+            ? () => store.searchByPath(projectId, strategies.path!.tokens, strategies.path!.limit, filters)
+            : undefined),
+          identifierBoost: runCandidatePhase(strategies.identifierBoost
+            ? () => store.searchByText(projectId, strategies.identifierBoost!.ftsQuery, strategies.identifierBoost!.limit, filters)
+            : undefined),
+        };
+        response = { id: request.id, ok: true, result };
+        break;
+      }
       case "getFilePreviewResults":
         response = {
           id: request.id,
           ok: true,
           result: store.getFilePreviewResults(request.payload.projectId, request.payload.relativePaths),
+        };
+        break;
+      case "listProjectFiles":
+        response = {
+          id: request.id,
+          ok: true,
+          result: store.listProjectFiles(request.payload.projectId),
         };
         break;
       case "searchProjectRoutes":
@@ -71,7 +125,6 @@ function handleRequest(request: SQLiteSearchWorkerRequest): void {
         };
         break;
       case "searchBySemantic":
-        store.ensureSemanticIndex(request.payload.projectId);
         response = {
           id: request.id,
           ok: true,

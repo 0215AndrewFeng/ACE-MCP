@@ -144,6 +144,27 @@ test("source index worker writes every index storage operation and closes cleanl
 
     const results = await searchClient.getFilePreviewResults(projectId, ["src/keep.ts", "src/drop.ts"]);
     assert.deepEqual(results.map((result) => result.filePath), ["src/keep.ts"]);
+    const candidates = await searchClient.searchCandidates(projectId, {
+      lexical: { ftsQuery: "answer", limit: 10 },
+      path: { limit: 10, tokens: ["keep"] },
+      semanticFts: { limit: 10, semanticTerms: ["answer"] },
+      symbol: { limit: 10, tokens: ["answer"] },
+      unicodeSubstring: { limit: 10, tokens: ["answer"] },
+    });
+    assert.deepEqual(candidates.lexical.results, fixture.store.searchByText(projectId, "answer", 10));
+    assert.deepEqual(candidates.path.results, fixture.store.searchByPath(projectId, ["keep"], 10));
+    assert.deepEqual(candidates.semanticFts.results, fixture.store.searchBySemantic(projectId, ["answer"], 10));
+    assert.deepEqual(candidates.symbol.results, fixture.store.searchBySymbols(projectId, ["answer"], 10));
+    assert.deepEqual(
+      candidates.unicodeSubstring.results,
+      fixture.store.searchByTextSubstrings(projectId, ["answer"], 10),
+    );
+    const isolatedFailure = await searchClient.searchCandidates(projectId, {
+      lexical: { ftsQuery: "\"", limit: 10 },
+      path: { limit: 10, tokens: ["keep"] },
+    });
+    assert.match(isolatedFailure.lexical.error ?? "", /fts5|syntax|unterminated/i);
+    assert.deepEqual(isolatedFailure.path.results, fixture.store.searchByPath(projectId, ["keep"], 10));
     assert.deepEqual(fixture.store.getChunkVector("keep-chunk")?.embedding, new Float32Array([1, 0, 0]));
   } finally {
     client.releaseLease();
@@ -584,6 +605,7 @@ test("asynchronous search child send failures reject only the matching request",
       });
       return worker;
     },
+    poolSize: 1,
   });
 
   try {
@@ -626,6 +648,477 @@ test("an unexpected search child exit rejects its pending request", async () => 
     await client.close();
     await fixture.cleanup();
   }
+});
+
+test("search worker creation failure clears the request deadline timer", async () => {
+  const fixture = await createFixture();
+  const originalClearTimeout = globalThis.clearTimeout;
+  let clearTimeoutCalls = 0;
+  globalThis.clearTimeout = ((timer: Parameters<typeof clearTimeout>[0]) => {
+    clearTimeoutCalls += 1;
+    originalClearTimeout(timer);
+  }) as typeof clearTimeout;
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      throw new Error("search worker factory failed");
+    },
+    queueDeadlineMs: 1_000,
+  });
+
+  try {
+    await assert.rejects(client.searchByPath("project", ["alpha"], 10), /factory failed/);
+    assert.equal(clearTimeoutCalls, 1, "the rejected request left its deadline timer armed");
+  } finally {
+    globalThis.clearTimeout = originalClearTimeout;
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("search worker diagnostics distinguish the active request from queued requests", async () => {
+  const fixture = await createFixture();
+  let worker: ChildProcess | undefined;
+  const requests: SQLiteSearchWorkerRequest[] = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      worker = createFakeSearchChildProcess((message, callback) => {
+        requests.push(message);
+        callback?.(null);
+      });
+      return worker;
+    },
+    poolSize: 1,
+  });
+
+  try {
+    assert.deepEqual(client.getDiagnostics(), {
+      activeRequests: 0,
+      liveWorkers: 0,
+      pendingRequests: 0,
+      queueMs: {
+        currentMax: 0,
+        last: 0,
+        max: 0,
+        samples: 0,
+        total: 0,
+      },
+    });
+
+    const first = client.searchByPath("project", ["alpha"], 10);
+    const second = client.searchByPath("project", ["beta"], 10);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const queued = client.getDiagnostics();
+    assert.equal(queued.activeRequests, 1);
+    assert.equal(queued.pendingRequests, 1);
+    assert.equal(queued.liveWorkers, 1);
+    assert.ok(queued.queueMs.currentMax > 0, JSON.stringify(queued));
+
+    worker?.emit("message", { id: requests[0].id, ok: true, result: [] });
+    await first;
+    const promoted = client.getDiagnostics();
+    assert.equal(promoted.activeRequests, 1);
+    assert.equal(promoted.pendingRequests, 0);
+    assert.equal(promoted.queueMs.samples, 1);
+    assert.ok(promoted.queueMs.last > 0, JSON.stringify(promoted));
+    assert.equal(promoted.queueMs.max, promoted.queueMs.last);
+    assert.equal(promoted.queueMs.total, promoted.queueMs.last);
+
+    worker?.emit("message", { id: requests[1].id, ok: true, result: [] });
+    await second;
+    assert.equal(client.getDiagnostics().activeRequests, 0);
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+for (const poolSize of [1, 2, 4]) {
+  test(`search worker pool bounds active workers at ${poolSize}`, async () => {
+    const fixture = await createFixture();
+    const workers: ChildProcess[] = [];
+    const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+    const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+      createChildProcess: () => {
+        let worker: ChildProcess;
+        worker = createFakeSearchChildProcess((request, callback) => {
+          requests.push({ request, worker });
+          callback?.(null);
+        });
+        workers.push(worker);
+        return worker;
+      },
+      poolSize,
+      queueMaxPending: 16,
+      queueDeadlineMs: 1_000,
+    });
+
+    try {
+      const operations = Array.from(
+        { length: poolSize + 2 },
+        (_, index) => client.searchByPath("project", [`term-${index}`], 10),
+      );
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      assert.equal(workers.length, poolSize);
+      assert.equal(requests.length, poolSize);
+      assert.equal(client.getDiagnostics().activeRequests, poolSize);
+      assert.equal(client.getDiagnostics().pendingRequests, 2);
+
+      for (let index = 0; index < operations.length; index++) {
+        const dispatched = requests[index];
+        assert.ok(dispatched, `request ${index} was not dispatched`);
+        dispatched.worker.emit("message", { id: dispatched.request.id, ok: true, result: [] });
+        await operations[index];
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      assert.equal(client.getDiagnostics().activeRequests, 0);
+      assert.equal(client.getDiagnostics().pendingRequests, 0);
+    } finally {
+      await client.close();
+      await fixture.cleanup();
+    }
+  });
+}
+
+test("search worker pool rejects requests beyond its pending cap", async () => {
+  const fixture = await createFixture();
+  let worker: ChildProcess | undefined;
+  const requests: SQLiteSearchWorkerRequest[] = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push(request);
+        callback?.(null);
+      });
+      return worker;
+    },
+    poolSize: 1,
+    queueMaxPending: 1,
+    queueDeadlineMs: 1_000,
+  });
+
+  try {
+    const active = client.searchByPath("project", ["active"], 10);
+    const queued = client.searchByPath("project", ["queued"], 10);
+    await assert.rejects(
+      client.searchByPath("project", ["overload"], 10),
+      (error: Error) => error.name === "SQLiteSearchWorkerOverloadError" && /queue is full/.test(error.message),
+    );
+    assert.equal(requests.length, 1);
+
+    worker?.emit("message", { id: requests[0].id, ok: true, result: [] });
+    await active;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    worker?.emit("message", { id: requests[1].id, ok: true, result: [] });
+    await queued;
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("expired search requests leave the queue without creating stale debt", async () => {
+  const fixture = await createFixture();
+  let worker: ChildProcess | undefined;
+  const requests: SQLiteSearchWorkerRequest[] = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push(request);
+        callback?.(null);
+      });
+      return worker;
+    },
+    poolSize: 1,
+    queueMaxPending: 4,
+    queueDeadlineMs: 1_000,
+  });
+
+  try {
+    const active = client.searchCandidates(
+      "project",
+      { path: { limit: 10, tokens: ["active"] } },
+      undefined,
+      1_000,
+    );
+    await assert.rejects(
+      client.searchCandidates(
+        "project",
+        { path: { limit: 10, tokens: ["expires"] } },
+        undefined,
+        10,
+      ),
+      (error: Error) => error.name === "SQLiteSearchWorkerQueueTimeoutError" && /request deadline/.test(error.message),
+    );
+    assert.equal(client.getDiagnostics().pendingRequests, 0);
+
+    worker?.emit("message", {
+      id: requests[0].id,
+      ok: true,
+      result: {
+        identifierBoost: { durationMs: 0, results: [] },
+        lexical: { durationMs: 0, results: [] },
+        path: { durationMs: 0, results: [] },
+        semanticFts: { durationMs: 0, results: [] },
+        symbol: { durationMs: 0, results: [] },
+        unicodeSubstring: { durationMs: 0, results: [] },
+      },
+    });
+    await active;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(requests.length, 1, "expired work was sent after its caller had timed out");
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("an active search deadline retires its worker before a replacement continues the queue", async () => {
+  const fixture = await createFixture();
+  const workers: ChildProcess[] = [];
+  const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+  let firstKillCount = 0;
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      let worker: ChildProcess;
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push({ request, worker });
+        callback?.(null);
+      });
+      if (workers.length === 0) {
+        worker.kill = () => {
+          firstKillCount += 1;
+          return true;
+        };
+      }
+      workers.push(worker);
+      return worker;
+    },
+    poolSize: 1,
+    queueMaxPending: 4,
+    queueDeadlineMs: 1_000,
+  });
+
+  try {
+    const expired = client.searchCandidates("project", { path: { limit: 10, tokens: ["slow"] } }, undefined, 10);
+    const replacement = client.searchCandidates("project", { path: { limit: 10, tokens: ["next"] } }, undefined, 1_000);
+
+    await assert.rejects(
+      expired,
+      (error: Error) => error.name === "SQLiteSearchWorkerQueueTimeoutError" && /deadline/.test(error.message),
+    );
+    assert.equal(firstKillCount, 1);
+    assert.equal(workers.length, 1, "replacement started before the timed-out worker terminated");
+
+    const firstRequest = requests[0];
+    firstRequest.worker.emit("message", { id: firstRequest.request.id, ok: true, result: {} });
+    firstRequest.worker.emit("error", new Error("late error from retired worker"));
+    emitFakeChildExit(firstRequest.worker);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(workers.length, 2);
+    assert.equal(requests.length, 2);
+    const replacementRequest = requests[1];
+    firstRequest.worker.emit("exit", 17, null);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(client.getDiagnostics().activeRequests, 1);
+    replacementRequest.worker.emit("message", {
+      id: replacementRequest.request.id,
+      ok: true,
+      result: {
+        identifierBoost: { durationMs: 0, results: [] },
+        lexical: { durationMs: 0, results: [] },
+        path: { durationMs: 0, results: [] },
+        semanticFts: { durationMs: 0, results: [] },
+        symbol: { durationMs: 0, results: [] },
+        unicodeSubstring: { durationMs: 0, results: [] },
+      },
+    });
+    await replacement;
+  } finally {
+    for (const worker of workers) emitFakeChildExit(worker);
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("a failed search worker is stopped before pool capacity is reused", async () => {
+  const fixture = await createFixture();
+  const workers: ChildProcess[] = [];
+  const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+  let firstKillCount = 0;
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      let worker: ChildProcess;
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push({ request, worker });
+        callback?.(null);
+      });
+      if (workers.length === 0) {
+        worker.kill = () => {
+          firstKillCount += 1;
+          return true;
+        };
+      }
+      workers.push(worker);
+      return worker;
+    },
+    poolSize: 1,
+    queueMaxPending: 4,
+  });
+
+  try {
+    const failed = client.searchByPath("project", ["failed"], 10);
+    const queued = client.searchByPath("project", ["queued"], 10);
+    workers[0].emit("error", new Error("worker failed without exiting"));
+    await assert.rejects(failed, /worker failed without exiting/);
+
+    assert.equal(firstKillCount, 1);
+    assert.equal(workers.length, 1);
+    assert.equal(client.getDiagnostics().liveWorkers, 1);
+    assert.equal(client.getDiagnostics().pendingRequests, 1);
+
+    emitFakeChildExit(workers[0]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(workers.length, 2);
+    assert.equal(client.getDiagnostics().liveWorkers, 1);
+    const queuedRequest = requests[1];
+    queuedRequest.worker.emit("message", { id: queuedRequest.request.id, ok: true, result: [] });
+    await queued;
+  } finally {
+    for (const worker of workers) emitFakeChildExit(worker);
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("a search child that does not exit after termination no longer occupies pool capacity", async () => {
+  const fixture = await createFixture();
+  const workers: ChildProcess[] = [];
+  const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      let worker: ChildProcess;
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push({ request, worker });
+        callback?.(null);
+      });
+      if (workers.length === 0) {
+        worker.kill = () => true;
+      }
+      workers.push(worker);
+      return worker;
+    },
+    poolSize: 1,
+    queueDeadlineMs: 3_000,
+    queueMaxPending: 4,
+  });
+
+  const failed = client.searchByPath("project", ["failed"], 10);
+  const queued = client.searchByPath("project", ["queued"], 10);
+  void queued.catch(() => {});
+  try {
+    workers[0].emit("error", new Error("worker failed without exiting"));
+    await assert.rejects(failed, /worker failed without exiting/);
+
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    assert.equal(workers.length, 2, "the terminated child permanently occupied the only pool slot");
+    assert.equal(client.getDiagnostics().liveWorkers, 1);
+
+    const queuedRequest = requests[1];
+    queuedRequest.worker.emit("message", { id: queuedRequest.request.id, ok: true, result: [] });
+    await queued;
+  } finally {
+    for (const worker of workers) emitFakeChildExit(worker);
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("identical search payloads with different deadlines do not share one in-flight promise", async () => {
+  const fixture = await createFixture();
+  const workers: ChildProcess[] = [];
+  const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      let worker: ChildProcess;
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push({ request, worker });
+        callback?.(null);
+      });
+      workers.push(worker);
+      return worker;
+    },
+    poolSize: 2,
+  });
+
+  try {
+    const strategies = { path: { limit: 10, tokens: ["same"] } };
+    const short = client.searchCandidates("project", strategies, undefined, 10);
+    const long = client.searchCandidates("project", strategies, undefined, 1_000);
+    assert.equal(workers.length, 2);
+    assert.equal(requests.length, 2);
+
+    requests[1].worker.emit("message", {
+      id: requests[1].request.id,
+      ok: true,
+      result: {
+        identifierBoost: { durationMs: 0, results: [] },
+        lexical: { durationMs: 0, results: [] },
+        path: { durationMs: 0, results: [] },
+        semanticFts: { durationMs: 0, results: [] },
+        symbol: { durationMs: 0, results: [] },
+        unicodeSubstring: { durationMs: 0, results: [] },
+      },
+    });
+    await long;
+    await assert.rejects(short, /deadline/);
+  } finally {
+    for (const worker of workers) emitFakeChildExit(worker);
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("identical cold search worker requests reuse one in-flight operation", async () => {
+  const fixture = await createFixture();
+  let worker: ChildProcess | undefined;
+  const requests: SQLiteSearchWorkerRequest[] = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push(request);
+        callback?.(null);
+      });
+      return worker;
+    },
+    poolSize: 2,
+  });
+
+  try {
+    const first = client.searchByPath("project", ["same"], 10);
+    const second = client.searchByPath("project", ["same"], 10);
+    assert.equal(requests.length, 1);
+
+    worker?.emit("message", { id: requests[0].id, ok: true, result: [] });
+    assert.deepEqual(await Promise.all([first, second]), [[], []]);
+    assert.equal(requests.length, 1);
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("search reader dispatch does not repair the semantic index", async () => {
+  const workerSourcePath = new URL(`./sqliteSearchWorker${fixtureExtension}`, import.meta.url);
+  const workerSource = await readFile(workerSourcePath, "utf8");
+  const semanticDispatch = workerSource.match(
+    /case "searchBySemantic":[\s\S]*?(?=\n\s*case |\n\s*}\n\s*} catch)/,
+  )?.[0] ?? "";
+
+  assert.ok(semanticDispatch, "semantic search dispatch was not found");
+  assert.doesNotMatch(semanticDispatch, /ensureSemanticIndex/);
 });
 
 test("closing a search worker rejects its pending request", async () => {
@@ -690,6 +1183,7 @@ test("all search methods reject after close without creating a worker", async ()
     await client.close();
     const operations = [
       () => client.getFilePreviewResults("project", ["src/index.ts"]),
+      () => client.listProjectFiles("project"),
       () => client.searchProjectRoutes("alpha", ["Alpha"], 10),
       () => client.searchByPath("project", ["alpha"], 10),
       () => client.searchBySemantic("project", ["alpha"], 10),
@@ -788,6 +1282,45 @@ test("close terminates both current and errored search children", async () => {
     assert.ok(secondWorker);
     assert.equal(firstKillCount, 1);
     assert.equal(secondKillCount, 1);
+  } finally {
+    await client.close();
+    await fixture.cleanup();
+  }
+});
+
+test("close terminates every live search pool worker", async () => {
+  const fixture = await createFixture();
+  const workers: ChildProcess[] = [];
+  const requests: Array<{ request: SQLiteSearchWorkerRequest; worker: ChildProcess }> = [];
+  const kills: number[] = [];
+  const client = new SQLiteSearchWorkerClient(fixture.data, fixture.logger, {
+    createChildProcess: () => {
+      let worker: ChildProcess;
+      worker = createFakeSearchChildProcess((request, callback) => {
+        requests.push({ request, worker });
+        callback?.(null);
+      });
+      const workerIndex = workers.length;
+      const originalKill = worker.kill.bind(worker);
+      worker.kill = () => {
+        kills[workerIndex] = (kills[workerIndex] ?? 0) + 1;
+        return originalKill();
+      };
+      workers.push(worker);
+      return worker;
+    },
+    poolSize: 4,
+  });
+
+  try {
+    const operations = Array.from({ length: 4 }, (_, index) =>
+      client.searchByPath("project", [`term-${index}`], 10),
+    );
+    assert.equal(workers.length, 4);
+    const rejections = operations.map((operation) => assert.rejects(operation, /closed/));
+    await client.close();
+    await Promise.all(rejections);
+    assert.deepEqual(kills, [1, 1, 1, 1]);
   } finally {
     await client.close();
     await fixture.cleanup();

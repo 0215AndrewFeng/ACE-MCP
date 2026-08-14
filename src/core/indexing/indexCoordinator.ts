@@ -93,6 +93,15 @@ export interface InFlightIndexInfo {
   total: number;
 }
 
+export interface IndexSchedulerStatus {
+  active: number;
+  concurrency: number;
+  oldestQueueMs: number;
+  pending: number;
+  pendingAutomatic: number;
+  pendingExplicit: number;
+}
+
 interface IndexProgressState {
   current: number;
   dedupedRequests: number;
@@ -106,7 +115,17 @@ interface IndexProgressState {
   total: number;
 }
 
+interface PendingIndexSlot {
+  origin: IndexOrigin;
+  queuedAtMs: number;
+  resolve: () => void;
+}
+
 export interface ProjectWatchStatus {
+  circuitFailureCount: number;
+  circuitOpen: boolean;
+  circuitOpenUntil: string | null;
+  coverage: WatchCoverage;
   dirty: boolean;
   failureCount: number;
   generation: number;
@@ -114,12 +133,60 @@ export interface ProjectWatchStatus {
   lastEventAt: string | null;
   lastSuccessAt: string | null;
   projectRootPath: string;
+  retryAt: string | null;
+  retryAttempts: number;
+  retryDelayMs: number | null;
+  retrying: boolean;
+  stableAt: string | null;
+  stabilizing: boolean;
   watching: boolean;
+}
+
+export interface WatchHealthSummary {
+  active: number;
+  circuitOpen: boolean;
+  expected: number;
+  exhausted: number;
+  periodicOnly: number;
+  retrying: number;
+  status: "degraded" | "disabled" | "healthy";
+}
+
+export type AutomaticMaintenanceLeaseState =
+  | "acquiring"
+  | "expired"
+  | "foreign-owner"
+  | "held"
+  | "idle"
+  | "lost"
+  | "renewal-failed";
+
+export interface AutomaticMaintenanceLeaseStatus {
+  expiresAt: string | null;
+  lastError: string | null;
+  lastLostReason: "owner-changed" | "renewal-failed" | "same-owner-expired" | null;
+  lastRenewedAt: string | null;
+  observedOwnerId: string | null;
+  ownerId: string;
+  state: AutomaticMaintenanceLeaseState;
+}
+
+export interface AutomaticMaintenanceQueueStatus {
+  active: boolean;
+  coalescedRequests: number;
+  completed: number;
+  currentProjectRootPath: string | null;
+  elapsedMs: number;
+  pending: number;
+  reason: string | null;
+  startedAt: string | null;
+  total: number;
 }
 
 interface ProjectWatchState {
   active: boolean;
   abortController: AbortController;
+  coverage: WatchCoverage;
   debounceTimer?: NodeJS.Timeout;
   dirty: boolean;
   failureCount: number;
@@ -132,6 +199,13 @@ interface ProjectWatchState {
   rerunRequested: boolean;
   retryTimer?: NodeJS.Timeout;
   watcher?: WatchHandle;
+  watchRecoveryInProgress: boolean;
+  watchRetryAtMs?: number;
+  watchRetryAttempts: number;
+  watchRetryDelayMs?: number;
+  watchRetryTimer?: NodeJS.Timeout;
+  watchStabilityTimer?: NodeJS.Timeout;
+  watchStableAtMs?: number;
 }
 
 interface AutomaticProjectOwnershipSnapshot {
@@ -139,6 +213,17 @@ interface AutomaticProjectOwnershipSnapshot {
   generation: number;
   projectRootPaths: string[];
   sequence: number;
+}
+
+interface AutomaticMaintenanceQueueState {
+  active: boolean;
+  coalescedRequests: number;
+  completed: number;
+  currentProjectRootPath?: string;
+  finishedAtMs?: number;
+  reason: string;
+  startedAtMs: number;
+  total: number;
 }
 
 interface AutomaticProjectRefresh {
@@ -164,10 +249,38 @@ interface WatchHandle {
   close(): void;
   on?: (event: "error", listener: (error: Error) => void) => unknown;
 }
+export type WatchCoverage = "periodic-only" | "root-only";
+export interface WatchFactoryOptions {
+  coverage: WatchCoverage;
+  recursive: false;
+}
 export type WatchFactory = (
   projectRootPath: string,
   listener: WatchListener,
+  options: WatchFactoryOptions,
 ) => WatchHandle;
+export interface WatchRecoveryOptions {
+  baseDelayMs?: number;
+  circuitFailureThreshold?: number;
+  circuitResetMs?: number;
+  jitterRatio?: number;
+  maxActiveWatchers?: number;
+  maxAttempts?: number;
+  maxDelayMs?: number;
+  random?: () => number;
+  stableResetMs?: number;
+}
+interface WatchRecoveryPolicy {
+  baseDelayMs: number;
+  circuitFailureThreshold: number;
+  circuitResetMs: number;
+  jitterRatio: number;
+  maxActiveWatchers: number;
+  maxAttempts: number;
+  maxDelayMs: number;
+  random: () => number;
+  stableResetMs: number;
+}
 export type ProjectDirectoryInspector = (
   projectRootPath: string,
 ) => Promise<{ isDirectory(): boolean } | null>;
@@ -255,8 +368,12 @@ export function createSynchronousIndexStorageWorker(
   };
 }
 
-const defaultWatchFactory: WatchFactory = (projectRootPath, listener) => {
-  const watcher = watch(projectRootPath, { recursive: true }, listener);
+const ROOT_ONLY_WATCH_OPTIONS: WatchFactoryOptions = {
+  coverage: "root-only",
+  recursive: false,
+};
+const defaultWatchFactory: WatchFactory = (projectRootPath, listener, options) => {
+  const watcher = watch(projectRootPath, { recursive: options.recursive }, listener);
   return {
     close: () => watcher.close(),
     on: (event, errorListener) => watcher.on(event, errorListener),
@@ -303,10 +420,20 @@ type IndexedFileResult =
  * v4.3.1: Batch size for database writes
  * Balances transaction overhead vs memory usage
  */
-const DB_WRITE_BATCH_SIZE = 50;
+const DB_WRITE_BATCH_SIZE = 1;
 const INDEX_CLOSE_DRAIN_TIMEOUT_MS = 30_000;
 const INDEX_MAINTENANCE_LEASE_TTL_MS = 60_000;
 const INDEX_MAINTENANCE_LEASE_HEARTBEAT_MS = 10_000;
+const INDEX_MAINTENANCE_LEASE_REFRESH_WINDOW_MS =
+  INDEX_MAINTENANCE_LEASE_TTL_MS - INDEX_MAINTENANCE_LEASE_HEARTBEAT_MS;
+const WATCH_RECOVERY_BASE_DELAY_MS = 1_000;
+const WATCH_RECOVERY_MAX_DELAY_MS = 60_000;
+const WATCH_RECOVERY_MAX_ATTEMPTS = 8;
+const WATCH_RECOVERY_JITTER_RATIO = 0.2;
+const WATCH_MAX_ACTIVE_WATCHERS = 8;
+const WATCH_CIRCUIT_FAILURE_THRESHOLD = 8;
+const WATCH_CIRCUIT_RESET_MS = 60_000;
+const WATCH_RECOVERY_STABLE_RESET_MS = 30_000;
 const CJK_DECODE_PATTERN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 export function scoreDecodedContent(content: string): number {
@@ -356,16 +483,22 @@ export class IndexCoordinator {
   private automaticUpdatesGeneration = 0;
   private automaticWatchAllowed = true;
   private automaticUpdatesStarted = false;
+  private automaticMaintenanceQueueState?: AutomaticMaintenanceQueueState;
+  private automaticMaintenanceLeaseLastError?: string;
+  private automaticMaintenanceLeaseLastLostReason?: AutomaticMaintenanceLeaseStatus["lastLostReason"];
+  private automaticMaintenanceLeaseLastRenewedAtMs = 0;
+  private automaticMaintenanceLeaseObservedOwnerId?: string;
   private automaticMaintenanceLeaseExpiresAtMs = 0;
   private automaticMaintenanceLeaseHeartbeat?: Promise<void>;
   private automaticMaintenanceLeaseHeartbeatTimer?: NodeJS.Timeout;
   private readonly automaticMaintenanceLeaseOwnerId = `${process.pid}:${randomUUID()}`;
   private automaticMaintenanceLeaseReady?: Promise<boolean>;
+  private automaticMaintenanceLeaseState: AutomaticMaintenanceLeaseState = "idle";
   private automaticMaintenanceLeaseUsers = 0;
   private closing = false;
   private closePromise?: Promise<void>;
   private closeDrainTimeoutMs = INDEX_CLOSE_DRAIN_TIMEOUT_MS;
-  private readonly pendingIndexSlots: Array<() => void> = [];
+  private readonly pendingIndexSlots: PendingIndexSlot[] = [];
   private readonly pendingAutomaticOwnershipRefreshRoots = new Set<string>();
   private readonly pausedProjectRoots = new Set<string>();
   private reconcileRequested = false;
@@ -374,6 +507,9 @@ export class IndexCoordinator {
   private readonly suppressedProjectRoots = new Set<string>();
   private readonly watchIntentRevisions = new Map<string, number>();
   private readonly watchers = new Map<string, ProjectWatchState>();
+  private watchCircuitFailureCount = 0;
+  private watchCircuitOpenUntilMs = 0;
+  private readonly watchRecoveryPolicy: WatchRecoveryPolicy;
 
   /** Per-project last successful index timestamp (epoch ms) */
   private lastIndexedAtMs = new Map<string, number>();
@@ -393,7 +529,9 @@ export class IndexCoordinator {
    */
   private inFlightIndex = new Map<string, Promise<IndexProjectResult>>();
   private inFlightProgress = new Map<Promise<IndexProjectResult>, IndexProgressState>();
+  private readonly indexStorageWorkerWasInjected: boolean;
   private indexStorageWorker?: IndexStorageWorker;
+  private maintenanceLeaseWorker?: IndexStorageWorker;
 
   /**
    * v4.5.2: Return info about currently in-flight index operations
@@ -427,6 +565,22 @@ export class IndexCoordinator {
       });
     }
     return result;
+  }
+
+  public getIndexSchedulerStatus(): IndexSchedulerStatus {
+    const nowMs = Date.now();
+    const oldestQueuedAtMs = this.pendingIndexSlots.reduce(
+      (oldest, pending) => Math.min(oldest, pending.queuedAtMs),
+      Number.POSITIVE_INFINITY,
+    );
+    return {
+      active: this.activeIndexRuns,
+      concurrency: Math.max(1, Math.floor(this.settings.indexConcurrency ?? 1)),
+      oldestQueueMs: Number.isFinite(oldestQueuedAtMs) ? Math.max(0, nowMs - oldestQueuedAtMs) : 0,
+      pending: this.pendingIndexSlots.length,
+      pendingAutomatic: this.pendingIndexSlots.filter((pending) => pending.origin === "automatic").length,
+      pendingExplicit: this.pendingIndexSlots.filter((pending) => pending.origin === "explicit").length,
+    };
   }
 
   private reportIndexProgress(
@@ -463,8 +617,33 @@ export class IndexCoordinator {
     private readonly projectDirectoryInspector: ProjectDirectoryInspector = defaultProjectDirectoryInspector,
     private readonly gitStatusReader: GitStatusReader = getGitChangedFiles,
     indexStorageWorker?: IndexStorageWorker,
+    watchRecoveryOptions: WatchRecoveryOptions = {},
+    maintenanceLeaseWorker?: IndexStorageWorker,
   ) {
     this.indexStorageWorker = indexStorageWorker;
+    this.indexStorageWorkerWasInjected = indexStorageWorker !== undefined;
+    this.maintenanceLeaseWorker = maintenanceLeaseWorker;
+    const baseDelayMs = Math.max(1, Math.round(watchRecoveryOptions.baseDelayMs ?? WATCH_RECOVERY_BASE_DELAY_MS));
+    this.watchRecoveryPolicy = {
+      baseDelayMs,
+      circuitFailureThreshold: Math.max(
+        1,
+        Math.round(watchRecoveryOptions.circuitFailureThreshold ?? WATCH_CIRCUIT_FAILURE_THRESHOLD),
+      ),
+      circuitResetMs: Math.max(1, Math.round(watchRecoveryOptions.circuitResetMs ?? WATCH_CIRCUIT_RESET_MS)),
+      jitterRatio: Math.min(1, Math.max(0, watchRecoveryOptions.jitterRatio ?? WATCH_RECOVERY_JITTER_RATIO)),
+      maxActiveWatchers: Math.max(
+        1,
+        Math.round(watchRecoveryOptions.maxActiveWatchers ?? WATCH_MAX_ACTIVE_WATCHERS),
+      ),
+      maxAttempts: Math.max(1, Math.round(watchRecoveryOptions.maxAttempts ?? WATCH_RECOVERY_MAX_ATTEMPTS)),
+      maxDelayMs: Math.max(baseDelayMs, Math.round(watchRecoveryOptions.maxDelayMs ?? WATCH_RECOVERY_MAX_DELAY_MS)),
+      random: watchRecoveryOptions.random ?? Math.random,
+      stableResetMs: Math.max(
+        1,
+        Math.round(watchRecoveryOptions.stableResetMs ?? WATCH_RECOVERY_STABLE_RESET_MS),
+      ),
+    };
   }
 
   private getIndexStorageWorker(): IndexStorageWorker {
@@ -479,6 +658,25 @@ export class IndexCoordinator {
     return this.indexStorageWorker;
   }
 
+  private getMaintenanceLeaseWorker(): IndexStorageWorker {
+    if (this.maintenanceLeaseWorker) {
+      return this.maintenanceLeaseWorker;
+    }
+    if (this.indexStorageWorkerWasInjected) {
+      this.maintenanceLeaseWorker = this.getIndexStorageWorker();
+      return this.maintenanceLeaseWorker;
+    }
+    this.maintenanceLeaseWorker = new SQLiteIndexWorkerClient(
+      {
+        databasePath: this.settings.databasePath,
+        logFilePath: this.settings.logFilePath,
+        logLevel: this.settings.logLevel,
+      },
+      this.logger,
+    );
+    return this.maintenanceLeaseWorker;
+  }
+
   public isWatching(projectRootPath?: string): boolean {
     if (projectRootPath === undefined) {
       return [...this.watchers.values()].some((state) => state.active);
@@ -487,8 +685,14 @@ export class IndexCoordinator {
   }
 
   public getWatchStatuses(): ProjectWatchStatus[] {
+    const nowMs = Date.now();
+    const circuitOpen = this.watchCircuitOpenUntilMs > nowMs;
     return [...this.watchers.entries()]
       .map(([projectRootPath, state]) => ({
+        circuitFailureCount: this.watchCircuitFailureCount,
+        circuitOpen,
+        circuitOpenUntil: circuitOpen ? new Date(this.watchCircuitOpenUntilMs).toISOString() : null,
+        coverage: state.coverage,
         dirty: state.dirty,
         failureCount: state.failureCount,
         generation: state.generation,
@@ -496,9 +700,87 @@ export class IndexCoordinator {
         lastEventAt: state.lastEventAt ?? null,
         lastSuccessAt: state.lastSuccessAt ?? null,
         projectRootPath,
+        retryAt: state.watchRetryAtMs === undefined ? null : new Date(state.watchRetryAtMs).toISOString(),
+        retryAttempts: state.watchRetryAttempts,
+        retryDelayMs: state.watchRetryDelayMs ?? null,
+        retrying: state.watchRetryTimer !== undefined || state.watchRecoveryInProgress,
+        stableAt: state.watchStableAtMs === undefined ? null : new Date(state.watchStableAtMs).toISOString(),
+        stabilizing: state.watchStabilityTimer !== undefined,
         watching: state.active,
       }))
       .sort((left, right) => left.projectRootPath.localeCompare(right.projectRootPath));
+  }
+
+  public getWatchHealthSummary(): WatchHealthSummary {
+    const statuses = this.getWatchStatuses();
+    const active = statuses.filter((status) => status.watching).length;
+    const periodicOnly = statuses.filter((status) => status.coverage === "periodic-only").length;
+    const retrying = statuses.filter((status) => status.retrying).length;
+    const exhausted = statuses.filter(
+      (status) => status.coverage === "root-only" && !status.watching && !status.retrying,
+    ).length;
+    const circuitOpen = statuses.some((status) => status.circuitOpen);
+    return {
+      active,
+      circuitOpen,
+      expected: statuses.length,
+      exhausted,
+      periodicOnly,
+      retrying,
+      status: statuses.length === 0
+        ? "disabled"
+        : circuitOpen || retrying > 0 || exhausted > 0 || active + periodicOnly < statuses.length
+          ? "degraded"
+          : "healthy",
+    };
+  }
+
+  public getAutomaticMaintenanceLeaseStatus(): AutomaticMaintenanceLeaseStatus {
+    const expired = this.automaticMaintenanceLeaseState === "held"
+      && this.automaticMaintenanceLeaseExpiresAtMs <= Date.now();
+    return {
+      expiresAt: this.automaticMaintenanceLeaseExpiresAtMs > 0
+        ? new Date(this.automaticMaintenanceLeaseExpiresAtMs).toISOString()
+        : null,
+      lastError: this.automaticMaintenanceLeaseLastError ?? null,
+      lastLostReason: this.automaticMaintenanceLeaseLastLostReason ?? null,
+      lastRenewedAt: this.automaticMaintenanceLeaseLastRenewedAtMs > 0
+        ? new Date(this.automaticMaintenanceLeaseLastRenewedAtMs).toISOString()
+        : null,
+      observedOwnerId: this.automaticMaintenanceLeaseObservedOwnerId ?? null,
+      ownerId: this.automaticMaintenanceLeaseOwnerId,
+      state: expired ? "expired" : this.automaticMaintenanceLeaseState,
+    };
+  }
+
+  public getAutomaticMaintenanceQueueStatus(): AutomaticMaintenanceQueueStatus {
+    const state = this.automaticMaintenanceQueueState;
+    if (!state) {
+      return {
+        active: false,
+        coalescedRequests: 0,
+        completed: 0,
+        currentProjectRootPath: null,
+        elapsedMs: 0,
+        pending: 0,
+        reason: null,
+        startedAt: null,
+        total: 0,
+      };
+    }
+    const endMs = state.active ? Date.now() : state.finishedAtMs ?? Date.now();
+    const current = state.currentProjectRootPath === undefined ? 0 : 1;
+    return {
+      active: state.active,
+      coalescedRequests: state.coalescedRequests,
+      completed: state.completed,
+      currentProjectRootPath: state.currentProjectRootPath ?? null,
+      elapsedMs: Math.max(0, endMs - state.startedAtMs),
+      pending: Math.max(0, state.total - state.completed - current),
+      reason: state.reason,
+      startedAt: new Date(state.startedAtMs).toISOString(),
+      total: state.total,
+    };
   }
 
   private isAutomaticUpdateGenerationCurrent(generation: number): boolean {
@@ -849,7 +1131,10 @@ export class IndexCoordinator {
           timeoutMs: this.closeDrainTimeoutMs,
         });
       }
-      await this.indexStorageWorker?.close();
+      const workers = new Set([this.indexStorageWorker, this.maintenanceLeaseWorker]);
+      await Promise.all([...workers].filter((worker): worker is IndexStorageWorker => worker !== undefined).map(
+        (worker) => worker.close(),
+      ));
     })();
     return this.closePromise;
   }
@@ -910,44 +1195,140 @@ export class IndexCoordinator {
   private startAutomaticMaintenanceLeaseHeartbeat(worker: IndexStorageWorker): void {
     clearInterval(this.automaticMaintenanceLeaseHeartbeatTimer);
     this.automaticMaintenanceLeaseHeartbeatTimer = setInterval(() => {
-      if (this.automaticMaintenanceLeaseHeartbeat) {
-        return;
-      }
-      const nowMs = Date.now();
-      const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
-      const heartbeat = worker
-        .renewIndexMaintenanceLease(this.automaticMaintenanceLeaseOwnerId, expiresAtMs, nowMs)
-        .then((renewed) => {
-          this.automaticMaintenanceLeaseExpiresAtMs = renewed ? expiresAtMs : 0;
-          if (!renewed) {
-            this.logger.warn("automatic index maintenance lease lost", {
-              ownerId: this.automaticMaintenanceLeaseOwnerId,
-            });
-          }
-        })
-        .catch((error: unknown) => {
-          if (Date.now() >= this.automaticMaintenanceLeaseExpiresAtMs) {
-            this.automaticMaintenanceLeaseExpiresAtMs = 0;
-          }
-          this.logger.warn("automatic index maintenance lease renewal failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        })
-        .finally(() => {
-          if (this.automaticMaintenanceLeaseHeartbeat === heartbeat) {
-            this.automaticMaintenanceLeaseHeartbeat = undefined;
-          }
-        });
-      this.automaticMaintenanceLeaseHeartbeat = heartbeat;
+      void this.getOrStartAutomaticMaintenanceLeaseHeartbeat(worker);
     }, INDEX_MAINTENANCE_LEASE_HEARTBEAT_MS);
     this.automaticMaintenanceLeaseHeartbeatTimer.unref();
+  }
+
+  private getOrStartAutomaticMaintenanceLeaseHeartbeat(worker: IndexStorageWorker): Promise<void> {
+    if (this.automaticMaintenanceLeaseHeartbeat) {
+      return this.automaticMaintenanceLeaseHeartbeat;
+    }
+    const heartbeat = this.renewAutomaticMaintenanceLease(worker).finally(() => {
+      if (this.automaticMaintenanceLeaseHeartbeat === heartbeat) {
+        this.automaticMaintenanceLeaseHeartbeat = undefined;
+      }
+    });
+    this.automaticMaintenanceLeaseHeartbeat = heartbeat;
+    return heartbeat;
+  }
+
+  private async renewAutomaticMaintenanceLease(
+    worker: IndexStorageWorker = this.getMaintenanceLeaseWorker(),
+  ): Promise<void> {
+    const nowMs = Date.now();
+    const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
+    try {
+      const renewed = await worker.renewIndexMaintenanceLease(
+        this.automaticMaintenanceLeaseOwnerId,
+        expiresAtMs,
+        nowMs,
+      );
+      this.automaticMaintenanceLeaseExpiresAtMs = renewed ? expiresAtMs : 0;
+      if (renewed) {
+        this.automaticMaintenanceLeaseLastError = undefined;
+        this.automaticMaintenanceLeaseLastRenewedAtMs = nowMs;
+        this.automaticMaintenanceLeaseObservedOwnerId = undefined;
+        this.automaticMaintenanceLeaseState = "held";
+        return;
+      }
+      let activeLease: { expiresAtMs: number; ownerId: string } | null = null;
+      try {
+        activeLease = this.store.getActiveIndexMaintenanceLease();
+      } catch (error) {
+        this.automaticMaintenanceLeaseLastError = error instanceof Error ? error.message : String(error);
+      }
+      const foreignOwner = activeLease && activeLease.ownerId !== this.automaticMaintenanceLeaseOwnerId
+        ? activeLease
+        : null;
+      this.automaticMaintenanceLeaseObservedOwnerId = foreignOwner?.ownerId;
+      this.automaticMaintenanceLeaseExpiresAtMs = foreignOwner?.expiresAtMs ?? 0;
+      this.automaticMaintenanceLeaseLastLostReason = foreignOwner ? "owner-changed" : "same-owner-expired";
+      this.automaticMaintenanceLeaseState = foreignOwner ? "foreign-owner" : "expired";
+      this.logger.warn("automatic index maintenance lease lost", {
+        observedOwnerId: this.automaticMaintenanceLeaseObservedOwnerId,
+        ownerId: this.automaticMaintenanceLeaseOwnerId,
+        reason: this.automaticMaintenanceLeaseLastLostReason,
+      });
+    } catch (error) {
+      if (Date.now() >= this.automaticMaintenanceLeaseExpiresAtMs) {
+        this.automaticMaintenanceLeaseExpiresAtMs = 0;
+      }
+      this.automaticMaintenanceLeaseLastError = error instanceof Error ? error.message : String(error);
+      this.automaticMaintenanceLeaseLastLostReason = "renewal-failed";
+      this.automaticMaintenanceLeaseState = "renewal-failed";
+      this.logger.warn("automatic index maintenance lease renewal failed", {
+        error: this.automaticMaintenanceLeaseLastError,
+      });
+    }
+  }
+
+  private recordAutomaticMaintenanceLeaseAcquireFailure(): void {
+    let activeLease: { expiresAtMs: number; ownerId: string } | null = null;
+    try {
+      activeLease = this.store.getActiveIndexMaintenanceLease();
+    } catch (error) {
+      this.automaticMaintenanceLeaseLastError = error instanceof Error ? error.message : String(error);
+    }
+    this.automaticMaintenanceLeaseObservedOwnerId = activeLease?.ownerId;
+    if (activeLease && activeLease.ownerId !== this.automaticMaintenanceLeaseOwnerId) {
+      this.automaticMaintenanceLeaseExpiresAtMs = activeLease.expiresAtMs;
+      this.automaticMaintenanceLeaseState = "foreign-owner";
+      return;
+    }
+    this.automaticMaintenanceLeaseState = "lost";
+  }
+
+  private async reacquireExpiredAutomaticMaintenanceLease(
+    previousReady: Promise<boolean>,
+  ): Promise<boolean> {
+    if (this.automaticMaintenanceLeaseReady !== previousReady) {
+      return this.automaticMaintenanceLeaseReady ? await this.automaticMaintenanceLeaseReady : false;
+    }
+    clearInterval(this.automaticMaintenanceLeaseHeartbeatTimer);
+    this.automaticMaintenanceLeaseHeartbeatTimer = undefined;
+    await this.automaticMaintenanceLeaseHeartbeat?.catch(() => undefined);
+    this.automaticMaintenanceLeaseHeartbeat = undefined;
+    this.automaticMaintenanceLeaseLastLostReason = "same-owner-expired";
+    this.automaticMaintenanceLeaseState = "acquiring";
+    const worker = this.getMaintenanceLeaseWorker();
+    const reacquire = (async () => {
+      const nowMs = Date.now();
+      const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
+      try {
+        const acquired = await worker.tryAcquireIndexMaintenanceLease(
+          this.automaticMaintenanceLeaseOwnerId,
+          expiresAtMs,
+          nowMs,
+        );
+        if (!acquired) {
+          this.recordAutomaticMaintenanceLeaseAcquireFailure();
+          return false;
+        }
+        this.automaticMaintenanceLeaseExpiresAtMs = expiresAtMs;
+        this.automaticMaintenanceLeaseLastError = undefined;
+        this.automaticMaintenanceLeaseLastRenewedAtMs = nowMs;
+        this.automaticMaintenanceLeaseObservedOwnerId = undefined;
+        this.automaticMaintenanceLeaseState = "held";
+        this.startAutomaticMaintenanceLeaseHeartbeat(worker);
+        return true;
+      } catch (error) {
+        this.automaticMaintenanceLeaseLastError = error instanceof Error ? error.message : String(error);
+        this.automaticMaintenanceLeaseLastLostReason = "renewal-failed";
+        this.automaticMaintenanceLeaseState = "renewal-failed";
+        throw error;
+      }
+    })();
+    this.automaticMaintenanceLeaseReady = reacquire;
+    return reacquire;
   }
 
   private async enterAutomaticMaintenanceLease(): Promise<boolean> {
     this.automaticMaintenanceLeaseUsers += 1;
     if (!this.automaticMaintenanceLeaseReady) {
-      const worker = this.getIndexStorageWorker();
+      const worker = this.getMaintenanceLeaseWorker();
       worker.acquireLease();
+      this.automaticMaintenanceLeaseState = "acquiring";
       this.automaticMaintenanceLeaseReady = (async () => {
         const nowMs = Date.now();
         const expiresAtMs = nowMs + INDEX_MAINTENANCE_LEASE_TTL_MS;
@@ -958,13 +1339,20 @@ export class IndexCoordinator {
             nowMs,
           );
           if (!acquired) {
+            this.recordAutomaticMaintenanceLeaseAcquireFailure();
             worker.releaseLease();
             return false;
           }
           this.automaticMaintenanceLeaseExpiresAtMs = expiresAtMs;
+          this.automaticMaintenanceLeaseLastError = undefined;
+          this.automaticMaintenanceLeaseLastRenewedAtMs = nowMs;
+          this.automaticMaintenanceLeaseObservedOwnerId = undefined;
+          this.automaticMaintenanceLeaseState = "held";
           this.startAutomaticMaintenanceLeaseHeartbeat(worker);
           return true;
         } catch (error) {
+          this.automaticMaintenanceLeaseLastError = error instanceof Error ? error.message : String(error);
+          this.automaticMaintenanceLeaseState = "renewal-failed";
           worker.releaseLease();
           throw error;
         }
@@ -973,7 +1361,10 @@ export class IndexCoordinator {
 
     const ready = this.automaticMaintenanceLeaseReady;
     try {
-      const acquired = await ready;
+      let acquired = await ready;
+      if (acquired && this.automaticMaintenanceLeaseExpiresAtMs <= Date.now()) {
+        acquired = await this.reacquireExpiredAutomaticMaintenanceLease(ready);
+      }
       const valid = acquired && this.automaticMaintenanceLeaseExpiresAtMs > Date.now();
       if (!valid) {
         this.automaticMaintenanceLeaseUsers -= 1;
@@ -1003,13 +1394,15 @@ export class IndexCoordinator {
     this.automaticMaintenanceLeaseHeartbeatTimer = undefined;
     await this.automaticMaintenanceLeaseHeartbeat?.catch(() => undefined);
     this.automaticMaintenanceLeaseHeartbeat = undefined;
-    const worker = this.getIndexStorageWorker();
+    const worker = this.getMaintenanceLeaseWorker();
     try {
       if (await ready) {
         await worker.releaseIndexMaintenanceLease(this.automaticMaintenanceLeaseOwnerId);
       }
     } finally {
       this.automaticMaintenanceLeaseExpiresAtMs = 0;
+      this.automaticMaintenanceLeaseObservedOwnerId = undefined;
+      this.automaticMaintenanceLeaseState = "idle";
       worker.releaseLease();
     }
   }
@@ -1020,9 +1413,13 @@ export class IndexCoordinator {
     }
     const acquired = await this.enterAutomaticMaintenanceLease();
     if (!acquired) {
+      const status = this.getAutomaticMaintenanceLeaseStatus();
+      const foreignOwner = status.state === "foreign-owner";
       throw new AppError(
-        "INDEX_MAINTENANCE_BUSY",
-        "Another process owns automatic index maintenance",
+        foreignOwner ? "INDEX_MAINTENANCE_BUSY" : "INDEX_MAINTENANCE_LEASE_LOST",
+        foreignOwner
+          ? "Another process owns automatic index maintenance"
+          : "Automatic index maintenance lease is not active",
         { retryable: true, statusCode: 409 },
       );
     }
@@ -1033,8 +1430,50 @@ export class IndexCoordinator {
     }
   }
 
+  private assertAutomaticMaintenanceLeaseActive(origin: IndexOrigin): void {
+    if (origin !== "automatic") {
+      return;
+    }
+    const nowMs = Date.now();
+    const stateAllowsWork = this.automaticMaintenanceLeaseState === "held"
+      || this.automaticMaintenanceLeaseState === "renewal-failed";
+    if (stateAllowsWork && this.automaticMaintenanceLeaseExpiresAtMs > nowMs) {
+      return;
+    }
+    if (this.automaticMaintenanceLeaseExpiresAtMs <= nowMs) {
+      this.automaticMaintenanceLeaseLastLostReason ??= "same-owner-expired";
+      this.automaticMaintenanceLeaseState = "expired";
+    }
+    throw new AppError(
+      "INDEX_MAINTENANCE_LEASE_LOST",
+      "Automatic index maintenance lease was lost before the next write",
+      { retryable: true, statusCode: 409 },
+    );
+  }
+
+  private async ensureAutomaticMaintenanceLeaseActive(origin: IndexOrigin): Promise<void> {
+    if (origin !== "automatic") {
+      return;
+    }
+    await this.automaticMaintenanceLeaseHeartbeat;
+    const nowMs = Date.now();
+    const stateAllowsRenewal = this.automaticMaintenanceLeaseState === "held"
+      || this.automaticMaintenanceLeaseState === "renewal-failed";
+    if (
+      stateAllowsRenewal &&
+      this.automaticMaintenanceLeaseExpiresAtMs > nowMs &&
+      this.automaticMaintenanceLeaseExpiresAtMs - nowMs <= INDEX_MAINTENANCE_LEASE_REFRESH_WINDOW_MS
+    ) {
+      await this.getOrStartAutomaticMaintenanceLeaseHeartbeat(this.getMaintenanceLeaseWorker());
+    }
+    this.assertAutomaticMaintenanceLeaseActive(origin);
+  }
+
   public reconcileWatchedProjects(reason = "manual"): Promise<void> {
     if (this.reconciliationPromise) {
+      if (this.automaticMaintenanceQueueState?.active) {
+        this.automaticMaintenanceQueueState.coalescedRequests += 1;
+      }
       if (reason === "manual") {
         this.reconcileRequested = true;
       }
@@ -1042,6 +1481,7 @@ export class IndexCoordinator {
     }
 
     const generation = this.automaticUpdatesGeneration;
+    let queueStateForRun: AutomaticMaintenanceQueueState | undefined;
     const run = async (): Promise<void> => {
       do {
         this.reconcileRequested = false;
@@ -1068,7 +1508,18 @@ export class IndexCoordinator {
         const projectRoots = reason === "manual"
           ? this.getWatchStatuses().map((status) => status.projectRootPath)
           : refreshedSnapshot?.projectRootPaths ?? [...this.automaticProjectRoots].sort();
+        const queueState: AutomaticMaintenanceQueueState = {
+          active: true,
+          coalescedRequests: this.automaticMaintenanceQueueState?.coalescedRequests ?? 0,
+          completed: 0,
+          reason,
+          startedAtMs: Date.now(),
+          total: projectRoots.length,
+        };
+        queueStateForRun = queueState;
+        this.automaticMaintenanceQueueState = queueState;
         for (const projectRootPath of projectRoots) {
+          queueState.currentProjectRootPath = projectRootPath;
           if (
             this.automaticMaintenanceLeaseReady &&
             this.automaticMaintenanceLeaseExpiresAtMs <= Date.now()
@@ -1083,6 +1534,8 @@ export class IndexCoordinator {
             reason !== "manual" &&
             !this.isAutomaticallyOwned(projectRootPath)
           ) {
+            queueState.completed += 1;
+            queueState.currentProjectRootPath = undefined;
             continue;
           }
           try {
@@ -1117,6 +1570,9 @@ export class IndexCoordinator {
               projectRootPath,
               reason,
             });
+          } finally {
+            queueState.completed += 1;
+            queueState.currentProjectRootPath = undefined;
           }
         }
       } while (
@@ -1137,6 +1593,12 @@ export class IndexCoordinator {
       }
     };
     const promise = maintainedRun().finally(() => {
+      const queueState = queueStateForRun;
+      if (queueState?.active) {
+        queueState.active = false;
+        queueState.currentProjectRootPath = undefined;
+        queueState.finishedAtMs = Date.now();
+      }
       if (this.reconciliationPromise === promise) {
         this.reconciliationPromise = undefined;
       }
@@ -1386,67 +1848,249 @@ export class IndexCoordinator {
       this.suppressedProjectRoots.delete(normalizedRoot);
     }
     const existingState = this.watchers.get(normalizedRoot);
+    if (automatic && existingState?.coverage === "periodic-only") {
+      return;
+    }
     if (existingState?.active) {
       this.logger.warn("file watch already active", { projectRootPath });
       return;
     }
-    if (existingState) {
-      this.clearWatchTimers(existingState);
-      this.watchers.delete(normalizedRoot);
+    if (existingState?.watchRetryTimer || existingState?.watchRecoveryInProgress) {
+      return;
     }
 
-    const abortController = new AbortController();
-    const state: ProjectWatchState = {
-      active: true,
-      abortController,
+    const state: ProjectWatchState = existingState ?? {
+      active: false,
+      abortController: new AbortController(),
+      coverage: ROOT_ONLY_WATCH_OPTIONS.coverage,
       dirty: false,
       failureCount: 0,
       generation: 0,
       processing: false,
       rerunRequested: false,
+      watchRecoveryInProgress: false,
+      watchRetryAttempts: 0,
     };
+    if (!existingState) {
+      this.watchers.set(normalizedRoot, state);
+    }
 
-    const watcher = this.watchFactory(normalizedRoot, (_event, _filename) => {
-      if (abortController.signal.aborted) {
-        return;
-      }
-      if (!this.shouldProcessWatchEvent(_event, _filename)) {
-        return;
-      }
-
-      // Mark project dirty so ensureFreshIndex knows the cache is stale
-      state.dirty = true;
-      state.generation += 1;
-      state.lastEventAt = new Date().toISOString();
-      this.watcherDirty.set(normalizedRoot, true);
-      this.scheduleWatchedIndex(normalizedRoot, state);
-    });
-
-    abortController.signal.addEventListener("abort", () => watcher.close());
-    state.watcher = watcher;
-    this.watchers.set(normalizedRoot, state);
-    watcher.on?.("error", (error) => {
-      if (abortController.signal.aborted || this.watchers.get(normalizedRoot) !== state) {
-        return;
-      }
-      state.active = false;
-      state.dirty = true;
-      state.failureCount += 1;
-      state.generation += 1;
-      state.lastError = error.message;
-      this.watcherDirty.set(normalizedRoot, true);
-      this.logger.warn("file watch failed", {
-        error: error.message,
+    if (
+      automatic &&
+      !existingState &&
+      this.getAllocatedRootOnlyWatcherCount() > this.watchRecoveryPolicy.maxActiveWatchers
+    ) {
+      state.coverage = "periodic-only";
+      this.logger.info("automatic project uses periodic-only index coverage", {
+        maxActiveWatchers: this.watchRecoveryPolicy.maxActiveWatchers,
         projectRootPath: normalizedRoot,
       });
-      this.clearWatchTimers(state);
-      state.abortController.abort();
-      void this.recoverFailedWatcher(normalizedRoot, state);
-    });
+      return;
+    }
+    state.coverage = "root-only";
+
+    if (automatic && this.isWatchCircuitOpen()) {
+      this.scheduleWatcherRecovery(
+        normalizedRoot,
+        state,
+        Math.max(1, this.watchCircuitOpenUntilMs - Date.now()),
+      );
+      return;
+    }
+
+    state.watchRecoveryInProgress = true;
+    const abortController = new AbortController();
+    state.abortController = abortController;
+    try {
+      const watcher = this.watchFactory(normalizedRoot, (_event, _filename) => {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        if (!this.shouldProcessWatchEvent(_event, _filename)) {
+          return;
+        }
+
+        // Mark project dirty so ensureFreshIndex knows the cache is stale
+        state.dirty = true;
+        state.generation += 1;
+        state.lastEventAt = new Date().toISOString();
+        this.watcherDirty.set(normalizedRoot, true);
+        this.scheduleWatchedIndex(normalizedRoot, state);
+      }, ROOT_ONLY_WATCH_OPTIONS);
+
+      abortController.signal.addEventListener("abort", () => watcher.close());
+      state.active = true;
+      state.failureCount = 0;
+      state.lastError = undefined;
+      state.watcher = watcher;
+      state.watchRecoveryInProgress = false;
+      state.watchRetryAtMs = undefined;
+      state.watchRetryDelayMs = undefined;
+      if (state.watchRetryAttempts > 0) {
+        this.scheduleWatchStabilityReset(normalizedRoot, state);
+      }
+      watcher.on?.("error", (error) => {
+        if (abortController.signal.aborted || this.watchers.get(normalizedRoot) !== state) {
+          return;
+        }
+        this.handleWatcherFailure(normalizedRoot, state, error);
+      });
+    } catch (error) {
+      state.watchRecoveryInProgress = false;
+      if (!automatic) {
+        this.watchers.delete(normalizedRoot);
+        throw error;
+      }
+      this.handleWatcherFailure(normalizedRoot, state, error);
+      throw error;
+    }
     if (this.automaticUpdatesStarted && !this.aggregateProjectRoots.has(normalizedRoot)) {
       this.automaticProjectRoots.add(normalizedRoot);
     }
     this.logger.info("file watch started", { projectRootPath: normalizedRoot });
+  }
+
+  private getAllocatedRootOnlyWatcherCount(): number {
+    return [...this.watchers.values()].filter((state) => state.coverage === "root-only").length;
+  }
+
+  private handleWatcherFailure(
+    projectRootPath: string,
+    state: ProjectWatchState,
+    error: unknown,
+  ): void {
+    if (this.watchers.get(projectRootPath) !== state) {
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    state.active = false;
+    state.dirty = true;
+    state.failureCount += 1;
+    state.generation += 1;
+    state.lastError = message;
+    state.watcher = undefined;
+    state.watchRecoveryInProgress = false;
+    state.watchRetryAttempts += 1;
+    this.watcherDirty.set(projectRootPath, true);
+    this.clearWatchTimers(state);
+    state.abortController.abort();
+
+    this.isWatchCircuitOpen();
+    this.watchCircuitFailureCount += 1;
+    if (
+      this.watchCircuitFailureCount >= this.watchRecoveryPolicy.circuitFailureThreshold &&
+      this.watchCircuitOpenUntilMs <= Date.now()
+    ) {
+      this.watchCircuitOpenUntilMs = Date.now() + this.watchRecoveryPolicy.circuitResetMs;
+      this.logger.warn("file watch recovery circuit opened", {
+        failureThreshold: this.watchRecoveryPolicy.circuitFailureThreshold,
+        openUntil: new Date(this.watchCircuitOpenUntilMs).toISOString(),
+      });
+    }
+
+    this.logger.warn("file watch failed", {
+      error: message,
+      projectRootPath,
+      retryAttempts: state.watchRetryAttempts,
+    });
+    this.scheduleWatcherRecovery(projectRootPath, state);
+  }
+
+  private isWatchCircuitOpen(): boolean {
+    const nowMs = Date.now();
+    if (this.watchCircuitOpenUntilMs <= nowMs) {
+      if (this.watchCircuitOpenUntilMs > 0) {
+        this.watchCircuitFailureCount = 0;
+        this.watchCircuitOpenUntilMs = 0;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  private getWatchRecoveryDelayMs(attempts: number): number {
+    const exponentialDelayMs = Math.min(
+      this.watchRecoveryPolicy.maxDelayMs,
+      this.watchRecoveryPolicy.baseDelayMs * 2 ** Math.min(Math.max(0, attempts - 1), 30),
+    );
+    const jitterMs = exponentialDelayMs * this.watchRecoveryPolicy.jitterRatio;
+    const jitteredDelayMs = exponentialDelayMs + (this.watchRecoveryPolicy.random() * 2 - 1) * jitterMs;
+    return Math.max(1, Math.min(this.watchRecoveryPolicy.maxDelayMs, Math.round(jitteredDelayMs)));
+  }
+
+  private scheduleWatchStabilityReset(projectRootPath: string, state: ProjectWatchState): void {
+    clearTimeout(state.watchStabilityTimer);
+    state.watchStableAtMs = Date.now() + this.watchRecoveryPolicy.stableResetMs;
+    state.watchStabilityTimer = setTimeout(() => {
+      state.watchStabilityTimer = undefined;
+      state.watchStableAtMs = undefined;
+      if (
+        this.watchers.get(projectRootPath) !== state ||
+        !state.active ||
+        state.abortController.signal.aborted
+      ) {
+        return;
+      }
+      state.watchRetryAttempts = 0;
+      this.watchCircuitFailureCount = 0;
+    }, this.watchRecoveryPolicy.stableResetMs);
+    state.watchStabilityTimer.unref();
+  }
+
+  private scheduleWatcherRecovery(
+    projectRootPath: string,
+    state: ProjectWatchState,
+    minimumDelayMs = 0,
+  ): void {
+    if (
+      state.watchRetryTimer ||
+      state.watchRecoveryInProgress ||
+      this.watchers.get(projectRootPath) !== state ||
+      this.pausedProjectRoots.has(projectRootPath) ||
+      this.suppressedProjectRoots.has(projectRootPath) ||
+      !this.automaticWatchAllowed
+    ) {
+      return;
+    }
+    if (state.watchRetryAttempts >= this.watchRecoveryPolicy.maxAttempts) {
+      state.watchRetryAtMs = undefined;
+      state.watchRetryDelayMs = undefined;
+      return;
+    }
+
+    const circuitDelayMs = this.isWatchCircuitOpen()
+      ? Math.max(1, this.watchCircuitOpenUntilMs - Date.now())
+      : 0;
+    const retryDelayMs = Math.max(
+      minimumDelayMs,
+      circuitDelayMs,
+      this.getWatchRecoveryDelayMs(Math.max(1, state.watchRetryAttempts)),
+    );
+    state.watchRetryDelayMs = retryDelayMs;
+    state.watchRetryAtMs = Date.now() + retryDelayMs;
+    state.watchRetryTimer = setTimeout(() => {
+      state.watchRetryTimer = undefined;
+      state.watchRetryAtMs = undefined;
+      state.watchRetryDelayMs = undefined;
+      if (
+        this.watchers.get(projectRootPath) !== state ||
+        this.pausedProjectRoots.has(projectRootPath) ||
+        this.suppressedProjectRoots.has(projectRootPath) ||
+        !this.automaticWatchAllowed
+      ) {
+        return;
+      }
+      if (this.isWatchCircuitOpen()) {
+        this.scheduleWatcherRecovery(
+          projectRootPath,
+          state,
+          Math.max(1, this.watchCircuitOpenUntilMs - Date.now()),
+        );
+        return;
+      }
+      this.startWatchingSafely(projectRootPath, "recovery");
+    }, retryDelayMs);
+    state.watchRetryTimer.unref();
   }
 
   private shouldProcessWatchEvent(eventType: string, filename: string | Buffer | null): boolean {
@@ -1497,35 +2141,6 @@ export class IndexCoordinator {
         error: error instanceof Error ? error.message : String(error),
         projectRootPath,
         reason,
-      });
-    }
-  }
-
-  private async recoverFailedWatcher(projectRootPath: string, state: ProjectWatchState): Promise<void> {
-    const queueTail = this.projectQueue.get(projectRootPath);
-    if (queueTail) {
-      await queueTail;
-    }
-    if (
-      this.watchers.get(projectRootPath) !== state ||
-      this.pausedProjectRoots.has(projectRootPath) ||
-      this.suppressedProjectRoots.has(projectRootPath) ||
-      !this.automaticWatchAllowed
-    ) {
-      return;
-    }
-
-    try {
-      await this.indexProject(projectRootPath, "incremental", undefined, "automatic");
-      if (this.watchers.get(projectRootPath) === state && !state.active) {
-        this.startWatchingSafely(projectRootPath, "recovery");
-      }
-    } catch (error) {
-      state.failureCount += 1;
-      state.lastError = error instanceof Error ? error.message : String(error);
-      this.logger.warn("file watch recovery failed", {
-        error: state.lastError,
-        projectRootPath,
       });
     }
   }
@@ -1660,6 +2275,17 @@ export class IndexCoordinator {
   }
 
   private clearWatchTimers(state: ProjectWatchState): void {
+    this.clearWatchIndexTimers(state);
+    clearTimeout(state.watchRetryTimer);
+    clearTimeout(state.watchStabilityTimer);
+    state.watchRetryAtMs = undefined;
+    state.watchRetryDelayMs = undefined;
+    state.watchRetryTimer = undefined;
+    state.watchStableAtMs = undefined;
+    state.watchStabilityTimer = undefined;
+  }
+
+  private clearWatchIndexTimers(state: ProjectWatchState): void {
     clearTimeout(state.debounceTimer);
     clearTimeout(state.maxWaitTimer);
     clearTimeout(state.retryTimer);
@@ -1751,7 +2377,7 @@ export class IndexCoordinator {
       total: 0,
     };
     const indexPromise = prev.then(() =>
-      this.withGlobalIndexSlot(() => {
+      this.withGlobalIndexSlot(origin, () => {
         progress.runStartedAtMs = Date.now();
         const run = () => this.runIndexProject(normalizedRoot, mode, onProgress, origin, progress);
         return origin === "automatic" ? this.withAutomaticMaintenanceLease(run) : run();
@@ -1781,11 +2407,11 @@ export class IndexCoordinator {
     return indexPromise;
   }
 
-  private async withGlobalIndexSlot<T>(operation: () => Promise<T>): Promise<T> {
+  private async withGlobalIndexSlot<T>(origin: IndexOrigin, operation: () => Promise<T>): Promise<T> {
     const concurrency = Math.max(1, Math.floor(this.settings.indexConcurrency ?? 1));
     if (this.activeIndexRuns >= concurrency) {
       await new Promise<void>((resolve) => {
-        this.pendingIndexSlots.push(resolve);
+        this.pendingIndexSlots.push({ origin, queuedAtMs: Date.now(), resolve });
       });
     } else {
       this.activeIndexRuns += 1;
@@ -1794,9 +2420,11 @@ export class IndexCoordinator {
     try {
       return await operation();
     } finally {
-      const next = this.pendingIndexSlots.shift();
+      const explicitIndex = this.pendingIndexSlots.findIndex((pending) => pending.origin === "explicit");
+      const nextIndex = explicitIndex >= 0 ? explicitIndex : 0;
+      const [next] = this.pendingIndexSlots.splice(nextIndex, 1);
       if (next) {
-        next();
+        next.resolve();
       } else {
         this.activeIndexRuns -= 1;
       }
@@ -1936,6 +2564,7 @@ export class IndexCoordinator {
     const indexingStartedAtEpochMs = Date.now();
     this.reportIndexProgress(progress, { phase: "prepare", status: "start", total: sourceFiles.length }, onProgress);
     const prepareStartedAtMs = performance.now();
+    await this.ensureAutomaticMaintenanceLeaseActive(origin);
     const preparation = await indexStorageWorker.prepareProjectIndex(projectId, project, timestamp);
 
     const existingFiles = new Map(
@@ -1943,6 +2572,7 @@ export class IndexCoordinator {
     );
     const currentPaths = new Set(sourceFiles.map((file) => file.relativePath));
     const deletedFiles = [...existingFiles.keys()].filter((relativePath) => !currentPaths.has(relativePath));
+    await this.ensureAutomaticMaintenanceLeaseActive(origin);
     await indexStorageWorker.deleteFiles(projectId, deletedFiles);
 
     /**
@@ -2056,6 +2686,7 @@ export class IndexCoordinator {
     for (let i = 0; i < successResults.length; i += DB_WRITE_BATCH_SIZE) {
       const batch = successResults.slice(i, i + DB_WRITE_BATCH_SIZE);
       const batchStartedAtMs = performance.now();
+      await this.ensureAutomaticMaintenanceLeaseActive(origin);
       await indexStorageWorker.writeFileIndexBatch(
         projectId,
         batch.map((r) => ({
@@ -2097,6 +2728,7 @@ export class IndexCoordinator {
           const embeddings = await provider.embedBatch(result.chunks.map((chunk) => chunk.content));
           result.vectorChunkCount = result.chunks.length;
           const vectorWriteStartedAtMs = performance.now();
+          await this.ensureAutomaticMaintenanceLeaseActive(origin);
           await indexStorageWorker.writeChunkVectors(
             result.chunks.map((chunk, index) => ({
               chunkId: chunk.chunkId,
@@ -2154,6 +2786,7 @@ export class IndexCoordinator {
       for (const deletedPath of deletedFiles) {
         changedFileIds.add(buildStableId([projectId, deletedPath]));
       }
+      await this.ensureAutomaticMaintenanceLeaseActive(origin);
       await indexStorageWorker.resolveSymbolGraph(projectId, [...changedFileIds]);
     }
     const symbolGraphMs = Math.round(performance.now() - symbolGraphStartedAtMs);
@@ -2168,6 +2801,7 @@ export class IndexCoordinator {
     this.reportIndexProgress(progress, { phase: "semantic", status: "start" }, onProgress);
     const semanticStartedAtMs = performance.now();
     if (hasIndexChanges) {
+      await this.ensureAutomaticMaintenanceLeaseActive(origin);
       await indexStorageWorker.ensureSemanticIndex(projectId);
     }
     const semanticMs = Math.round(performance.now() - semanticStartedAtMs);
@@ -2207,6 +2841,7 @@ export class IndexCoordinator {
       writeMs,
     };
     const finalizeWriteStartedAtMs = Date.now();
+    await this.ensureAutomaticMaintenanceLeaseActive(origin);
     const finalization = await indexStorageWorker.finalizeProjectIndex(projectId, {
       bumpIndexVersion,
       event: {
@@ -2274,7 +2909,7 @@ export class IndexCoordinator {
       currentWatchState.dirty = !indexSucceeded || !caughtUp;
       this.watcherDirty.set(normalizedRoot, currentWatchState.dirty);
       if (indexSucceeded && caughtUp) {
-        this.clearWatchTimers(currentWatchState);
+        this.clearWatchIndexTimers(currentWatchState);
       }
     } else {
       this.watcherDirty.set(normalizedRoot, !indexSucceeded);

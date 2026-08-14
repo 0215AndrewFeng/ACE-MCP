@@ -1,3 +1,82 @@
+# v4.10.8 Runtime Stability, Search Concurrency, And Startup Scheduling
+
+Author: feng.ling
+
+## Goal
+
+Eliminate watcher/lease maintenance storms first, then raise user-visible concurrent search throughput with bounded parallel execution, foreground-aware startup scheduling, and real 8/16/32 plus during-index performance gates.
+
+## Plan
+
+### Phase 0 - RED Baseline And Acceptance Contract
+
+- [x] Add real concurrent-search benchmark coverage, separate from health-probe concurrency.
+- [x] Expose bounded search worker active/pending/queue timing diagnostics.
+- [ ] Record reproducible warm/cold and idle/active-index baseline evidence; idle/active production data is complete, but the same run still needs explicit warm/cold labeling.
+
+### Phase 1 - Combined Search Request And Bounded Worker Pool
+
+- [x] Combine lexical, semantic FTS, unicode, symbol, path, and identifier-boost candidates into one worker job without changing grouped result semantics.
+- [x] Add a bounded SQLite search worker pool with queue limits, deadlines, explicit overload behavior, lifecycle isolation, and duplicate in-flight reuse.
+- [x] Keep semantic-index writes out of search readers, close the pool during production shutdown, and move structured-query file enumeration to the reader pool.
+- [x] Re-run independent Phase 1 verification, anti-pattern review, and code-quality review after lifecycle fixes; implementation-agent GREEN alone does not close the phase.
+
+### Phase 2 - Watcher Resource Containment And Recovery
+
+- [x] Add RED coverage for synchronous watcher creation failure and repeated asynchronous `EMFILE` without hot-loop retries or repeated indexing.
+- [x] Add per-project single-flight recovery, exponential backoff with jitter, retry cap, and a global circuit breaker with periodic-reconciliation fallback.
+- [x] Implement and validate a bounded watcher strategy that avoids allocating resources for excluded dependency/build/VCS trees while preserving eventual correctness.
+- [x] Expose watcher retry/circuit diagnostics, validate cleanup/recovery, and prove stable FD/CPU/log rates with roughly 50 projects on macOS.
+
+### Phase 3 - Maintenance Lease Liveness And Truthful Status
+
+- [x] Add RED coverage for heartbeat starvation beyond TTL, same-owner expiry, foreign ownership, real SQLite write contention, owner failure, and shutdown.
+- [x] Keep lease control from waiting behind unbounded bulk-write work, bound write occupancy, and define safe reacquisition/fencing behavior.
+- [x] Stop new automatic work on lease loss, prevent competing freshness writers from amplifying contention, and expose truthful lease health/error states.
+- [x] Prove the design under a real SQLite lock; a separate worker or larger TTL without lock evidence is insufficient.
+
+### Phase 4 - Bounded Startup Maintenance
+
+- [x] Bound and batch roughly 50-project startup catch-up work with foreground-aware scheduling and backpressure.
+- [x] Preserve per-project serialization, maintenance ownership, watcher generations, reconciliation coalescing, and owner recovery.
+- [x] Expose startup queue pressure and prove foreground search/resolve/health responsiveness under saturation.
+
+### Phase 5 - Concurrency Release Gate
+
+- [x] Benchmark real 8/16/32 concurrent searches with p50/p95/p99, throughput, queue time, timeouts, errors, and stable non-empty results.
+- [x] Benchmark the same search path during active indexing/startup maintenance and retain existing health/resolve gates.
+- [x] Add fail-closed thresholds to `release:benchmark`; all three concurrency levels must pass before v4.10.8 is complete.
+- [x] Fail the gate on watcher retry storms or maintenance lease loss during the benchmark window.
+
+## Validation Plan
+
+- `node --test src/test/benchmarkSearchCli.test.mjs`
+- `node --import tsx --test src/core/search/searchServiceConcurrency.test.ts src/core/storage/sqliteIndexWorker.test.ts src/core/indexing/indexCoordinator.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:benchmark`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-14: Final v4.10.8 gates passed after version-carrier updates: `npm test` 388/388, built worker-thread tests 34/34, TypeScript build, macOS installer syntax, release benchmark, and `git diff --check`. The isolated v4.10.8 benchmark passed 8/16/32 with idle search p95 1229/57/90ms and during-index p95 43/66/96ms; health p95 was 6/1/1ms, resolve p95 was 13/6/7ms, timeout/error were zero, and every result set was non-empty and stable.
+- 2026-08-14: Fresh dist completed a real 49-project startup soak in about 4m36s: `maintenanceQueue.completed=49`, pending/active returned to zero, the 60-second maintenance lease renewed every 10 seconds across the long 215-second first project and then released normally, watcher health remained 8 active + 41 periodic-only with zero retry/exhausted/circuit state, FD settled around 27, and the new log window contained no `EMFILE`, foreign-owner, lease-loss, renewal-failure, circuit-open, or reconciliation-stop event.
+- 2026-08-14: Production SQLite release gates passed at 8/16/32 concurrency. Idle search p95 was 3312/1447/1534ms; during-index search p95 was 1560/1879/1508ms, health p95 was 2/7/1ms, and resolve p95 was 17/71/12ms. All levels returned stable non-empty results with zero timeout/error and no watcher or lease failure.
+- 2026-08-14: Production full indexing exposed a second stability bottleneck beyond worker scheduling: FTS5 `chunk_id` is `UNINDEXED`, so deleting one chunk at a time repeatedly scanned the full table. Per-file batched `IN (...)` deletion reduced the same production lexical/semantic cleanup to about 15.4s/7.1s, and automatic persistence now proactively renews a near-expiry lease before the next long phase.
+- 2026-08-14: Independent Phase 1 review found two remaining pool lifecycle leaks and incomplete capacity-error propagation. RED proved that worker-factory failure left a deadline timer armed, a child that ignored termination permanently occupied the only pool slot, structured direct/nested clauses swallowed overload/timeouts, and project routing exposed raw worker errors. GREEN now clears request resources through one finish path, releases stopped workers after bounded shutdown, and preserves `SEARCH_OVERLOADED`/`SEARCH_TIMEOUT` as retryable HTTP 503 across plain, structured, nested, and routing paths. Full worker tests passed 34/34, SearchService concurrency tests passed 14/14, and `tsc --noEmit` passed.
+- 2026-08-14: Phase 4 retains the existing one-at-a-time reconciliation backpressure instead of materializing 50 index promises, adds explicit-over-automatic global slot priority, and exposes scheduler plus automatic-maintenance queue pressure in `/health`. A 50-project RED/Green fixture observed exactly one current project and 49 pending, then 50 completed with no backlog; lifecycle, ownership, watcher generation, and reconciliation suites remained green. Full coordinator (115/115), Web (27/27), `tsc --noEmit`, and diff checks passed. The final search/resolve/health saturation claim remains open for the Phase 5 live benchmark.
+- 2026-08-14: Phase 3 now uses a distinct SQLite worker client for lease control in production and limits file-index write transactions to one bounded file, so heartbeat/CAS requests cannot sit behind a bulk-worker FIFO of multi-file transactions. RED reproduced bulk-lane lease acquisition, same-owner expiry misreported as a foreign owner, missing fencing after lease loss, absent renewal-failure health, and false renewal conflating expiry with owner change. Automatic writes now check fencing before every new persistence phase; `/health` exposes held/expired/foreign-owner/lost/renewal-failed state, owners, expiry, last renewal, error, and lost reason. A real `BEGIN IMMEDIATE` lock held for 350ms proved that lease reacquisition waits off the main event loop and succeeds after release. Full coordinator (111/111), Web (27/27), worker (32/32), `tsc --noEmit`, and diff checks passed. The old running Web process prevented a fresh dist/runtime soak in this phase.
+- 2026-08-14: Phase 2 follow-up replaced recursive registration with one root-only non-recursive watcher per project, preserving deep-tree eventual correctness through existing freshness and periodic reconciliation. Recovery attempts and the global failure budget now reset only after a stable watcher window, expired circuits normalize before a new failure cycle, and `/health` exposes active/retrying/exhausted watcher health without SQLite reads. RED reproduced missing coverage options, non-resetting recovery budgets, leaked stability timers, immediate circuit reopen after cooldown, and hidden exhausted projects. GREEN passed the full coordinator suite (105/105), full Web suite (27/27), and `git diff --check`. The roughly 50-project live macOS FD/CPU/log soak remains open.
+- 2026-08-14: Phase 2 watcher recovery RED reproduced immediate asynchronous recreation/indexing, missing synchronous-failure state, absent retry/circuit diagnostics, no global registration breaker, and duplicate circuit-open logs from concurrent failures. GREEN retains one inactive state per project, retries watcher construction without indexing on bounded 1s-to-60s exponential backoff with 20% jitter, caps autonomous retries at 8, opens a 60s global circuit after 8 failures, logs only circuit state transitions, keeps the project dirty for normal reconciliation, and cancels retry timers on stop/close. Focused watcher recovery passed 7/7, the full coordinator suite passed 99/99, and the TypeScript build passed. Native recursive `node:fs.watch` still allocates below the root before event filtering; excluded-tree FD avoidance requires a separate registration backend/architecture and the roughly 50-project macOS FD/CPU/log soak remains open, so those checklist items are intentionally not marked complete.
+- 2026-08-14: Live diagnosis changed the remaining P0 order to watcher containment, lease liveness/status truth, Phase 1 independent acceptance, bounded startup scheduling, and only then production 8/16/32 gates. The Web process inherited a 256 soft file-descriptor limit while recursive roots contained more than 400 directories, watcher failures retried through indexing without backoff, and the current log accumulated roughly 11,900 failures. A 31-minute automatic index included a roughly 22-minute maximum write batch, starving the 10-second heartbeat past its 60-second TTL; the expired same-process lease was then misreported as another owner. Raising FD limits or TTLs alone is explicitly not an accepted fix.
+- 2026-08-13: Scope and priority confirmed by the repository owner. Phases 1-3 are P0 deliverables for v4.10.8; Qdrant remains a conditional follow-up after these gates pass.
+- 2026-08-13: Phase 0 RED confirmed that the benchmark had no real search-concurrency option and the single-worker client exposed no active/pending/queue timing diagnostics. GREEN added independent `--search-concurrency`, p50/p95/p99, throughput, timeout/error, non-empty/stability reporting, optional active-index search sampling and thresholds, plus read-only single-worker queue diagnostics. Focused benchmark tests passed 14/14, worker tests passed 21/21, the combined search-concurrency/worker tests passed 23/23, and the TypeScript build passed.
+- 2026-08-13: Production-scale warm/cold and idle/active-index baseline evidence remains open. Capture it before Phase 1 and repeat the identical matrix after Phase 1 so the worker-pool decision is based on a comparable production SQLite copy; the Phase 0 tooling is ready, but fixture results are not a substitute for that evidence.
+- 2026-08-13: Phase 1 RED failed because `SearchService` had no combined candidate request or cold in-flight reuse, settings had no bounded-pool controls, and the single worker accepted an unbounded queue with no deadline. GREEN added a grouped protocol request with per-strategy failure isolation, a configurable default-2 reader pool (tested at 1/2/4), a 64-request pending cap, a 5s queue deadline, explicit overload/queue-timeout errors, worker- and SearchService-level duplicate reuse, semantic read-only dispatch, structured-query file enumeration in the pool, and production/eval shutdown closure. The focused Phase 1 matrix passed 96/96, full `npm test` passed 347/347, built worker-thread tests passed 29/29, TypeScript build passed, and `git diff --check` passed.
+- 2026-08-13: Definition/reference/call-graph SQLite reads remain synchronous in the main process. Existing workflow behavior stays covered, but a production-scale 8/16/32 and during-index benchmark must determine whether they need a later bounded-worker migration; Phase 1 does not expand the protocol with their larger, distinct result contracts without evidence of a release-gate failure.
+- 2026-08-13: Phase 1 lifecycle review found that the first pool draft enforced deadlines only while queued, reused identical payloads across incompatible deadlines, let an errored child occupy capacity without immediate termination, and degraded overload/timeouts to cacheable empty search results. RED reproduced all four gaps plus zero-budget submission. The implementation agent reports GREEN after applying total deadlines, worker retirement, deadline-compatible reuse and retryable 503 overload/timeout mapping, with focused/full/build checks passing. Independent verification, anti-pattern review and code-quality review must still be rerun before Phase 1 is accepted.
+
 # v4.10.7 Codex Sandbox Initialization
 
 Author: feng.ling

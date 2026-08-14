@@ -14,12 +14,16 @@ const DEFAULT_QUERY = "RefundService";
 const DEFAULT_ITERATIONS = 5;
 const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MIN_INITIAL_HEALTH_TIMEOUT_MS = 1_000;
 const DEFAULT_ACTIVE_WAIT_TIMEOUT_MS = 30_000;
 const DEFAULT_ACTIVE_WINDOW_TIMEOUT_MS = 60_000;
 const DEFAULT_ACTIVE_SAMPLE_COUNT = 20;
 const DEFAULT_HEALTH_P95_THRESHOLD_MS = 1_000;
 const DEFAULT_RESOLVE_P95_THRESHOLD_MS = 2_000;
+const DEFAULT_SEARCH_P95_THRESHOLD_MS = 30_000;
+const DEFAULT_SEARCH_P99_THRESHOLD_MS = 30_000;
 const DEFAULT_MAX_TIMEOUTS = 0;
+const RELEASE_SEARCH_CONCURRENCY_LEVELS = [8, 16, 32];
 const ACTIVE_POLL_INTERVAL_MS = 25;
 const ACTIVE_INDEX_PHASES = new Set([
   "prepare",
@@ -41,13 +45,18 @@ function parseArgs(argv) {
     baseUrl: process.env.ACE_MCP_BENCHMARK_BASE_URL || DEFAULT_BASE_URL,
     concurrency: DEFAULT_CONCURRENCY,
     duringIndex: false,
+    duringIndexSearch: false,
     healthP95ThresholdMs: DEFAULT_HEALTH_P95_THRESHOLD_MS,
     iterations: DEFAULT_ITERATIONS,
     json: false,
     maxTimeouts: DEFAULT_MAX_TIMEOUTS,
     projectRootPath: process.cwd(),
     query: DEFAULT_QUERY,
+    releaseGate: false,
     resolveP95ThresholdMs: DEFAULT_RESOLVE_P95_THRESHOLD_MS,
+    searchConcurrency: DEFAULT_CONCURRENCY,
+    searchP95ThresholdMs: DEFAULT_SEARCH_P95_THRESHOLD_MS,
+    searchP99ThresholdMs: DEFAULT_SEARCH_P99_THRESHOLD_MS,
     smoke: false,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -81,6 +90,9 @@ function parseArgs(argv) {
       case "--during-index":
         options.duringIndex = true;
         break;
+      case "--during-index-search":
+        options.duringIndexSearch = true;
+        break;
       case "--health-p95-threshold-ms":
         options.healthP95ThresholdMs = parsePositiveInteger(next(), arg);
         break;
@@ -96,8 +108,20 @@ function parseArgs(argv) {
       case "--query":
         options.query = next();
         break;
+      case "--release-gate":
+        options.releaseGate = true;
+        break;
       case "--resolve-p95-threshold-ms":
         options.resolveP95ThresholdMs = parsePositiveInteger(next(), arg);
+        break;
+      case "--search-concurrency":
+        options.searchConcurrency = parsePositiveInteger(next(), arg);
+        break;
+      case "--search-p95-threshold-ms":
+        options.searchP95ThresholdMs = parsePositiveInteger(next(), arg);
+        break;
+      case "--search-p99-threshold-ms":
+        options.searchP99ThresholdMs = parsePositiveInteger(next(), arg);
         break;
       case "--smoke":
         options.smoke = true;
@@ -116,6 +140,11 @@ function parseArgs(argv) {
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (options.releaseGate) {
+    options.duringIndex = true;
+    options.duringIndexSearch = true;
   }
 
   return options;
@@ -144,10 +173,14 @@ Options:
   --base-url <url>       ace-mcp Web base URL (default: ${DEFAULT_BASE_URL})
   --project <path>       Indexed project root path (default: current directory)
   --query <text>         Search query (default: ${DEFAULT_QUERY})
+  --release-gate         Run fail-closed idle and during-index search gates at 8/16/32 concurrency
   --iterations <n>       Search iterations (default: ${DEFAULT_ITERATIONS})
   --concurrency <n>      Parallel health probes during each search (default: ${DEFAULT_CONCURRENCY})
+  --search-concurrency <n>
+                         Parallel real searches per iteration (default: ${DEFAULT_CONCURRENCY})
   --timeout-ms <n>       Per-request timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})
   --during-index         Start a full index and benchmark health/project resolution only while it is active
+  --during-index-search  Also benchmark real searches during the observed active-index window
   --active-wait-timeout-ms <n>
                          Time allowed to observe active indexing (default: ${DEFAULT_ACTIVE_WAIT_TIMEOUT_MS})
   --active-window-timeout-ms <n>
@@ -156,6 +189,10 @@ Options:
                          Fail above this active-index health p95 (default: ${DEFAULT_HEALTH_P95_THRESHOLD_MS})
   --resolve-p95-threshold-ms <n>
                          Fail above this active-index project resolve p95 (default: ${DEFAULT_RESOLVE_P95_THRESHOLD_MS})
+  --search-p95-threshold-ms <n>
+                         Fail above this active-index search p95 (default: ${DEFAULT_SEARCH_P95_THRESHOLD_MS})
+  --search-p99-threshold-ms <n>
+                         Fail above this active-index search p99 (default: ${DEFAULT_SEARCH_P99_THRESHOLD_MS})
   --max-timeouts <n>     Allowed probe timeouts before failure (default: ${DEFAULT_MAX_TIMEOUTS})
   --json                 Print machine-readable JSON
   --smoke                Create and index a tiny temp project, then run one benchmark iteration
@@ -215,15 +252,54 @@ function summarize(values) {
     minMs: values.length === 0 ? 0 : Math.min(...values),
     p50Ms: percentile(values, 50),
     p95Ms: percentile(values, 95),
+    p99Ms: percentile(values, 99),
   };
 }
 
-function extractResultCount(searchResult) {
+function extractResults(searchResult) {
   const results = searchResult?.results ?? searchResult?.data?.results;
-  return Array.isArray(results) ? results.length : 0;
+  return Array.isArray(results) ? results : [];
 }
 
-async function runSearch(baseUrl, projectRootPath, query, timeoutMs) {
+function extractResultCount(searchResult) {
+  return extractResults(searchResult).length;
+}
+
+function searchResultSignature(searchResult) {
+  return extractResults(searchResult)
+    .map((result) => [result?.filePath ?? "", result?.startLine ?? "", result?.endLine ?? ""].join(":"))
+    .sort()
+    .join("|");
+}
+
+function summarizeSearchSamples(samples) {
+  const successes = samples.filter((sample) => sample.ok);
+  const signatures = new Set(successes.map((sample) => sample.signature));
+  const signaturesByVariant = new Map();
+  for (const sample of successes) {
+    const variant = sample.requestVariant ?? 0;
+    const variantSignatures = signaturesByVariant.get(variant) ?? new Set();
+    variantSignatures.add(sample.signature);
+    signaturesByVariant.set(variant, variantSignatures);
+  }
+  const nonEmptyCount = successes.filter((sample) => sample.resultCount > 0).length;
+  return {
+    failures: {
+      errors: samples.filter((sample) => !sample.ok && !sample.timedOut).length,
+      timeouts: samples.filter((sample) => !sample.ok && sample.timedOut).length,
+    },
+    latency: summarize(successes.map((sample) => sample.durationMs)),
+    results: {
+      distinctSignatures: signatures.size,
+      emptyCount: successes.length - nonEmptyCount,
+      nonEmptyCount,
+      stable: successes.length > 0 && [...signaturesByVariant.values()].every((values) => values.size === 1),
+      variants: signaturesByVariant.size,
+    },
+  };
+}
+
+async function runSearch(baseUrl, projectRootPath, query, timeoutMs, topK = 10) {
   return timed("search", () =>
     fetchJson(`${baseUrl}/api/search-context`, {
       body: JSON.stringify({
@@ -232,7 +308,7 @@ async function runSearch(baseUrl, projectRootPath, query, timeoutMs) {
         projectRootPath,
         query,
         resultMode: "metadata",
-        topK: 10,
+        topK,
       }),
       headers: {
         "content-type": "application/json",
@@ -305,16 +381,94 @@ async function captureProbe(operation) {
   }
 }
 
+async function captureSearch(options, requestVariant = 0) {
+  const topK = options.releaseGate ? 10 + requestVariant : 10;
+  const query = options.releaseGate
+    ? `${options.query}${" ".repeat(options.searchConcurrency + (options.benchmarkMode === "during-index" ? 64 : 0))}`
+    : options.query;
+  const probe = await captureProbe(() => runSearch(
+    options.baseUrl,
+    options.projectRootPath,
+    query,
+    options.timeoutMs,
+    topK,
+  ));
+  if (!probe.ok) {
+    return probe;
+  }
+  return {
+    durationMs: probe.durationMs,
+    ok: true,
+    requestVariant: options.releaseGate ? requestVariant : 0,
+    resultCount: extractResultCount(probe.result),
+    signature: searchResultSignature(probe.result),
+  };
+}
+
 function compactHealth(health) {
   if (!health || typeof health !== "object") {
     return health;
   }
   return {
     indexing: Array.isArray(health.indexing) ? health.indexing : [],
+    maintenanceLease: health.maintenanceLease,
     pid: health.pid,
+    searchWorker: health.searchWorker,
     status: health.status,
     tasks: Array.isArray(health.tasks) ? health.tasks.slice(0, 10) : [],
     version: health.version,
+    watchHealth: health.watchHealth,
+  };
+}
+
+function assertRuntimeStable(options, health) {
+  if (!options.releaseGate) return;
+  const violations = [];
+  const watchHealth = health?.watchHealth;
+  if (
+    watchHealth &&
+    (watchHealth.status === "degraded"
+      || watchHealth.circuitOpen === true
+      || Number(watchHealth.retrying ?? 0) > 0
+      || Number(watchHealth.exhausted ?? 0) > 0)
+  ) {
+    violations.push(
+      `watcher health degraded: status=${watchHealth.status ?? "unknown"}, circuitOpen=${Boolean(watchHealth.circuitOpen)}, retrying=${Number(watchHealth.retrying ?? 0)}, exhausted=${Number(watchHealth.exhausted ?? 0)}`,
+    );
+  }
+  const maintenanceLease = health?.maintenanceLease;
+  if (["expired", "foreign-owner", "lost", "renewal-failed"].includes(maintenanceLease?.state)) {
+    const detail = maintenanceLease.lastError ?? maintenanceLease.lastLostReason ?? "no detail";
+    violations.push(`maintenance lease ${maintenanceLease.state}: ${detail}`);
+  }
+  if (violations.length > 0) {
+    throw new Error(`runtime stability gate failed:\n- ${violations.join("\n- ")}`);
+  }
+}
+
+function getSearchQueueSnapshot(health) {
+  const queueMs = health?.searchWorker?.queueMs ?? {};
+  return {
+    currentMaxMs: Number(queueMs.currentMax ?? 0),
+    lastMs: Number(queueMs.last ?? 0),
+    maxMs: Number(queueMs.max ?? 0),
+    samples: Number(queueMs.samples ?? 0),
+    totalMs: Number(queueMs.total ?? 0),
+  };
+}
+
+function summarizeSearchQueue(startHealth, endHealth) {
+  const start = getSearchQueueSnapshot(startHealth);
+  const end = getSearchQueueSnapshot(endHealth);
+  const samples = Math.max(0, end.samples - start.samples);
+  const totalMs = Math.max(0, end.totalMs - start.totalMs);
+  return {
+    averageMs: samples > 0 ? Number((totalMs / samples).toFixed(2)) : 0,
+    currentMaxMs: end.currentMaxMs,
+    lastMs: end.lastMs,
+    maxMs: end.maxMs,
+    samples,
+    totalMs,
   };
 }
 
@@ -328,6 +482,7 @@ function formatBenchmarkDiagnostics(options, diagnostics) {
     observedPhases: [...diagnostics.observedPhases],
     projectRootPath: options.projectRootPath,
     resolveProbeFailures: diagnostics.resolveProbeFailures.slice(-10),
+    searchProbeFailures: diagnostics.searchProbeFailures?.slice(-10) ?? [],
     summary: diagnostics.summary,
   }, null, 2);
 }
@@ -355,6 +510,7 @@ async function waitForActiveIndex(options, diagnostics) {
     const probe = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
     if (probe.ok) {
       diagnostics.lastHealth = probe.result;
+      assertRuntimeStable(options, probe.result);
       const activeIndex = findActiveIndex(probe.result, options.projectRootPath);
       if (activeIndex) {
         if (typeof activeIndex.phase === "string") {
@@ -383,8 +539,10 @@ async function runDuringIndexBenchmark(options, serverHealth) {
     observationProbeFailures: [],
     observedPhases: new Set(),
     resolveProbeFailures: [],
+    searchProbeFailures: [],
     summary: undefined,
   };
+  assertRuntimeStable(options, serverHealth);
 
   try {
     diagnostics.indexSubmission = await indexProject(options.baseUrl, options.projectRootPath, options.timeoutMs);
@@ -396,10 +554,17 @@ async function runDuringIndexBenchmark(options, serverHealth) {
 
   const healthMs = [];
   const resolveMs = [];
+  const searchSamples = [];
+  const requiredSearchSamples = options.duringIndexSearch
+    ? Math.max(DEFAULT_ACTIVE_SAMPLE_COUNT, options.releaseGate ? options.searchConcurrency * 2 : 0)
+    : 0;
   const sampleStartedAt = Date.now();
   const deadline = sampleStartedAt + options.activeWindowTimeoutMs;
   while (
-    (healthMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT || resolveMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT)
+    (healthMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT
+      || resolveMs.length < DEFAULT_ACTIVE_SAMPLE_COUNT
+      || (options.duringIndexSearch
+        && searchSamples.length + diagnostics.searchProbeFailures.length < requiredSearchSamples))
     && Date.now() < deadline
   ) {
     const before = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
@@ -407,18 +572,29 @@ async function runDuringIndexBenchmark(options, serverHealth) {
       diagnostics.healthProbeFailures.push(before);
       continue;
     }
+    assertRuntimeStable(options, before.result);
     if (!recordActiveHealth(before, options.projectRootPath, healthMs, diagnostics)) {
       break;
     }
 
-    const resolveProbe = await captureProbe(() => runResolveProbe(
-      options.baseUrl,
-      options.query,
-      options.timeoutMs,
-    ));
+    const [resolveProbe, batch] = await Promise.all([
+      captureProbe(() => runResolveProbe(
+        options.baseUrl,
+        options.query,
+        options.timeoutMs,
+      )),
+      options.duringIndexSearch
+        && searchSamples.length + diagnostics.searchProbeFailures.length < requiredSearchSamples
+        ? Promise.all(Array.from(
+          { length: options.searchConcurrency },
+          (_unused, requestVariant) => captureSearch(options, requestVariant),
+        ))
+        : Promise.resolve([]),
+    ]);
     const after = await captureProbe(() => runHealthProbe(options.baseUrl, options.timeoutMs));
     let activeAfter = false;
     if (after.ok) {
+      assertRuntimeStable(options, after.result);
       activeAfter = recordActiveHealth(after, options.projectRootPath, healthMs, diagnostics);
     } else {
       diagnostics.healthProbeFailures.push(after);
@@ -429,6 +605,15 @@ async function runDuringIndexBenchmark(options, serverHealth) {
     } else if (activeAfter) {
       resolveMs.push(resolveProbe.durationMs);
     }
+    if (activeAfter) {
+      for (const sample of batch) {
+        if (sample.ok) {
+          searchSamples.push(sample);
+        } else {
+          diagnostics.searchProbeFailures.push(sample);
+        }
+      }
+    }
     if (!activeAfter) {
       break;
     }
@@ -436,7 +621,9 @@ async function runDuringIndexBenchmark(options, serverHealth) {
 
   const healthTimeouts = diagnostics.healthProbeFailures.filter((failure) => failure.timedOut).length;
   const resolveTimeouts = diagnostics.resolveProbeFailures.filter((failure) => failure.timedOut).length;
-  const timeoutCount = healthTimeouts + resolveTimeouts;
+  const searchTimeouts = diagnostics.searchProbeFailures.filter((failure) => failure.timedOut).length;
+  const timeoutCount = healthTimeouts + resolveTimeouts + searchTimeouts;
+  const searchMetrics = summarizeSearchSamples([...searchSamples, ...diagnostics.searchProbeFailures]);
   const summary = {
     baseUrl: options.baseUrl,
     healthP95Ms: percentile(healthMs, 95),
@@ -447,21 +634,32 @@ async function runDuringIndexBenchmark(options, serverHealth) {
     projectRootPath: options.projectRootPath,
     query: options.query,
     requiredSamples: DEFAULT_ACTIVE_SAMPLE_COUNT,
+    requiredSearchSamples,
     resolveP95Ms: percentile(resolveMs, 95),
     resolveSummary: summarize(resolveMs),
+    results: searchMetrics.results,
     sampleWindowMs: Date.now() - sampleStartedAt,
     server: {
       pid: serverHealth.pid,
       version: serverHealth.version,
     },
+    searchConcurrency: options.duringIndexSearch ? options.searchConcurrency : 0,
+    searchFailures: searchMetrics.failures,
+    searchP95Ms: searchMetrics.latency.p95Ms,
+    searchP99Ms: searchMetrics.latency.p99Ms,
+    searchSummary: searchMetrics.latency,
+    searchQueueMs: summarizeSearchQueue(serverHealth, diagnostics.lastHealth),
     thresholds: {
       healthP95Ms: options.healthP95ThresholdMs,
       maxTimeouts: options.maxTimeouts,
       resolveP95Ms: options.resolveP95ThresholdMs,
+      searchP95Ms: options.searchP95ThresholdMs,
+      searchP99Ms: options.searchP99ThresholdMs,
     },
     timeouts: {
       health: healthTimeouts,
       resolve: resolveTimeouts,
+      search: searchTimeouts,
       total: timeoutCount,
     },
   };
@@ -480,12 +678,28 @@ async function runDuringIndexBenchmark(options, serverHealth) {
   if (summary.resolveP95Ms > options.resolveP95ThresholdMs) {
     violations.push(`resolve p95 ${summary.resolveP95Ms}ms exceeds threshold ${options.resolveP95ThresholdMs}ms`);
   }
+  if (options.duringIndexSearch && summary.searchSummary.count < requiredSearchSamples) {
+    violations.push(`search valid sample count ${summary.searchSummary.count} is below required ${requiredSearchSamples}`);
+  }
+  if (options.duringIndexSearch && summary.searchP95Ms > options.searchP95ThresholdMs) {
+    violations.push(`search p95 ${summary.searchP95Ms}ms exceeds threshold ${options.searchP95ThresholdMs}ms`);
+  }
+  if (options.duringIndexSearch && summary.searchP99Ms > options.searchP99ThresholdMs) {
+    violations.push(`search p99 ${summary.searchP99Ms}ms exceeds threshold ${options.searchP99ThresholdMs}ms`);
+  }
+  if (options.duringIndexSearch && summary.results.nonEmptyCount < requiredSearchSamples) {
+    violations.push(`search non-empty result count ${summary.results.nonEmptyCount} is below required ${requiredSearchSamples}`);
+  }
+  if (options.duringIndexSearch && !summary.results.stable) {
+    violations.push(`search results were unstable across ${summary.results.distinctSignatures} signatures`);
+  }
   if (timeoutCount > options.maxTimeouts) {
     violations.push(`timeout count ${timeoutCount} exceeds allowed ${options.maxTimeouts}`);
   }
   const nonTimeoutFailures = [
     ...diagnostics.healthProbeFailures,
     ...diagnostics.resolveProbeFailures,
+    ...diagnostics.searchProbeFailures,
   ].filter((failure) => !failure.timedOut);
   if (nonTimeoutFailures.length > 0) {
     violations.push(`${nonTimeoutFailures.length} non-timeout probe request(s) failed`);
@@ -636,18 +850,154 @@ async function runIteration(options, iteration) {
     }, 0);
   });
 
-  const searchPromise = runSearch(options.baseUrl, options.projectRootPath, options.query, options.timeoutMs);
+  const searchPromise = Promise.all(
+    Array.from(
+      { length: options.searchConcurrency },
+      (_unused, requestVariant) => captureSearch(options, requestVariant),
+    ),
+  );
   const healthPromises = Array.from({ length: options.concurrency }, () => runHealthProbe(options.baseUrl, options.timeoutMs));
-  const [search, ...healthResults] = await Promise.all([searchPromise, ...healthPromises]);
+  const [searches, ...healthResults] = await Promise.all([searchPromise, ...healthPromises]);
+  for (const health of healthResults) assertRuntimeStable(options, health.result);
   const timerBeforeSearchResolved = timerFired;
   await timerPromise;
 
   return {
     healthMs: healthResults.map((result) => result.durationMs),
     iteration,
-    resultCount: extractResultCount(search.result),
-    searchMs: search.durationMs,
+    resultCount: searches.reduce((total, search) => total + (search.ok ? search.resultCount : 0), 0),
+    searchMs: Math.max(...searches.map((search) => search.durationMs), 0),
+    searches,
     timerBeforeSearchResolved,
+  };
+}
+
+async function runIdleBenchmark(options, serverHealth) {
+  const startHealth = serverHealth ?? await fetchJson(
+    `${options.baseUrl}/health`,
+    undefined,
+    Math.max(options.timeoutMs, MIN_INITIAL_HEALTH_TIMEOUT_MS),
+  );
+  assertRuntimeStable(options, startHealth);
+  const iterations = [];
+  const benchmarkStartedAt = performance.now();
+  for (let index = 0; index < options.iterations; index++) {
+    iterations.push(await runIteration(options, index + 1));
+  }
+  const elapsedMs = performance.now() - benchmarkStartedAt;
+  const searchSamples = iterations.flatMap((iteration) => iteration.searches);
+  const searchMetrics = summarizeSearchSamples(searchSamples);
+  const healthMs = iterations.flatMap((iteration) => iteration.healthMs);
+  const endHealth = await fetchJson(`${options.baseUrl}/health`, undefined, options.timeoutMs);
+  assertRuntimeStable(options, endHealth);
+  const eventLoopDelay = {
+    blockedIterations: iterations.filter((iteration) => !iteration.timerBeforeSearchResolved).length,
+    responsiveIterations: iterations.filter((iteration) => iteration.timerBeforeSearchResolved).length,
+    totalIterations: iterations.length,
+  };
+  const summary = {
+    baseUrl: options.baseUrl,
+    concurrency: options.concurrency,
+    eventLoopDelay,
+    healthP95Ms: percentile(healthMs, 95),
+    healthSummary: summarize(healthMs),
+    iterations,
+    projectRootPath: options.projectRootPath,
+    query: options.query,
+    results: searchMetrics.results,
+    searchConcurrency: options.searchConcurrency,
+    searchFailures: searchMetrics.failures,
+    searchP95Ms: searchMetrics.latency.p95Ms,
+    searchP99Ms: searchMetrics.latency.p99Ms,
+    searchQueueMs: summarizeSearchQueue(startHealth, endHealth),
+    searchSummary: searchMetrics.latency,
+    server: {
+      pid: startHealth.pid,
+      version: startHealth.version,
+    },
+    throughput: {
+      elapsedMs: Math.round(elapsedMs),
+      searchesPerSecond: elapsedMs > 0 ? Number((searchSamples.length * 1_000 / elapsedMs).toFixed(2)) : 0,
+    },
+  };
+
+  if (options.smoke && searchSamples.some((sample) => !sample.ok || sample.resultCount < 1)) {
+    throw new Error("smoke benchmark did not return search results");
+  }
+  if (options.releaseGate) {
+    const expectedSamples = options.iterations * options.searchConcurrency;
+    const violations = [];
+    if (summary.searchSummary.count < expectedSamples) {
+      violations.push(`search valid sample count ${summary.searchSummary.count} is below required ${expectedSamples}`);
+    }
+    if (summary.searchP95Ms > options.searchP95ThresholdMs) {
+      violations.push(`search p95 ${summary.searchP95Ms}ms exceeds threshold ${options.searchP95ThresholdMs}ms`);
+    }
+    if (summary.searchP99Ms > options.searchP99ThresholdMs) {
+      violations.push(`search p99 ${summary.searchP99Ms}ms exceeds threshold ${options.searchP99ThresholdMs}ms`);
+    }
+    if (summary.searchFailures.timeouts > options.maxTimeouts) {
+      violations.push(`search timeout count ${summary.searchFailures.timeouts} exceeds allowed ${options.maxTimeouts}`);
+    }
+    if (summary.searchFailures.errors > 0) {
+      violations.push(`${summary.searchFailures.errors} non-timeout search request(s) failed`);
+    }
+    if (summary.results.nonEmptyCount < expectedSamples) {
+      violations.push(`search non-empty result count ${summary.results.nonEmptyCount} is below required ${expectedSamples}`);
+    }
+    if (!summary.results.stable) {
+      violations.push(`search results were unstable across ${summary.results.distinctSignatures} signatures`);
+    }
+    if (summary.results.variants !== options.searchConcurrency) {
+      violations.push(`distinct request variant count ${summary.results.variants} does not match concurrency ${options.searchConcurrency}`);
+    }
+    if (violations.length > 0) {
+      throw new Error(`idle search concurrency ${options.searchConcurrency} gate failed:\n- ${violations.join("\n- ")}`);
+    }
+  }
+
+  return summary;
+}
+
+function buildMatrixSummary(mode, levels) {
+  return {
+    concurrencyLevels: levels.map((level) => level.searchConcurrency),
+    levels,
+    mode,
+  };
+}
+
+function compactReleaseLevel(summary) {
+  const compact = { ...summary };
+  delete compact.iterations;
+  return compact;
+}
+
+async function runReleaseGate(options, serverHealth) {
+  const idleLevels = [];
+  for (const searchConcurrency of RELEASE_SEARCH_CONCURRENCY_LEVELS) {
+    idleLevels.push(compactReleaseLevel(await runIdleBenchmark(
+      { ...options, benchmarkMode: "idle", searchConcurrency },
+      idleLevels.length === 0 ? serverHealth : undefined,
+    )));
+  }
+
+  const duringIndexLevels = [];
+  for (const searchConcurrency of RELEASE_SEARCH_CONCURRENCY_LEVELS) {
+    const health = await fetchJson(`${options.baseUrl}/health`, undefined, options.timeoutMs);
+    assertRuntimeStable(options, health);
+    duringIndexLevels.push(await runDuringIndexBenchmark({
+      ...options,
+      benchmarkMode: "during-index",
+      searchConcurrency,
+    }, health));
+  }
+
+  return {
+    concurrencyLevels: RELEASE_SEARCH_CONCURRENCY_LEVELS,
+    duringIndex: buildMatrixSummary("during-index-concurrency-matrix", duringIndexLevels),
+    idle: buildMatrixSummary("idle-concurrency-matrix", idleLevels),
+    mode: "release-gate",
   };
 }
 
@@ -663,7 +1013,20 @@ async function main() {
       options.projectRootPath = smokeDir;
     }
 
-    const health = await fetchJson(`${options.baseUrl}/health`, undefined, options.timeoutMs);
+    const health = await fetchJson(
+      `${options.baseUrl}/health`,
+      undefined,
+      Math.max(options.timeoutMs, MIN_INITIAL_HEALTH_TIMEOUT_MS),
+    );
+    assertRuntimeStable(options, health);
+    if (options.releaseGate) {
+      if (options.smoke) {
+        await indexProject(options.baseUrl, options.projectRootPath, options.timeoutMs);
+      }
+      const summary = await runReleaseGate(options, health);
+      console.log(JSON.stringify(summary, null, 2));
+      return;
+    }
     if (options.duringIndex) {
       const summary = await runDuringIndexBenchmark(options, health);
       if (options.json || options.smoke) {
@@ -684,38 +1047,7 @@ async function main() {
     if (options.smoke) {
       await indexProject(options.baseUrl, options.projectRootPath, options.timeoutMs);
     }
-    const iterations = [];
-
-    for (let index = 0; index < options.iterations; index++) {
-      iterations.push(await runIteration(options, index + 1));
-    }
-    if (options.smoke && iterations.some((iteration) => iteration.resultCount < 1)) {
-      throw new Error("smoke benchmark did not return search results");
-    }
-
-    const searchMs = iterations.map((iteration) => iteration.searchMs);
-    const healthMs = iterations.flatMap((iteration) => iteration.healthMs);
-    const eventLoopDelay = {
-      blockedIterations: iterations.filter((iteration) => !iteration.timerBeforeSearchResolved).length,
-      responsiveIterations: iterations.filter((iteration) => iteration.timerBeforeSearchResolved).length,
-      totalIterations: iterations.length,
-    };
-    const summary = {
-      baseUrl: options.baseUrl,
-      concurrency: options.concurrency,
-      eventLoopDelay,
-      healthP95Ms: percentile(healthMs, 95),
-      healthSummary: summarize(healthMs),
-      iterations,
-      projectRootPath: options.projectRootPath,
-      query: options.query,
-      searchP95Ms: percentile(searchMs, 95),
-      searchSummary: summarize(searchMs),
-      server: {
-        pid: health.pid,
-        version: health.version,
-      },
-    };
+    const summary = await runIdleBenchmark(options, health);
 
     if (options.json || options.smoke) {
       console.log(JSON.stringify(summary, null, 2));
@@ -725,10 +1057,10 @@ async function main() {
     console.log(`ace-mcp search benchmark (${summary.server.version ?? "unknown"})`);
     console.log(`project: ${summary.projectRootPath}`);
     console.log(`query: ${summary.query}`);
-    console.log(`iterations: ${options.iterations}, health concurrency: ${options.concurrency}`);
-    console.log(`search p50/p95/max: ${summary.searchSummary.p50Ms}/${summary.searchSummary.p95Ms}/${summary.searchSummary.maxMs}ms`);
+    console.log(`iterations: ${options.iterations}, search concurrency: ${options.searchConcurrency}, health concurrency: ${options.concurrency}`);
+    console.log(`search p50/p95/p99/max: ${summary.searchSummary.p50Ms}/${summary.searchSummary.p95Ms}/${summary.searchSummary.p99Ms}/${summary.searchSummary.maxMs}ms`);
     console.log(`health p50/p95/max: ${summary.healthSummary.p50Ms}/${summary.healthSummary.p95Ms}/${summary.healthSummary.maxMs}ms`);
-    console.log(`event loop responsive iterations: ${eventLoopDelay.responsiveIterations}/${eventLoopDelay.totalIterations}`);
+    console.log(`event loop responsive iterations: ${summary.eventLoopDelay.responsiveIterations}/${summary.eventLoopDelay.totalIterations}`);
   } catch (error) {
     if (smokeServer) {
       const logs = await smokeServer.getLogs();

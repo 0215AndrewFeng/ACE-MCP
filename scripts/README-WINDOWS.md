@@ -1,8 +1,8 @@
 # ace-mcp Windows 使用说明
 
-适用包名：`ace-mcp-v4.10.7-win-x64.zip`。
+适用包名：`ace-mcp-v4.10.8-win-x64.zip`。
 
-发布状态：v4.10.7 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
+发布状态：v4.10.8 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
 
 ## 系统要求
 
@@ -11,6 +11,12 @@
 - 首次运行和日常使用均不需要从 npm 或 GitHub 下载依赖
 
 通过上述 Windows 门禁的发布包应包含同一台构建主机上验证过的 Node.js 22 运行时、生产依赖和 `better-sqlite3` Windows 原生二进制。
+
+## v4.10.8 运行时稳定性与搜索并发
+
+- SQLite 搜索使用有限 reader pool、请求队列上限和总 deadline；8/16/32 及 during-index 场景纳入发布 benchmark。
+- 自动维护默认最多启用 8 个 root-only watcher，其余项目降级为 `periodic-only`，仍由 startup/periodic reconciliation 保证最终一致性。
+- maintenance lease 在长持久化阶段之间主动续租并执行 fencing，避免错误提示其他进程持有自动维护 ownership。
 
 ## v4.10.7 Codex 沙箱配置
 
@@ -37,7 +43,7 @@
 
 ## 启动 Web 面板
 
-1. 解压 `ace-mcp-v4.10.7-win-x64.zip`。
+1. 解压 `ace-mcp-v4.10.8-win-x64.zip`。
 2. 双击 `start-web.cmd`。
 3. 访问 <http://127.0.0.1:8787/>。
 
@@ -63,7 +69,7 @@ PowerShell 也可以运行：
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.7-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.8-win-x64\\ace-mcp.cmd"
     }
   }
 }

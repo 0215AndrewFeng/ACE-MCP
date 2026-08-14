@@ -158,6 +158,87 @@ test("SQLiteStore.deleteFiles cascades file-owned rows and leaves project stats 
   }
 });
 
+test("SQLiteStore replaces a multi-chunk file with one delete scan per FTS table", async () => {
+  const env = await createTestProjectEnvironment({});
+  const projectId = "bounded-fts-delete-project";
+  const fileId = "bounded-fts-delete-file";
+  const indexedAt = "2026-08-14T00:00:00.000Z";
+  const indexedFile = {
+    encoding: "utf8",
+    fileId,
+    language: "javascript" as const,
+    lineCount: 3,
+    mtimeMs: 1,
+    relativePath: "src/index.ts",
+    sha256: "first",
+    size: 30,
+  };
+  const chunks = [1, 2, 3].map((line) => ({
+    chunkId: `bounded-fts-delete-chunk-${line}`,
+    content: `export const value${line} = ${line};`,
+    endLine: line,
+    fileId,
+    startLine: line,
+    symbolNames: [`value${line}`],
+  }));
+
+  try {
+    env.store.upsertProject(projectId, {
+      languages: ["javascript"],
+      markers: ["package.json"],
+      projectType: "single-language",
+      rootPath: path.join(env.tempDir, "bounded-fts-delete-project"),
+    }, "indexing", indexedAt);
+    env.store.writeFileIndexBatch(
+      projectId,
+      [{ chunks, imports: [], indexedFile, symbols: [], usages: [] }],
+      indexedAt,
+    );
+
+    const db = (env.store as unknown as { db: Database.Database }).db;
+    const originalPrepare = db.prepare.bind(db);
+    const ftsDeleteCalls: Array<{ parameterCount: number; table: string }> = [];
+    db.prepare = ((source: string) => {
+      const statement = originalPrepare(source);
+      const match = source.match(/^DELETE FROM (chunk(?:_semantic)?_fts) WHERE/u);
+      if (!match) {
+        return statement;
+      }
+      return new Proxy(statement, {
+        get(target, property) {
+          if (property === "run") {
+            return (...parameters: unknown[]) => {
+              ftsDeleteCalls.push({ parameterCount: parameters.length, table: match[1] });
+              return target.run(...parameters);
+            };
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    }) as typeof db.prepare;
+
+    env.store.writeFileIndexBatch(
+      projectId,
+      [{
+        chunks,
+        imports: [],
+        indexedFile: { ...indexedFile, mtimeMs: 2, sha256: "second" },
+        symbols: [],
+        usages: [],
+      }],
+      "2026-08-14T00:01:00.000Z",
+    );
+
+    assert.deepEqual(ftsDeleteCalls, [
+      { parameterCount: 3, table: "chunk_fts" },
+      { parameterCount: 3, table: "chunk_semantic_fts" },
+    ]);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("SQLiteStore.deleteProject removes registration and cascades indexed rows", async () => {
   const env = await createTestProjectEnvironment({
     "package.json": "{\"type\":\"module\"}",

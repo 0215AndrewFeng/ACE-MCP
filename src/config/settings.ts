@@ -30,6 +30,9 @@ type RawSettings = Partial<
     | "searchCacheMaxSize"
     | "searchCacheTtlMs"
     | "searchFanoutLimit"
+    | "searchWorkerPoolSize"
+    | "searchWorkerQueueMaxPending"
+    | "searchWorkerQueueDeadlineMs"
     | "textExtensions"
     | "vectorCacheMaxProjects"
     | "vectorIndexingMode"
@@ -78,6 +81,9 @@ const DEFAULT_PUBLIC_SETTINGS = {
   searchCacheMaxSize: 100,
   vectorCacheMaxProjects: 10,
   searchFanoutLimit: 50,
+  searchWorkerPoolSize: 2,
+  searchWorkerQueueMaxPending: 64,
+  searchWorkerQueueDeadlineMs: 5000,
   llmApiUrl: "",
   llmApiKey: "",
   llmModel: "gpt-4o-mini",
@@ -275,6 +281,12 @@ export async function loadSettings(): Promise<Settings> {
       Number(process.env.ACE_MCP_VECTOR_CACHE_MAX_PROJECTS ?? fileSettings.vectorCacheMaxProjects ?? DEFAULT_PUBLIC_SETTINGS.vectorCacheMaxProjects),
     searchFanoutLimit:
       Number(process.env.ACE_MCP_SEARCH_FANOUT_LIMIT ?? fileSettings.searchFanoutLimit ?? DEFAULT_PUBLIC_SETTINGS.searchFanoutLimit),
+    searchWorkerPoolSize:
+      Number(process.env.ACE_MCP_SEARCH_WORKER_POOL_SIZE ?? fileSettings.searchWorkerPoolSize ?? DEFAULT_PUBLIC_SETTINGS.searchWorkerPoolSize),
+    searchWorkerQueueMaxPending:
+      Number(process.env.ACE_MCP_SEARCH_WORKER_QUEUE_MAX_PENDING ?? fileSettings.searchWorkerQueueMaxPending ?? DEFAULT_PUBLIC_SETTINGS.searchWorkerQueueMaxPending),
+    searchWorkerQueueDeadlineMs:
+      Number(process.env.ACE_MCP_SEARCH_WORKER_QUEUE_DEADLINE_MS ?? fileSettings.searchWorkerQueueDeadlineMs ?? DEFAULT_PUBLIC_SETTINGS.searchWorkerQueueDeadlineMs),
     llmApiUrl: process.env.ACE_MCP_LLM_API_URL ?? (fileSettings.llmApiUrl as string | undefined) ?? "",
     llmApiKey: process.env.ACE_MCP_LLM_API_KEY ?? (fileSettings.llmApiKey as string | undefined) ?? "",
     llmModel: process.env.ACE_MCP_LLM_MODEL ?? (fileSettings.llmModel as string | undefined) ?? "gpt-4o-mini",

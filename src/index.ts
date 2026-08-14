@@ -200,12 +200,12 @@ async function main(): Promise<void> {
       const evalConfig = await loadEvalConfig(cliOptions.evalPath);
       const result = await runEval(evalConfig, indexCoordinator, searchService);
       process.stdout.write(`${result.report}\n`);
-      await indexCoordinator.close();
+      await Promise.all([indexCoordinator.close(), searchService.close()]);
       process.exit(result.passed ? 0 : 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`Eval failed: ${message}\n`);
-      await indexCoordinator.close();
+      await Promise.all([indexCoordinator.close(), searchService.close()]);
       process.exit(1);
     }
   }
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       }
     } finally {
       try {
-        await indexCoordinator.close();
+        await Promise.all([indexCoordinator.close(), searchService.close()]);
       } finally {
         process.exit(exitCode);
       }

@@ -2,6 +2,26 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.8] - 2026-08-14
+
+### Added
+
+- SQLite 搜索 reader 改为有限 worker pool；一次 worker 请求合并 lexical、semantic FTS、unicode、symbol、path 和 identifier boost 候选，并提供 active/pending/queueMs 诊断、队列上限、总 deadline、in-flight 复用及可重试 503 overload/timeout。
+- `/health` 新增 search worker、startup maintenance queue、maintenance lease 和 watcher coverage 诊断；自动维护默认最多启用 8 个 root-only watcher，其余项目使用 `periodic-only` 覆盖。
+- `release:benchmark` 增加真实 8/16/32 搜索并发和 during-index 门禁，覆盖 p50/p95/p99、吞吐、queueMs、超时、错误、非空稳定结果、health/resolve 响应及 watcher/lease 异常。
+
+### Fixed
+
+- watcher 创建和异步 `EMFILE` 失败采用 per-project single-flight、指数退避+jitter、重试上限与全局熔断，取消“索引后立即重建 watcher”的恢复热循环。
+- startup/periodic 自动维护按有界低优先队列逐项目执行，显式索引可优先获取全局 slot，避免约 50 个项目启动时与前台查询争用。
+- FTS5 的 `chunk_id` 为 `UNINDEXED` 字段，旧实现按 chunk 删除会重复整表扫描；现改为每文件、每张 FTS 表一次批量 `IN (...)` 删除。
+- maintenance lease 使用独立控制 worker，并在每个持久化阶段前按剩余 TTL 主动续租和执行 fencing，长 SQLite 事务不再造成 lease 过期或误报 `Another process owns automatic index maintenance`。
+
+### Validation
+
+- 真实 49 项目 startup soak 在约 4 分 36 秒内完成 49/49，watcher 保持 8 active + 41 `periodic-only`，FD 从旧实现触发 `EMFILE` 的 256 上限降至约 27，lease 连续续租后正常释放且日志无新 watcher/lease 异常。
+- 生产 SQLite 的 8/16/32 并发 idle p95 为 3312/1447/1534ms，during-index p95 为 1560/1879/1508ms；during-index health p95 为 2/7/1ms、resolve p95 为 17/71/12ms，timeout/error 均为 0，结果非空且稳定。
+
 ## [4.10.7] - 2026-08-11
 
 ### Codex sandbox initialization
