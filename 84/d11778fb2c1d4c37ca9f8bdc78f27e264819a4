@@ -1,0 +1,21 @@
+tasks/lessons.md
+  s_24862446cf1d51::t_90778d8d2a8115 3
+README.md
+  s_24862446cf1d51::t_90778d8d2a8115 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.18",
+  "base_commit_sha": "84d11778fb2c1d4c37ca9f8bdc78f27e264819a4",
+  "prompts": {},
+  "sessions": {
+    "s_24862446cf1d51": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ff49a-6ed8-7ac2-bb31-bf51bb10a14a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
