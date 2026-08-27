@@ -64,6 +64,217 @@ test("project router treats compact CJK query components as one covered concept"
   }
 });
 
+test("project router selects a project from its existing summary when code has no matching terms", async () => {
+  const env = await createTestProjectEnvironment({});
+  const refundProject = path.join(env.tempDir, "refund-service");
+  const changeProject = path.join(env.tempDir, "change-service");
+
+  try {
+    await writeProjectFile(refundProject, "src/bootstrap.ts", "export const bootstrap = true;\n");
+    await writeProjectFile(changeProject, "src/bootstrap.ts", "export const bootstrap = true;\n");
+    await env.indexCoordinator.indexProject(refundProject, "full");
+    await env.indexCoordinator.indexProject(changeProject, "full");
+    await writeProjectFile(
+      refundProject,
+      ".ace-mcp/summaries/project-summary.json",
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        projectRootPath: refundProject,
+        architecture: "Coordinates airline after-sales workflows.",
+        modules: [{
+          path: "refund-domain",
+          description: "Handles refund inventory compensation for canceled flight tickets.",
+          keySymbols: ["RefundInventoryCompensator"],
+          fileCount: 1,
+        }],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+
+    const result = await new ProjectRouter(env.store, env.searchService).resolve(
+      "refund inventory compensation",
+    );
+
+    assert.equal(result.decision, "single");
+    assert.deepEqual(result.selectedProjectRootPaths, [refundProject]);
+    assert.equal(result.candidates[0]?.projectRootPath, refundProject);
+    assert.ok(result.candidates[0]?.evidence.some((item) => item.source === "summary"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router refreshes cached summary evidence after the summary file changes", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/bootstrap.ts": "export const bootstrap = true;\n",
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    const summaryPath = ".ace-mcp/summaries/project-summary.json";
+    await writeProjectFile(
+      env.projectRootPath,
+      summaryPath,
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        projectRootPath: env.projectRootPath,
+        architecture: "Handles refund inventory compensation.",
+        modules: [],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+    const router = new ProjectRouter(env.store, env.searchService);
+    const initial = await router.resolve("refund inventory compensation");
+    assert.deepEqual(initial.selectedProjectRootPaths, [env.projectRootPath]);
+
+    await writeProjectFile(
+      env.projectRootPath,
+      summaryPath,
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:01:00.000Z",
+        projectRootPath: env.projectRootPath,
+        architecture: "Handles ticket change traffic switching.",
+        modules: [],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+
+    const refreshed = await router.resolve("ticket change traffic switching");
+    assert.deepEqual(refreshed.selectedProjectRootPaths, [env.projectRootPath]);
+    assert.ok(refreshed.candidates[0]?.evidence.some((item) => item.source === "summary"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router includes repository name terms in the summary routing document", async () => {
+  const env = await createTestProjectEnvironment({});
+  const refundProject = path.join(env.tempDir, "refund-fulfillment-service");
+
+  try {
+    await writeProjectFile(refundProject, "src/bootstrap.ts", "export const bootstrap = true;\n");
+    await env.indexCoordinator.indexProject(refundProject, "full");
+    await writeProjectFile(
+      refundProject,
+      ".ace-mcp/summaries/project-summary.json",
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        projectRootPath: refundProject,
+        architecture: "Coordinates airline after-sales workflows.",
+        modules: [],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+
+    const result = await new ProjectRouter(env.store, env.searchService).resolve("refund fulfillment");
+
+    assert.equal(result.decision, "single");
+    assert.deepEqual(result.selectedProjectRootPaths, [refundProject]);
+    assert.deepEqual(new Set(result.candidates[0]?.matchedTerms), new Set(["refund", "fulfillment"]));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router preserves exact key symbols from project summaries", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/bootstrap.ts": "export const bootstrap = true;\n",
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    await writeProjectFile(
+      env.projectRootPath,
+      ".ace-mcp/summaries/project-summary.json",
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        projectRootPath: env.projectRootPath,
+        architecture: "Coordinates airline after-sales workflows.",
+        modules: [{
+          path: "refund-domain",
+          description: "Contains the refund domain model.",
+          keySymbols: ["RefundInventoryCompensator"],
+          fileCount: 1,
+        }],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+
+    const result = await new ProjectRouter(env.store, env.searchService).resolve("RefundInventoryCompensator");
+
+    assert.equal(result.decision, "single");
+    assert.deepEqual(result.selectedProjectRootPaths, [env.projectRootPath]);
+    assert.ok(result.candidates[0]?.matchedTerms.includes("refundinventorycompensator"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router ignores a malformed summary and retains indexed symbol routing", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/RefundController.ts": "export class RefundController {}\n",
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    await writeProjectFile(
+      env.projectRootPath,
+      ".ace-mcp/summaries/project-summary.json",
+      "{not valid json",
+    );
+
+    const result = await new ProjectRouter(env.store, env.searchService).resolve("RefundController");
+
+    assert.equal(result.decision, "single");
+    assert.deepEqual(result.selectedProjectRootPaths, [env.projectRootPath]);
+    assert.ok(result.candidates[0]?.evidence.some((item) => item.source === "symbol"));
+  } finally {
+    await env.cleanup();
+  }
+});
+
+test("project router abstains from low-coverage summary evidence", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/bootstrap.ts": "export const bootstrap = true;\n",
+  });
+
+  try {
+    await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+    await writeProjectFile(
+      env.projectRootPath,
+      ".ace-mcp/summaries/project-summary.json",
+      JSON.stringify({
+        version: 1,
+        generatedAt: "2026-08-27T00:00:00.000Z",
+        projectRootPath: env.projectRootPath,
+        architecture: "Handles refund workflows.",
+        modules: [],
+        relationships: [],
+        tokensUsed: { prompt: 1, completion: 1 },
+      }),
+    );
+
+    const result = await new ProjectRouter(env.store, env.searchService).resolve(
+      "refund inventory compensation reconciliation",
+    );
+
+    assert.equal(result.decision, "abstain");
+    assert.deepEqual(result.selectedProjectRootPaths, []);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("project router does not treat a bridge bigram as a covered compact CJK concept", async () => {
   const env = await createTestProjectEnvironment({});
 

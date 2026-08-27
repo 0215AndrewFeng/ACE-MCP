@@ -13,6 +13,7 @@ import {
 import type { SQLiteStore } from "../storage/sqliteStore.js";
 import { findAggregateProjectRoots } from "../project/projectHierarchy.js";
 import { analyzeQuery, boundProjectRouteTerms } from "./queryAnalyzer.js";
+import { ProjectSummaryRouteCatalog } from "./projectSummaryRouteCatalog.js";
 import type { SearchService } from "./searchService.js";
 import { CJK_PATTERN } from "./semanticText.js";
 
@@ -22,6 +23,7 @@ const MIN_DECISION_CANDIDATES = 2;
 const ROUTE_FANOUT_PER_PROJECT = 20;
 const MAX_EVIDENCE_PER_PROJECT = 5;
 const LEXICAL_EVIDENCE_WEIGHT = 0.15;
+const SUMMARY_EVIDENCE_WEIGHT = 0.3;
 const SYMBOL_EVIDENCE_WEIGHT = 0.45;
 const DUPLICATE_EVIDENCE_DECAY = 0.1;
 const SINGLE_PROJECT_MARGIN_RATIO = 0.25;
@@ -136,7 +138,11 @@ function scoreToConfidence(score: number): number {
 function scoreProjectEvidence(evidence: ProjectRouteEvidence[]): number {
   // Corpus-wide ranks let duplicate-heavy projects suppress equally strong smaller projects.
   const weights = evidence
-    .map((item) => item.source === "symbol" ? SYMBOL_EVIDENCE_WEIGHT : LEXICAL_EVIDENCE_WEIGHT)
+    .map((item) => item.source === "symbol"
+      ? SYMBOL_EVIDENCE_WEIGHT
+      : item.source === "summary"
+        ? SUMMARY_EVIDENCE_WEIGHT
+        : LEXICAL_EVIDENCE_WEIGHT)
     .sort((left, right) => right - left);
 
   return weights.reduce(
@@ -247,6 +253,8 @@ function hasStrongRouteSignal(query: string, analysis: QueryAnalysis): boolean {
 }
 
 export class ProjectRouter {
+  private readonly summaryCatalog = new ProjectSummaryRouteCatalog();
+
   public constructor(
     private readonly store: SQLiteStore,
     private readonly searchService: SearchService,
@@ -284,11 +292,15 @@ export class ProjectRouter {
     const excludedProjectRootPaths = registeredProjects
       .map((project) => project.projectRootPath)
       .filter((projectRootPath) => !eligibleRoots.has(projectRootPath));
-    const matches = await this.searchService.searchProjectRouteMatches(
-      normalizedQuery,
-      Math.max(50, Math.min(500, eligibleProjects.length * ROUTE_FANOUT_PER_PROJECT)),
-      excludedProjectRootPaths,
-    );
+    const [codeMatches, summaryMatches] = await Promise.all([
+      this.searchService.searchProjectRouteMatches(
+        normalizedQuery,
+        Math.max(50, Math.min(500, eligibleProjects.length * ROUTE_FANOUT_PER_PROJECT)),
+        excludedProjectRootPaths,
+      ),
+      this.summaryCatalog.findMatches([...eligibleRoots], routeTerms),
+    ]);
+    const matches = [...summaryMatches, ...codeMatches];
     const accumulators = new Map<string, CandidateAccumulator>();
 
     for (const match of matches) {

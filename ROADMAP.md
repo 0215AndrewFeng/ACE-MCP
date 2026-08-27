@@ -124,6 +124,7 @@
 67. ✅ **Git dirty 重复索引修复**：Git dirty/untracked 路径不再被直接判定为必须重建，而是继续经过已有文件指纹校验；长期未提交工作区不会在每次 periodic reconciliation 中重复索引未变化文件（v4.10.5）
 68. ✅ **跨进程索引写入协调**：Web startup/periodic catch-up 和 watcher 自动索引持有可续租 maintenance lease；stdio freshness 在有效 lease 期间直接复用最后成功索引，owner 崩溃或 lease 过期后自动恢复按需索引（v4.10.6）
 69. ✅ **Codex 沙箱初始化闭环**：新增 `ace-mcp-configure-codex` 原子合并 `~/.ace-mcp` 到 `[sandbox_workspace_write].writable_roots`；macOS 一键安装检测到 Codex 后自动配置，避免 SQLite 数据库因沙箱目录未授权而只读（v4.10.7）
+70. ✅ **摘要辅助项目路由**：复用现有项目摘要的 architecture、模块描述、模块路径和 keySymbols 作为有界附加证据，按 mtime 缓存刷新；摘要缺失或损坏时继续使用代码/符号证据并保持 abstain 边界（v4.10.9）
 
 ## v4.10.8 运行时稳定性、搜索并发与启动调度
 

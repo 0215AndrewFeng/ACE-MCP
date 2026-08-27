@@ -1,8 +1,8 @@
 # ace-mcp Windows 使用说明
 
-适用包名：`ace-mcp-v4.10.8-win-x64.zip`。
+适用包名：`ace-mcp-v4.10.9-win-x64.zip`。
 
-发布状态：v4.10.8 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
+发布状态：v4.10.9 自包含 ZIP 尚待回到 Windows 主机补充构建与验证；该产物必须在 Windows x64 + Node.js 22 环境生成并通过原生依赖、CLI、doctor 和 Web smoke，不能用 macOS 构建结果替代。
 
 ## 系统要求
 
@@ -11,6 +11,11 @@
 - 首次运行和日常使用均不需要从 npm 或 GitHub 下载依赖
 
 通过上述 Windows 门禁的发布包应包含同一台构建主机上验证过的 Node.js 22 运行时、生产依赖和 `better-sqlite3` Windows 原生二进制。
+
+## v4.10.9 摘要辅助项目路由
+
+- 自动项目路由可复用现有项目摘要中的架构、模块描述、模块路径和关键符号，补充代码关键词之外的业务语义。
+- 摘要按文件修改时间缓存，缺失或损坏时继续使用原有代码和符号证据，不会在查询时调用 LLM。
 
 ## v4.10.8 运行时稳定性与搜索并发
 
@@ -43,7 +48,7 @@
 
 ## 启动 Web 面板
 
-1. 解压 `ace-mcp-v4.10.8-win-x64.zip`。
+1. 解压 `ace-mcp-v4.10.9-win-x64.zip`。
 2. 双击 `start-web.cmd`。
 3. 访问 <http://127.0.0.1:8787/>。
 
@@ -69,7 +74,7 @@ PowerShell 也可以运行：
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.8-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.9-win-x64\\ace-mcp.cmd"
     }
   }
 }

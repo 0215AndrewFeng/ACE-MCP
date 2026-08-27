@@ -1,3 +1,38 @@
+# v4.10.9 Summary-Assisted Project Routing
+
+Author: feng.ling
+
+## Goal
+
+Reuse existing project architecture summaries as bounded project-level routing evidence so natural-language business questions can select the correct indexed project even when the same wording is absent from code, while preserving current code/symbol routing and abstention behavior.
+
+## Plan
+
+- [x] Add RED coverage for summary-only project recall and summary cache refresh.
+- [x] Build a bounded in-memory routing view from project architecture, module descriptions, module paths, and key symbols.
+- [x] Merge summary evidence into existing code, symbol, project-name, and ambiguity scoring without requiring summaries.
+- [x] Update version carriers and release documentation to v4.10.9.
+- [x] Run focused tests, full tests, build, tgz packaging, Darwin release gates, and diff checks.
+- [ ] Build and smoke-test the self-contained Windows ZIP later on Windows x64 + Node.js 22; do not upload an unverified ZIP from Darwin.
+- [ ] Commit and create annotated tag `v4.10.9`, then push branch/tag to Gitee and GitHub.
+- [ ] Publish matching Gitee and GitHub Releases/assets, verify both remotes, and replace the local Web service.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/search/projectRouter.test.ts`
+- `node --import tsx --test src/config/packageManifest.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:check`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-27: Started from the existing v4.10.8 project router. The summary is additive evidence only; missing, malformed, or stale summary data must not disable indexed code/symbol routing.
+- 2026-08-27: RED returned `abstain` for summary-only business terms, summary refresh, repository-name terms, and exact summary key symbols. GREEN adds a size-bounded, mtime-aware summary route catalog and `summary` evidence weight between lexical and symbol; focused router tests passed 34/34, package/release contracts passed 37/37, and TypeScript build passed.
+- 2026-08-27: Darwin validation passed: `npm test` 394/394, built dist-worker tests 34/34, CLI version 4.10.9, doctor 9 ok / 1 expected port warning / 0 errors, installer syntax, secret scan, tgz content checks, and `git diff --check`. Release benchmark passed idle 8/16/32 search p95 973/52/77ms and during-index p95 44/58/99ms, with health p95 <=7ms, resolve p95 <=9ms, zero timeout/error, and stable non-empty results. The final tgz SHA-256 is `5d1332c20398a978c4bac4d1566f6c165529b18131ec90f528e0ffc348c9b726`; Windows ZIP and `release:smoke` remain platform-pending and will not be claimed or uploaded.
+
 # v4.10.8 Runtime Stability, Search Concurrency, And Startup Scheduling
 
 Author: feng.ling

@@ -30,10 +30,10 @@ test("package manifest is ready for npm and tgz global installation", () => {
   const versionTs = readFileSync(path.join(rootDir, "src/version.ts"), "utf8");
   const autostartSource = readFileSync(path.join(rootDir, "src/autostart/index.ts"), "utf8");
 
-  assert.equal(pkg.version, "4.10.8");
+  assert.equal(pkg.version, "4.10.9");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages?.[""]?.version, pkg.version);
-  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.10\.8"/);
+  assert.match(versionTs, /APP_VERSION\s*=\s*"4\.10\.9"/);
   assert.notEqual(pkg.private, true);
   assert.equal(pkg.bin["ace-mcp"], "dist/index.js");
   assert.equal(pkg.bin["ace-mcp-web"], "scripts/start-web.mjs");
@@ -459,15 +459,15 @@ test("macOS quick install script and docs are packaged for one-command setup", (
   assert.match(configureCodexScript, /renameSync/);
 
   assert.match(readme, /### macOS 一键安装/);
-  assert.match(installScript, /ACE_MCP_VERSION="\$\{ACE_MCP_VERSION:-4\.10\.8\}"/);
-  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.10\.8\/scripts\/install-macos\.sh\)"/);
+  assert.match(installScript, /ACE_MCP_VERSION="\$\{ACE_MCP_VERSION:-4\.10\.9\}"/);
+  assert.match(readme, /bash -c "\$\(curl -fsSL https:\/\/gitee\.com\/AndrewFengCode\/ace-mcp\/raw\/v4\.10\.9\/scripts\/install-macos\.sh\)"/);
   assert.match(readme, /依赖需求清单/);
   assert.match(readme, /Node\.js >=18\.18\.0/);
   assert.match(readme, /npm/);
   assert.match(readme, /curl/);
   assert.match(readme, /Xcode Command Line Tools/);
   assert.match(readme, /Homebrew/);
-  assert.match(readme, /ACE_MCP_VERSION=4\.10\.8/);
+  assert.match(readme, /ACE_MCP_VERSION=4\.10\.9/);
   assert.match(readme, /ace-mcp-configure-codex/);
   assert.match(readme, /attempt to write a readonly database/);
 
@@ -492,19 +492,19 @@ test("release asset verifier documents Gitee tag and downloadable artifacts", ()
   assert.match(verifier, /raw\/v\$\{version\}\/scripts\/install-macos\.sh/);
   assert.match(verifier, /verify-release-assets ok/);
 
-  assert.match(readme, /npm run release:verify-assets -- --version 4\.10\.8/);
-  assert.match(readme, /raw\/v4\.10\.8\/scripts\/install-macos\.sh/);
+  assert.match(readme, /npm run release:verify-assets -- --version 4\.10\.9/);
+  assert.match(readme, /raw\/v4\.10\.9\/scripts\/install-macos\.sh/);
   assert.doesNotMatch(readme, /raw\/master\/scripts\/install-macos\.sh/);
 
-  assert.match(checklist, /npm run release:verify-assets -- --version 4\.10\.8/);
-  assert.match(checklist, /ace-mcp-4\.10\.8\.tgz/);
-  assert.match(checklist, /ace-mcp-v4\.10\.8-win-x64\.zip/);
-  assert.match(checklist, /tar -tf ace-mcp-4\.10\.8\.tgz > \/tmp\/ace-mcp-tgz-files\.txt/);
+  assert.match(checklist, /npm run release:verify-assets -- --version 4\.10\.9/);
+  assert.match(checklist, /ace-mcp-4\.10\.9\.tgz/);
+  assert.match(checklist, /ace-mcp-v4\.10\.9-win-x64\.zip/);
+  assert.match(checklist, /tar -tf ace-mcp-4\.10\.9\.tgz > \/tmp\/ace-mcp-tgz-files\.txt/);
   assert.match(checklist, /rg -Fx "package\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-tgz-files\.txt/);
   assert.match(checklist, /rg -Fx "package\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-tgz-files\.txt/);
-  assert.match(checklist, /unzip -Z1 release\/ace-mcp-v4\.10\.8-win-x64\.zip > \/tmp\/ace-mcp-win-files\.txt/);
-  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.8-win-x64\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-win-files\.txt/);
-  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.8-win-x64\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /unzip -Z1 release\/ace-mcp-v4\.10\.9-win-x64\.zip > \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.9-win-x64\/dist\/web\/static\/js\/app\.js" \/tmp\/ace-mcp-win-files\.txt/);
+  assert.match(checklist, /rg -Fx "ace-mcp-v4\.10\.9-win-x64\/dist\/web\/static\/css\/main\.css" \/tmp\/ace-mcp-win-files\.txt/);
 });
 
 test("Gitee release publisher documents token-based automated release upload", () => {
@@ -526,18 +526,18 @@ test("Gitee release publisher documents token-based automated release upload", (
   assert.match(publishScript, /FormData/);
   assert.match(publishScript, /release:publish ok/);
 
-  assert.match(readme, /npm run release:publish -- --version 4\.10\.8/);
+  assert.match(readme, /npm run release:publish -- --version 4\.10\.9/);
   assert.match(readme, /GITEE_TOKEN/);
   assert.match(readme, /release:verify-assets/);
 
-  assert.match(checklist, /npm run release:publish -- --version 4\.10\.8/);
+  assert.match(checklist, /npm run release:publish -- --version 4\.10\.9/);
   assert.match(checklist, /GITEE_TOKEN/);
 });
 
 test("Windows README documents zip installation and MCP client command paths", () => {
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(windowsReadme, /ace-mcp-v4\.10\.8-win-x64\.zip/);
+  assert.match(windowsReadme, /ace-mcp-v4\.10\.9-win-x64\.zip/);
   assert.match(windowsReadme, /reindex-projects\.mjs/);
   assert.match(windowsReadme, /start-web\.cmd/);
   assert.match(windowsReadme, /ace-mcp\.cmd/);
@@ -546,10 +546,10 @@ test("Windows README documents zip installation and MCP client command paths", (
   assert.match(windowsReadme, /doctor\.cmd/);
 });
 
-test("release checklist records the v4.10.8 verification gates", () => {
+test("release checklist records the v4.10.9 verification gates", () => {
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
 
-  assert.match(checklist, /v4\.10\.8/);
+  assert.match(checklist, /v4\.10\.9/);
   assert.match(checklist, /npm test/);
   assert.match(checklist, /npm run security:secrets/);
   assert.match(checklist, /npm run build/);
@@ -562,23 +562,32 @@ test("release checklist records the v4.10.8 verification gates", () => {
   assert.match(checklist, /scripts\/benchmark-search\.mjs/);
   assert.match(checklist, /scripts\/reindex-projects\.mjs/);
   assert.match(checklist, /scripts\/configure-codex\.mjs/);
-  assert.match(checklist, /git tag -a v4\.10\.8/);
+  assert.match(checklist, /git tag -a v4\.10\.9/);
 });
 
-test("v4.10.8 release docs describe runtime stability and search concurrency", () => {
+test("v4.10.9 release docs describe summary-assisted project routing", () => {
   const readme = readFileSync(path.join(rootDir, "README.md"), "utf8");
   const changelog = readFileSync(path.join(rootDir, "CHANGELOG.md"), "utf8");
   const roadmap = readFileSync(path.join(rootDir, "ROADMAP.md"), "utf8");
 
-  assert.match(readme, /当前版本：`v4\.10\.8`/);
-  assert.match(readme, /### v4\.10\.8（当前版本）/);
+  assert.match(readme, /当前版本：`v4\.10\.9`/);
+  assert.match(readme, /### v4\.10\.9（当前版本）/);
+  assert.match(readme, /项目摘要.*附加.*路由证据/s);
+  assert.match(readme, /architecture.*模块描述.*keySymbols/s);
+  assert.match(readme, /mtime.*缓存/s);
+  assert.match(readme, /摘要.*缺失.*损坏.*回退/s);
+  assert.match(readme, /sandbox_workspace_write.*writable_roots/s);
+  assert.match(readme, /### v4\.10\.8/);
   assert.match(readme, /有限.*search worker pool/s);
   assert.match(readme, /8\/16\/32.*并发/s);
   assert.match(readme, /watcher.*periodic-only/s);
   assert.match(readme, /maintenance lease.*续租/s);
-  assert.match(readme, /sandbox_workspace_write.*writable_roots/s);
   assert.match(readme, /### v4\.10\.7/);
   assert.match(readme, /maintenance lease.*stdio MCP freshness/s);
+  assert.match(changelog, /## \[4\.10\.9\] - 2026-08-27/);
+  assert.match(changelog, /项目摘要.*路由证据/s);
+  assert.match(changelog, /mtime.*缓存/s);
+  assert.match(changelog, /摘要.*缺失.*损坏.*回退/s);
   assert.match(changelog, /## \[4\.10\.8\] - 2026-08-14/);
   assert.match(changelog, /8\/16\/32.*并发/s);
   assert.match(changelog, /periodic-only/);
@@ -587,6 +596,7 @@ test("v4.10.8 release docs describe runtime stability and search concurrency", (
   assert.match(changelog, /attempt to write a readonly database/);
   assert.match(changelog, /## \[4\.10\.6\] - 2026-08-11/);
   assert.match(changelog, /startup\/periodic catch-up.*maintenance lease/s);
+  assert.match(roadmap, /摘要辅助项目路由.*v4\.10\.9/);
   assert.match(roadmap, /Codex 沙箱初始化闭环.*v4\.10\.7/);
   assert.match(roadmap, /跨进程索引写入协调.*v4\.10\.6/);
 });
@@ -610,7 +620,7 @@ test("v4.10.4 release docs describe bounded logging without claiming unfinished 
   const checklist = readFileSync(path.join(rootDir, "docs/release-checklist.md"), "utf8");
   const windowsReadme = readFileSync(path.join(rootDir, "scripts/README-WINDOWS.md"), "utf8");
 
-  assert.match(readme, /当前版本：`v4\.10\.8`/);
+  assert.match(readme, /当前版本：`v4\.10\.9`/);
   assert.match(readme, /### v4\.10\.4/);
   assert.match(readme, /20 MiB/);
   assert.match(readme, /EPIPE/);
@@ -663,7 +673,7 @@ test("runtime data health diagnostics are exposed by health and project profile"
   assert.match(appTest, /health reports runtime data health for missing registered project paths/);
   assert.match(appTest, /health degrades data health when project listing fails/);
   assert.match(appTest, /project profile reports repairable data health when indexed project stats fail/);
-  assert.match(readme, /当前版本：`v4\.10\.8`/);
+  assert.match(readme, /当前版本：`v4\.10\.9`/);
   assert.match(readme, /运行时数据健康诊断/);
   assert.match(readme, /dataHealth/);
   assert.match(changelog, /Runtime data health diagnostics/);
@@ -686,7 +696,7 @@ test("web project profile diagnostics are wired through API and static controls"
   assert.match(appJs, /GENERATE_SUMMARY/);
   assert.match(appJs, /WARM_VECTOR_INDEX/);
   assert.match(appJs, /REVIEW_FAILED_FILES/);
-  assert.match(readme, /当前版本：`v4\.10\.8`/);
+  assert.match(readme, /当前版本：`v4\.10\.9`/);
   assert.match(readme, /项目级搜索画像/);
   assert.match(readme, /\/api\/project-profile/);
   assert.match(changelog, /## \[4\.9\.1\]/);
