@@ -4,6 +4,13 @@
 
 v4.10.9 的 source、annotated tag、Gitee/GitHub 双远端推送和两端 Release 资产状态必须以实际结果为准。Windows ZIP 和 `release:smoke` 仍待 Windows x64 + Node.js 22 环境完成，不得把当前 Darwin 验证记录成跨平台门禁通过。
 
+当前已完成状态（2026-08-27）：
+
+- Release commit `bc223cbf2ab865816f866d209723bf6f42f769ae` 和 annotated tag `v4.10.9` 已推送到 Gitee 与 GitHub，两个远端的 `master` 和 peeled tag 均已核对。
+- Gitee Release #916561 和 GitHub Release #377724997 均为正式、非预发布版本，title/body 一致，只附加已验证的 `ace-mcp-4.10.9.tgz`；Windows ZIP 未上传。
+- 两端 tgz 均为 469980 字节，公开下载 SHA-256 均为 `5d1332c20398a978c4bac4d1566f6c165529b18131ec90f528e0ffc348c9b726`。
+- 本机全局 CLI 与 LaunchAgent Web 服务均已切换到 4.10.9；`/health` 在 PID 96229 上报告 51/51 项目 ready、watcher healthy，真实路由请求已返回 `.ace-mcp/summaries/project-summary.json` 的 `summary` 证据。
+
 Windows 产物补齐后，在 Windows x64 + Node.js 22 主机运行 `npm run release:check` 可串行执行完整组合门禁。该命令包含 `release:win` 和 Windows ZIP smoke，因此 Darwin 主机应按下文分别运行可用门禁，不能把部分通过记录成完整 release check 通过。
 
 1. 确认版本号已同步到 `package.json`、`package-lock.json`、`src/version.ts`、README 与 CHANGELOG。

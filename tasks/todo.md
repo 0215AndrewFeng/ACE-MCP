@@ -14,8 +14,8 @@ Reuse existing project architecture summaries as bounded project-level routing e
 - [x] Update version carriers and release documentation to v4.10.9.
 - [x] Run focused tests, full tests, build, tgz packaging, Darwin release gates, and diff checks.
 - [ ] Build and smoke-test the self-contained Windows ZIP later on Windows x64 + Node.js 22; do not upload an unverified ZIP from Darwin.
-- [ ] Commit and create annotated tag `v4.10.9`, then push branch/tag to Gitee and GitHub.
-- [ ] Publish matching Gitee and GitHub Releases/assets, verify both remotes, and replace the local Web service.
+- [x] Commit and create annotated tag `v4.10.9`, then push branch/tag to Gitee and GitHub.
+- [x] Publish matching Gitee and GitHub Releases/assets, verify both remotes, and replace the local Web service.
 
 ## Validation Plan
 
@@ -32,6 +32,9 @@ Reuse existing project architecture summaries as bounded project-level routing e
 - 2026-08-27: Started from the existing v4.10.8 project router. The summary is additive evidence only; missing, malformed, or stale summary data must not disable indexed code/symbol routing.
 - 2026-08-27: RED returned `abstain` for summary-only business terms, summary refresh, repository-name terms, and exact summary key symbols. GREEN adds a size-bounded, mtime-aware summary route catalog and `summary` evidence weight between lexical and symbol; focused router tests passed 34/34, package/release contracts passed 37/37, and TypeScript build passed.
 - 2026-08-27: Darwin validation passed: `npm test` 394/394, built dist-worker tests 34/34, CLI version 4.10.9, doctor 9 ok / 1 expected port warning / 0 errors, installer syntax, secret scan, tgz content checks, and `git diff --check`. Release benchmark passed idle 8/16/32 search p95 973/52/77ms and during-index p95 44/58/99ms, with health p95 <=7ms, resolve p95 <=9ms, zero timeout/error, and stable non-empty results. The final tgz SHA-256 is `5d1332c20398a978c4bac4d1566f6c165529b18131ec90f528e0ffc348c9b726`; Windows ZIP and `release:smoke` remain platform-pending and will not be claimed or uploaded.
+- 2026-08-27: Release commit `bc223cb` and annotated tag `v4.10.9` were pushed to `origin` (Gitee) and `github`; both remote `master` refs and both peeled tags resolve to `bc223cbf2ab865816f866d209723bf6f42f769ae`.
+- 2026-08-27: Published matching non-prerelease Releases with the same title/body and only the verified tgz attachment: Gitee Release #916561 / attachment #3106541 and GitHub Release #377724997 / asset #532114168. Both public downloads are 469980 bytes and SHA-256 `5d1332c20398a978c4bac4d1566f6c165529b18131ec90f528e0ffc348c9b726`; GitHub also reports the same server-side asset digest. The Windows ZIP remains intentionally absent pending Windows x64 + Node.js 22 validation.
+- 2026-08-27: Upgraded the NVM Node 24 global CLI from 4.10.7 to 4.10.9 and restarted `com.ace-mcp.server`; `/health` reports version 4.10.9 on PID 96229 with 51/51 projects ready and healthy watcher state. A live summary-language resolve ranked `tc-flight-tgq-core` first at 0.9313 and returned 11 matched terms from `.ace-mcp/summaries/project-summary.json`, proving the new evidence path is active. Two subsequent broader live queries encountered the existing 30-second SQLite search-worker deadline and remain a production-scale performance observation rather than a summary-loading failure.
 
 # v4.10.8 Runtime Stability, Search Concurrency, And Startup Scheduling
 
