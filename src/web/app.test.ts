@@ -1142,6 +1142,7 @@ test("task list filters by type status and project root", async () => {
 
 test("summary generation starts a background task and exposes the result", async () => {
   let releaseSummary: ((value: unknown) => void) | undefined;
+  let receivedSummaryOptions: unknown;
   const tracker = new LongTaskTracker();
   const app = await startWebApp(0, {
     embeddingProvider: {} as never,
@@ -1172,7 +1173,8 @@ test("summary generation starts a background task and exposes the result", async
       listProjects: () => [],
     } as never,
     summaryGenerator: {
-      generateProjectSummary: async () => {
+      generateProjectSummary: async (_projectRootPath: string, _projectId: string, options: unknown) => {
+        receivedSummaryOptions = options;
         await new Promise((resolve) => {
           releaseSummary = resolve;
         });
@@ -1190,7 +1192,7 @@ test("summary generation starts a background task and exposes the result", async
   try {
     const startedAt = Date.now();
     const response = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
-      body: JSON.stringify({ projectRootPath: "/repo" }),
+      body: JSON.stringify({ force: true, projectRootPath: "/repo" }),
       headers: { "Content-Type": "application/json" },
       method: "POST",
     });
@@ -1199,6 +1201,7 @@ test("summary generation starts a background task and exposes the result", async
 
     assert.equal(response.status, 202);
     assert.equal(body.data.status, "running");
+    assert.equal(body.request.force, true);
     assert.match(body.data.taskId, /^summary-/);
     assert.ok(elapsedMs < 100, `summary request took ${elapsedMs}ms`);
 
@@ -1212,6 +1215,7 @@ test("summary generation starts a background task and exposes the result", async
     assert.equal(taskBody.task.status, "succeeded");
     assert.equal(taskBody.task.result.moduleCount, 2);
     assert.equal(taskBody.task.result.tokensUsed.total, 8);
+    assert.deepEqual(receivedSummaryOptions, { force: true });
   } finally {
     releaseSummary?.(undefined);
     await app.close();
@@ -1272,6 +1276,69 @@ test("summary background task retains failure state", async () => {
     assert.equal(taskBody.task.status, "failed");
     assert.equal(taskBody.task.error.message, "summary failed");
   } finally {
+    await app.close();
+  }
+});
+
+test("forced summary generation does not reuse an active incremental summary task", async () => {
+  const releases: Array<() => void> = [];
+  const receivedOptions: unknown[] = [];
+  const tracker = new LongTaskTracker();
+  const app = await startWebApp(0, {
+    embeddingProvider: {} as never,
+    indexCoordinator: {
+      ensureFreshIndex: async (projectRootPath: string) => ({ projectId: "project-1", projectRootPath }),
+      getInFlightIndexInfo: () => [],
+      isWatching: () => false,
+    } as never,
+    llmClient: {} as never,
+    logger: { info() {}, warn() {}, error() {}, debug() {} } as never,
+    longTaskTracker: tracker,
+    runtime: {
+      nodeVersion: process.version,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      version: "test",
+      webPort: 0,
+    },
+    searchService: {} as never,
+    settings: { enableVectorSearch: true, vectorIndexingMode: "lazy" } as Settings,
+    store: { listProjects: () => [] } as never,
+    summaryGenerator: {
+      generateProjectSummary: async (_root: string, _id: string, options: unknown) => {
+        receivedOptions.push(options);
+        await new Promise<void>((resolve) => releases.push(resolve));
+        return {
+          durationMs: 1,
+          filesWritten: [],
+          moduleCount: 1,
+          outputDir: "/repo/.ace-mcp/summaries",
+          tokensUsed: { completion: 0, prompt: 0 },
+        };
+      },
+    } as never,
+  });
+
+  try {
+    const incrementalResponse = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
+      body: JSON.stringify({ projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const forcedResponse = await fetch(`http://127.0.0.1:${app.port}/api/summary/generate`, {
+      body: JSON.stringify({ force: true, projectRootPath: "/repo" }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const incrementalBody = await incrementalResponse.json();
+    const forcedBody = await forcedResponse.json();
+
+    assert.equal(incrementalBody.data.reused, false);
+    assert.equal(forcedBody.data.reused, false);
+    assert.notEqual(incrementalBody.data.taskId, forcedBody.data.taskId);
+    assert.deepEqual(receivedOptions, [{ force: false }, { force: true }]);
+  } finally {
+    for (const release of releases) release();
     await app.close();
   }
 });

@@ -1,3 +1,41 @@
+# v4.10.10 Summary Symbol Enumeration And Forced Refresh
+
+Author: feng.ling
+
+## Goal
+
+Make project summary key-symbol collection use a real indexed-symbol enumeration API, add an explicit forced-refresh path across MCP/Web/maintenance entry points, repair the 12 low-score or failed summaries, generate the 23 missing summaries, and publish the verified release to Gitee and GitHub.
+
+## Plan
+
+- [x] Add RED coverage for stable filtered symbol enumeration, non-empty summary key symbols, forced cache bypass, and MCP/Web parameter propagation.
+- [x] Implement shared symbol enumeration and forced summary refresh, including sequential maintenance CLI support.
+- [x] Update all version carriers and release documentation to v4.10.10.
+- [x] Sequentially force-refresh 12 low-score/failed summaries and generate 23 missing summaries, then rescore all targets.
+- [x] Run focused tests, full tests, build, package, security, benchmark, and diff checks.
+- [ ] Commit with the configured author, create annotated tag `v4.10.10`, and push branch/tag to Gitee and GitHub.
+- [ ] Publish matching Gitee and GitHub Releases with the verified tgz only, then upgrade and verify the local CLI/LaunchAgent.
+
+## Validation Plan
+
+- `node --import tsx --test src/core/storage/sqliteStore.test.ts src/core/summary/summaryGenerator.test.ts src/server/tools/summaryTools.test.ts src/web/app.test.ts`
+- `npm test`
+- `npm run test:dist-worker`
+- `npm run build`
+- `npm run release:pack`
+- `npm run security:secrets`
+- `npm run release:benchmark`
+- `bash -n scripts/install-macos.sh`
+- `git diff --check`
+
+## Comments
+
+- 2026-08-27: Root cause confirmed: `findDefinitions(projectId, "*")` treats `*` as a literal substring and returns no symbols. Existing content hashes then preserve the empty-key-symbol modules, so repair requires a true enumeration query plus forced cache bypass.
+- 2026-08-28: RED failed on the missing enumeration method, empty generated key symbols, absent MCP/Web force propagation, wildcard-backed `list_symbols`, and force request metadata. GREEN passed 42/42 focused storage/summary/tool/Web tests plus TypeScript build.
+- 2026-08-28: Sequential processing completed 35/35 on the first attempt: 12 forced refreshes followed by 23 missing summaries, 150 modules and 1381 key symbols total, minimum 10 symbols per project, and zero failure markers. Rescoring reports all 35 targets as grade A (95.2-100); the full 51-project audit is A 35 / B 13 / missing 3, where the three missing entries are the explicitly skipped aggregate parent, stale temporary path, and zero-file directory.
+- 2026-08-28: A live `/api/projects/resolve` query for generated key symbol `DotnetMethodScope` returned `.ace-mcp/summaries/project-summary.json` with `source: summary`, alongside symbol and lexical evidence, proving the refreshed summary route catalog is active.
+- 2026-08-28: Release gates passed: focused 42/42, full `npm test` 399/399, built worker 34/34, TypeScript build, tgz pack/content, secret scan, installer syntax, doctor 9 ok / 1 expected port warning / 0 errors, and `git diff --check`. The 8/16/32 benchmark passed idle search p95 941/46/74ms and during-index p95 36/53/80ms, with health/resolve below thresholds, zero timeout/error, and stable non-empty results. The verified tgz SHA-256 is `6dc0d8064baf01c459b97c2f52a4ca337a80a8c2ea79d29d6de29aaf1526f3ae`; Windows ZIP remains platform-pending and will not be uploaded.
+
 # v4.10.9 Summary-Assisted Project Routing
 
 Author: feng.ling

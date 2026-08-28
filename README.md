@@ -4,7 +4,7 @@
 
 本地代码搜索 `MCP Server`，面向 `Java`、`JavaScript/TypeScript`、`.NET/C#`、`Python` 项目，支持本地扫描、增量索引、全文/符号/路径搜索，并通过标准 `MCP` 协议把结果提供给 AI 客户端。
 
-当前版本：`v4.10.9`
+当前版本：`v4.10.10`
 
 更新日志见 [`CHANGELOG.md`](./CHANGELOG.md)。
 
@@ -59,7 +59,7 @@
 - **LLM 响应缓存**：相同问题 5 分钟内直接返回缓存结果，节省 token
 - **代码引用高亮**：`[N]` 引用可点击跳转到对应源码卡片
 - **思考过程展示**：DeepSeek 模型的 reasoning_content 实时显示
-- **代码摘要生成**：自动生成项目架构概览和模块摘要
+- **代码摘要生成**：自动生成项目架构概览和模块摘要，使用真实索引符号填充 `keySymbols`；`generate_summary` 和 Web API 支持 `force: true` 跳过旧模块缓存并完整重生成
 - **业务流程图**：问答涉及业务流程/处理逻辑时，答案末尾自动追加 Mermaid 流程图（`flowchart TD`）并渲染为可视化图表
 - **流程图/调用链图导出**：渲染后的图可一键下载 PNG、下载 SVG 或复制 Mermaid 源码
 
@@ -107,17 +107,17 @@ ACE_MCP_WEB_PORT=9000 ace-mcp-web
 
 ### tgz 全局安装
 
-从 v4.10.9 Gitee Release 下载 `ace-mcp-4.10.9.tgz` 安装：
+从 v4.10.10 Gitee Release 下载 `ace-mcp-4.10.10.tgz` 安装：
 
 ```bash
-npm install -g ./ace-mcp-4.10.9.tgz
+npm install -g ./ace-mcp-4.10.10.tgz
 ace-mcp-web
 ```
 
 Windows PowerShell：
 
 ```powershell
-npm install -g .\ace-mcp-4.10.9.tgz
+npm install -g .\ace-mcp-4.10.10.tgz
 ace-mcp-web
 ```
 
@@ -126,13 +126,13 @@ ace-mcp-web
 适合首次安装或不熟悉 npm 的用户。脚本会检查 Node.js/npm，缺失时会尝试用 Homebrew 安装 Node.js 22，然后下载 Gitee Release 的 tgz 包并全局安装：
 
 ```bash
-bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.9/scripts/install-macos.sh)"
+bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.10/scripts/install-macos.sh)"
 ```
 
 安装指定版本：
 
 ```bash
-ACE_MCP_VERSION=4.10.9 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.9/scripts/install-macos.sh)"
+ACE_MCP_VERSION=4.10.10 bash -c "$(curl -fsSL https://gitee.com/AndrewFengCode/ace-mcp/raw/v4.10.10/scripts/install-macos.sh)"
 ```
 
 安装完成后启动 Web 面板：
@@ -162,8 +162,8 @@ npm --version
 使用 Gitee Release 的 tgz 包：
 
 ```bash
-curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.9/ace-mcp-4.10.9.tgz
-npm install -g ./ace-mcp-4.10.9.tgz
+curl -LO https://gitee.com/AndrewFengCode/ace-mcp/releases/download/v4.10.10/ace-mcp-4.10.10.tgz
+npm install -g ./ace-mcp-4.10.10.tgz
 ace-mcp --version
 ace-mcp-web
 ```
@@ -187,7 +187,7 @@ npm install
 
 ### Windows zip 安装
 
-v4.10.9 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.9-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
+v4.10.10 Windows ZIP 尚待在 Windows x64 + Node.js 22 主机上构建和验证。产物补齐并发布后，下载 `ace-mcp-v4.10.10-win-x64.zip`，解压后双击 `start-web.cmd`，然后访问 <http://127.0.0.1:8787/>：
 
 ```cmd
 start-web.cmd
@@ -201,7 +201,7 @@ MCP 客户端直接配置解压目录内的 `ace-mcp.cmd` 绝对路径，不再�
 {
   "mcpServers": {
     "ace-mcp": {
-      "command": "C:\\Tools\\ace-mcp-v4.10.9-win-x64\\ace-mcp.cmd"
+      "command": "C:\\Tools\\ace-mcp-v4.10.10-win-x64\\ace-mcp.cmd"
     }
   }
 }
@@ -261,7 +261,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-web.ps1 9000
 
 ```bash
 npm run release:pack
-npm install -g ./ace-mcp-4.10.9.tgz
+npm install -g ./ace-mcp-4.10.10.tgz
 ```
 
 `release:pack` 使用仓库内 `.npm-cache/`，避免本机全局 npm cache 权限问题影响打包。
@@ -272,7 +272,7 @@ Windows zip：
 npm run release:win
 ```
 
-`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.9 Windows ZIP 尚未补齐。
+`release:win` 必须在 Windows x64 + Node.js 22 上运行。它会把当前 `node.exe`、裁剪后的生产依赖和已加载验证的 `better-sqlite3` 原生二进制一起打入 ZIP；当前 Darwin 主机不能完成或替代这项验证，v4.10.10 Windows ZIP 尚未补齐。
 
 安装包 smoke test：
 
@@ -305,13 +305,13 @@ npm run security:secrets
 完成 commit、tag、push 和跨平台产物验证后，可用以下命令发布 Gitee Release。命令会用 `GITEE_TOKEN` 调用 Gitee OpenAPI 创建/更新 Release、替换同名 tgz/Windows zip 附件，并在上传后自动执行下载链路验证：
 
 ```bash
-GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.9
+GITEE_TOKEN=<your-token> npm run release:publish -- --version 4.10.10
 ```
 
 如需单独验证 tag、tgz、Windows zip 和 macOS 安装脚本下载链接：
 
 ```bash
-npm run release:verify-assets -- --version 4.10.9
+npm run release:verify-assets -- --version 4.10.10
 ```
 
 ## 本地运行
@@ -339,9 +339,10 @@ npm run build && npm test && npm run eval
 ```bash
 npm run maintenance:reindex -- --dry-run
 npm run maintenance:reindex -- --summary
+npm run maintenance:reindex -- --summary --force-summary --project /absolute/project/path
 ```
 
-维护脚本会从 Web 服务 `/api/projects` 读取已登记项目，按顺序逐个 full index；加 `--summary` 后每个成功索引的项目会继续生成摘要。默认跳过不存在路径，以及包含多个已登记子项目的聚合父目录；确需处理父目录时显式加 `--include-parent`。
+维护脚本会从 Web 服务 `/api/projects` 读取已登记项目，按顺序逐个 full index；加 `--summary` 后每个成功索引的项目会继续生成摘要，`--force-summary` 会跳过旧摘要缓存并要求同时使用 `--summary`。默认跳过不存在路径，以及包含多个已登记子项目的聚合父目录；确需处理父目录时显式加 `--include-parent`。
 
 ### 作为 MCP Server 启动
 
@@ -649,7 +650,7 @@ Web 面板提供完整的可视化调试体验：
 - `POST /api/qa/ask` - 代码问答
 - `POST /api/qa/cache/clear` - 清除 QA 缓存
 - `GET /api/qa/ask/stream` - 流式问答 (SSE)
-- `POST /api/summary/generate` - 提交后台摘要生成任务
+- `POST /api/summary/generate` - 提交后台摘要生成任务；请求体可用 `force: true` 完整重生成
 - `GET /api/summary` - 获取摘要
 - `GET /api/tasks` / `GET /api/tasks/:taskId` - 查询后台长任务状态
 - `POST /api/index/warm` - 向量预热
@@ -657,12 +658,19 @@ Web 面板提供完整的可视化调试体验：
 
 ## 版本历史
 
-### v4.10.9（当前版本）
+### v4.10.10（当前版本）
+
+- **真实关键符号枚举**：摘要生成和无名称过滤的 `list_symbols` 直接枚举索引定义，按文件路径和行号稳定排序，不再把 `*` 当成普通查询字符
+- **强制刷新**：MCP `generate_summary`、Web `/api/summary/generate` 和维护脚本均可显式强制刷新；强制任务重新生成全部模块和 architecture，普通任务仍按 content hash 增量复用
+- **后台任务隔离**：同一项目的普通摘要与强制摘要使用不同去重键，强制请求不会错误复用正在运行的普通任务
+- **平台状态**：4.10.10 source、tag 和发布资产状态以 release checklist 与远端实际结果为准；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+
+### v4.10.9
 
 - **项目摘要附加路由证据**：自动项目路由复用已有 `.ace-mcp/summaries/project-summary.json`，从项目名、`architecture`、模块描述、模块路径和 `keySymbols` 提取有界路由词，不需要在查询时调用 LLM
 - **统一评分与安全回退**：摘要证据权重介于 lexical 与 symbol 之间，并与代码命中、关键词覆盖和项目名 ownership 统一评分；低覆盖仍 abstain，摘要缺失、损坏或超限时继续走原有代码/符号路由
 - **mtime 缓存刷新**：摘要路由词按文件修改时间和大小缓存在内存中，未变化时不重复解析，摘要更新后自动刷新
-- **平台状态**：4.10.9 source、tag 和发布资产状态以 release checklist 与远端实际结果为准；Windows 自包含 ZIP 仍须在 Windows x64 + Node.js 22 主机构建和验证
+- **平台状态**：4.10.9 source、tag 和发布资产状态见对应 Release；Windows 自包含 ZIP 未在该版本补齐
 
 ### v4.10.8
 

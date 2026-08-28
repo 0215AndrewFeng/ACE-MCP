@@ -1343,6 +1343,88 @@ export class SQLiteStore {
       }));
   }
 
+  public listDefinitions(projectId: string, limit: number, filters?: SearchFilters): DefinitionMatch[] {
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return [];
+    }
+
+    const filterClause = buildSearchFilterClause(filters);
+    const rows = this.db
+      .prepare(
+        `SELECT
+           f.relative_path,
+           f.language,
+           s.symbol_id,
+           s.name,
+           s.full_name,
+           s.canonical_name,
+           s.module_path,
+           s.kind,
+           s.line,
+           s.signature,
+           COALESCE((
+             SELECT c.start_line
+             FROM chunk c
+             WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
+             ORDER BY c.start_line DESC
+             LIMIT 1
+           ), s.line) AS start_line,
+           COALESCE((
+             SELECT c.end_line
+             FROM chunk c
+             WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
+             ORDER BY c.start_line DESC
+             LIMIT 1
+           ), s.line) AS end_line,
+           COALESCE((
+             SELECT c.content
+             FROM chunk c
+             WHERE c.file_id = f.file_id AND c.start_line <= s.line AND c.end_line >= s.line
+             ORDER BY c.start_line DESC
+             LIMIT 1
+           ), s.signature) AS content
+         FROM symbol s
+         JOIN file f ON f.file_id = s.file_id
+         WHERE f.project_id = ?
+           ${filterClause.sql}
+         ORDER BY f.relative_path ASC, s.line ASC, LOWER(s.full_name) ASC, s.symbol_id ASC
+         LIMIT ?`,
+      )
+      .all(projectId, ...filterClause.parameters, Math.floor(limit)) as Array<{
+      canonical_name: string | null;
+      content: string;
+      end_line: number;
+      full_name: string;
+      kind: DefinitionMatch["kind"];
+      language: Language;
+      line: number;
+      module_path: string | null;
+      name: string;
+      relative_path: string;
+      signature: string;
+      start_line: number;
+      symbol_id: string;
+    }>;
+
+    return rows.map((row) => ({
+      canonicalName: row.canonical_name ?? undefined,
+      endLine: row.end_line,
+      filePath: row.relative_path,
+      fullName: row.full_name,
+      kind: row.kind,
+      language: row.language,
+      line: row.line,
+      modulePath: row.module_path ?? undefined,
+      name: row.name,
+      score: 1,
+      signature: row.signature,
+      snippet: row.content,
+      snippetIncluded: true,
+      startLine: row.start_line,
+      symbolId: row.symbol_id,
+    }));
+  }
+
   public findDefinitions(projectId: string, query: string, limit: number, filters?: SearchFilters): DefinitionMatch[] {
     const normalizedQuery = query.trim().toLowerCase();
     if (normalizedQuery.length === 0) {

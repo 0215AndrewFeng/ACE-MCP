@@ -44,6 +44,34 @@ test("SQLiteStore records indexed files, chunks, symbols, and latest index metad
   }
 });
 
+test("SQLiteStore lists indexed definitions in stable path order with path filters", async () => {
+  const env = await createTestProjectEnvironment({
+    "src/alpha.ts": "export class AlphaService {\n  run(): boolean { return true; }\n}\n",
+    "test/beta.ts": "export function betaHelper(): number { return 2; }\n",
+  });
+
+  try {
+    const indexResult = await env.indexCoordinator.indexProject(env.projectRootPath, "full");
+
+    const allDefinitions = env.store.listDefinitions(indexResult.projectId, 20);
+    const sourceDefinitions = env.store.listDefinitions(indexResult.projectId, 20, { pathPrefix: "SRC/" });
+
+    assert.ok(allDefinitions.length >= 3);
+    assert.deepEqual(
+      allDefinitions.map((definition) => `${definition.filePath}:${definition.line}`),
+      [...allDefinitions]
+        .sort((left, right) => left.filePath.localeCompare(right.filePath) || left.line - right.line)
+        .map((definition) => `${definition.filePath}:${definition.line}`),
+    );
+    assert.ok(sourceDefinitions.length >= 2);
+    assert.equal(sourceDefinitions.every((definition) => definition.filePath.startsWith("src/")), true);
+    assert.ok(sourceDefinitions.some((definition) => definition.name === "AlphaService"));
+    assert.equal(sourceDefinitions.some((definition) => definition.name === "betaHelper"), false);
+  } finally {
+    await env.cleanup();
+  }
+});
+
 test("SQLiteStore prepares project state with its existing file snapshot", async () => {
   const env = await createTestProjectEnvironment({
     "src/index.ts": "export const value = 1;\n",

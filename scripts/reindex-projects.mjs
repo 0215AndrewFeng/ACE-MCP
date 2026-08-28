@@ -11,6 +11,7 @@ function parseArgs(argv) {
   const options = {
     baseUrl: process.env.ACE_MCP_BASE_URL || DEFAULT_BASE_URL,
     dryRun: false,
+    forceSummary: false,
     includeParent: false,
     projects: [],
     summary: false,
@@ -35,6 +36,9 @@ function parseArgs(argv) {
       case "--include-parent":
         options.includeParent = true;
         break;
+      case "--force-summary":
+        options.forceSummary = true;
+        break;
       case "--project":
         options.projects.push(path.resolve(next()));
         break;
@@ -52,6 +56,10 @@ function parseArgs(argv) {
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (options.forceSummary && !options.summary) {
+    throw new Error("--force-summary requires --summary");
   }
 
   return options;
@@ -74,6 +82,7 @@ Options:
   --base-url <url>       ace-mcp Web base URL (default: ${DEFAULT_BASE_URL})
   --project <path>       Process only this project path; may be repeated
   --summary              Generate summaries after successful full index
+  --force-summary        Force all summary modules to regenerate; requires --summary
   --dry-run              Print the plan without sending index/summary requests
   --include-parent       Allow aggregate parent directories that contain registered projects
   --timeout-ms <n>       Per-request timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})
@@ -149,11 +158,11 @@ async function indexProject(baseUrl, projectRootPath, timeoutMs, confirmParentDi
   return pollTask(baseUrl, taskId, timeoutMs);
 }
 
-async function generateSummary(baseUrl, projectRootPath, timeoutMs) {
+async function generateSummary(baseUrl, projectRootPath, timeoutMs, force) {
   const body = await fetchJson(`${baseUrl}/api/summary/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectRootPath }),
+    body: JSON.stringify({ force, projectRootPath }),
   }, timeoutMs);
   const taskId = body.data?.taskId;
   if (!taskId) {
@@ -213,7 +222,12 @@ async function main() {
       let summaryResult;
       if (options.summary) {
         console.log(`summary:start\t${item.projectRootPath}`);
-        summaryResult = await generateSummary(options.baseUrl, item.projectRootPath, options.timeoutMs);
+        summaryResult = await generateSummary(
+          options.baseUrl,
+          item.projectRootPath,
+          options.timeoutMs,
+          options.forceSummary,
+        );
         console.log(`summary:ok\t${item.projectRootPath}\tmodules=${summaryResult.data?.moduleCount ?? "?"}`);
       }
 

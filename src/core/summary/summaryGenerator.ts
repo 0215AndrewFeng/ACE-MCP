@@ -6,7 +6,13 @@ import type { Logger } from "../common/logger.js";
 import { AppError } from "../common/errors.js";
 import type { LlmClient } from "../llm/llmClient.js";
 import type { SQLiteStore } from "../storage/sqliteStore.js";
-import type { ProjectSummary, SummaryGenerationResult, ModuleSummary, ModuleRelationship } from "./types.js";
+import type {
+  ModuleRelationship,
+  ModuleSummary,
+  ProjectSummary,
+  SummaryGenerationOptions,
+  SummaryGenerationResult,
+} from "./types.js";
 
 const SUMMARIES_DIR = ".ace-mcp/summaries";
 
@@ -31,7 +37,11 @@ export class SummaryGenerator {
     private logger: Logger,
   ) {}
 
-  async generateProjectSummary(projectRootPath: string, projectId: string): Promise<SummaryGenerationResult> {
+  async generateProjectSummary(
+    projectRootPath: string,
+    projectId: string,
+    options: SummaryGenerationOptions = {},
+  ): Promise<SummaryGenerationResult> {
     const startMs = Date.now();
 
     if (!this.llmClient.isConfigured()) {
@@ -39,7 +49,8 @@ export class SummaryGenerator {
     }
 
     // v4.2.5: Load existing summary for incremental update
-    const existingSummary = await this.loadSummary(projectRootPath);
+    const force = options.force === true;
+    const existingSummary = force ? null : await this.loadSummary(projectRootPath);
     const existingModuleMap = new Map<string, ModuleSummary>();
     if (existingSummary) {
       for (const mod of existingSummary.modules) {
@@ -74,12 +85,14 @@ export class SummaryGenerator {
 
     for (const [moduleName, moduleFiles] of moduleMap) {
       // Get symbols for these files
-      const definitions = this.store.findDefinitions(
+      const listedDefinitions = this.store.listDefinitions(
         projectId,
-        "*",
-        200,
-        { pathPrefix: moduleName === "(root)" ? undefined : moduleName },
+        moduleName === "(root)" ? 2_000 : 200,
+        moduleName === "(root)" ? undefined : { pathPrefix: `${moduleName}/` },
       );
+      const definitions = moduleName === "(root)"
+        ? listedDefinitions.filter((definition) => !definition.filePath.replace(/\\/g, "/").includes("/")).slice(0, 200)
+        : listedDefinitions;
 
       // v4.2.5: Compute content hash for incremental update
       const contentHash = computeModuleContentHash(moduleFiles, definitions);
@@ -146,24 +159,8 @@ Respond with ONLY the description, no prefix or formatting.`;
       }
     }
 
-    // 4. Build relationships from import data (lightweight)
+    // 4. Relationship extraction is intentionally deferred until import graph data is available.
     const relationships: ModuleRelationship[] = [];
-    // We'll derive from the module names for now — import graph is complex
-    // A simple approach: if module A has files importing from module B's path
-    for (const [modName, modFiles] of moduleMap) {
-      const fileIds = new Set(modFiles.map((f) => f.fileId));
-      // Check if any definitions from this module are referenced by other modules
-      // This is simplified — just list inter-module dependencies
-      for (const [otherMod] of moduleMap) {
-        if (otherMod === modName) continue;
-        // Check if files in modName import from otherMod
-        const hasImport = modFiles.some((f) => {
-          const defs = this.store.findDefinitions(projectId, "*", 5, { pathPrefix: otherMod === "(root)" ? undefined : otherMod });
-          return defs.length > 0; // simplified
-        });
-        // We'll skip this complex check for now — relationships come from the architecture overview
-      }
-    }
 
     // 5. Generate architecture overview (only if modules changed or no existing)
     const moduleOverview = modules
@@ -259,6 +256,7 @@ Include: overall purpose, key architectural patterns, module relationships, and 
       durationMs,
       regeneratedModules,
       cachedModules,
+      forced: force,
     };
   }
 

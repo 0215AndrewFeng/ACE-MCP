@@ -11,24 +11,29 @@ export function registerGenerateSummaryTool(server: McpServer, dependencies: Too
       description:
         "Generate a project architecture summary using LLM. Creates .ace-mcp/summaries/ with architecture overview, module descriptions, and key symbol summaries. Requires LLM API to be configured.",
       inputSchema: {
+        force: z.boolean().optional().default(false).describe("Regenerate every module and the architecture overview even when content hashes are unchanged"),
         projectRootPath: z.string().min(1),
       },
       title: "Generate Summary",
     },
-    async ({ projectRootPath }) => {
+    async ({ force, projectRootPath }) => {
       const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(projectRootPath);
 
       const result = await dependencies.summaryGenerator.generateProjectSummary(
         indexResult.projectRootPath,
         indexResult.projectId,
+        { force },
       );
 
       const payload = buildEnvelope(
-        { projectRootPath: indexResult.projectRootPath },
+        { force, projectRootPath: indexResult.projectRootPath },
         {
+          cachedModules: result.cachedModules,
           outputDir: result.outputDir,
           filesWritten: result.filesWritten,
+          forced: result.forced,
           moduleCount: result.moduleCount,
+          regeneratedModules: result.regeneratedModules,
         },
         {
           tokensUsed: result.tokensUsed,

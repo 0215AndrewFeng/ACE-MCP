@@ -1,6 +1,6 @@
 {
   "name": "ace-mcp",
-  "version": "4.10.9",
+  "version": "4.10.10",
   "private": false,
   "type": "module",
   "description": "Local code search MCP server for Java, JavaScript, .NET, and Python projects.",
@@ -33,7 +33,7 @@
     "benchmark:search": "node scripts/benchmark-search.mjs",
     "maintenance:reindex": "node scripts/reindex-projects.mjs",
     "eval": "node dist/index.js --eval eval-cases/golden.json",
-    "test": "node --import tsx --test src/config/cli.test.ts src/config/doctor.test.ts src/config/packageManifest.test.ts src/config/settings.test.ts src/adapters/javascript/index.test.ts src/adapters/java/index.test.ts src/adapters/markdown/index.test.ts src/core/common/logger.test.ts src/core/project/gitHelper.test.ts src/core/project/projectHierarchy.test.ts src/core/search/queryAnalyzer.test.ts src/core/search/projectRouter.test.ts src/core/search/searchServiceConcurrency.test.ts src/test/search-workflow.test.ts src/test/benchmarkSearchCli.test.mjs src/test/configureCodexCli.test.mjs src/web/app.test.ts src/server/tools/resolveProjects.test.ts src/core/storage/sqliteStoreHelpers.test.ts src/core/storage/sqliteIndexWorker.test.ts src/core/search/searchScoring.test.ts src/core/search/searchHelpers.test.ts src/core/search/semanticText.test.ts src/core/search/remoteEmbedding.test.ts src/core/llm/llmClient.test.ts src/core/llm/qaCache.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/core/storage/vectorCacheStore.test.ts src/core/storage/sqliteStore.test.ts src/core/indexing/sourceDecoder.test.ts src/core/indexing/indexCoordinator.test.ts src/core/search/evalRunner.test.ts",
+    "test": "node --import tsx --test src/config/cli.test.ts src/config/doctor.test.ts src/config/packageManifest.test.ts src/config/settings.test.ts src/adapters/javascript/index.test.ts src/adapters/java/index.test.ts src/adapters/markdown/index.test.ts src/core/common/logger.test.ts src/core/project/gitHelper.test.ts src/core/project/projectHierarchy.test.ts src/core/search/queryAnalyzer.test.ts src/core/search/projectRouter.test.ts src/core/search/searchServiceConcurrency.test.ts src/test/search-workflow.test.ts src/test/benchmarkSearchCli.test.mjs src/test/configureCodexCli.test.mjs src/web/app.test.ts src/server/tools/resolveProjects.test.ts src/server/tools/summaryTools.test.ts src/core/storage/sqliteStoreHelpers.test.ts src/core/storage/sqliteIndexWorker.test.ts src/core/search/searchScoring.test.ts src/core/search/searchHelpers.test.ts src/core/search/semanticText.test.ts src/core/search/remoteEmbedding.test.ts src/core/llm/llmClient.test.ts src/core/llm/qaCache.test.ts src/core/summary/summaryGenerator.test.ts src/core/validation/schemas.test.ts src/web/requestValidation.test.ts src/core/storage/vectorCacheStore.test.ts src/core/storage/sqliteStore.test.ts src/core/indexing/sourceDecoder.test.ts src/core/indexing/indexCoordinator.test.ts src/core/search/evalRunner.test.ts",
     "test:dist-worker": "npm run build && node --test dist/core/storage/sqliteIndexWorker.test.js"
   },
   "engines": {

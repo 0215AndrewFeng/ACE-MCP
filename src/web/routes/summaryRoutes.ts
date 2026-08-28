@@ -10,6 +10,7 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
   app.post("/api/summary/generate", async (req: Request, res: Response) => {
     try {
       const { projectRootPath } = req.body;
+      const force = req.body.force === true;
       const requestedProjectRootPath = String(projectRootPath ?? "");
       if (!requestedProjectRootPath.trim()) {
         throw new AppError("INVALID_PROJECT_ROOT", "projectRootPath is required", { statusCode: 400 });
@@ -17,10 +18,21 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
       const normalizedProjectRootPath = normalizeAbsolutePath(requestedProjectRootPath);
       if (!dependencies.longTaskTracker) {
         const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(requestedProjectRootPath);
-        const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
+        const result = await dependencies.summaryGenerator.generateProjectSummary(
+          indexResult.projectRootPath,
+          indexResult.projectId,
+          { force },
+        );
         res.json(buildEnvelope(
-          { projectRootPath: indexResult.projectRootPath },
-          { outputDir: result.outputDir, filesWritten: result.filesWritten, moduleCount: result.moduleCount },
+          { force, projectRootPath: indexResult.projectRootPath },
+          {
+            cachedModules: result.cachedModules,
+            filesWritten: result.filesWritten,
+            forced: result.forced,
+            moduleCount: result.moduleCount,
+            outputDir: result.outputDir,
+            regeneratedModules: result.regeneratedModules,
+          },
           { tokensUsed: result.tokensUsed, durationMs: result.durationMs },
           [],
         ));
@@ -29,18 +41,25 @@ export function registerSummaryRoutes(app: Express, dependencies: WebAppDependen
 
       const task = dependencies.longTaskTracker.run("summary", normalizedProjectRootPath, async () => {
         const indexResult = await dependencies.indexCoordinator.ensureFreshIndex(requestedProjectRootPath);
-        const result = await dependencies.summaryGenerator.generateProjectSummary(indexResult.projectRootPath, indexResult.projectId);
+        const result = await dependencies.summaryGenerator.generateProjectSummary(
+          indexResult.projectRootPath,
+          indexResult.projectId,
+          { force },
+        );
         return {
+          cachedModules: result.cachedModules,
           filesWritten: result.filesWritten,
+          forced: result.forced,
           moduleCount: result.moduleCount,
           outputDir: result.outputDir,
+          regeneratedModules: result.regeneratedModules,
           tokensUsed: result.tokensUsed,
           durationMs: result.durationMs,
         };
-      }, `summary:${normalizedProjectRootPath}`);
+      }, `summary:${force ? "force" : "incremental"}:${normalizedProjectRootPath}`);
 
       res.status(202).json(buildEnvelope(
-        { projectRootPath: normalizedProjectRootPath },
+        { force, projectRootPath: normalizedProjectRootPath },
         {
           projectRootPath: normalizedProjectRootPath,
           reused: task.reused ?? false,

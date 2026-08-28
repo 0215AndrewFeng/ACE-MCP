@@ -2,6 +2,19 @@
 
 本项目的重要版本变更记录如下。
 
+## [4.10.10] - 2026-08-28
+
+### Summary key symbols and forced refresh
+
+- 项目摘要不再用 `findDefinitions(projectId, "*")` 模拟符号枚举；存储层新增按路径和行号稳定排序、支持路径过滤的真实定义枚举，模块摘要可以获得实际 `keySymbols`。
+- `generate_summary` 与 `POST /api/summary/generate` 新增 `force` 选项。强制模式完全跳过旧模块 content hash 缓存，重新生成全部模块与 architecture；普通模式继续复用未变化模块。
+- `list_symbols` 未传 `namePattern` 时复用同一枚举接口，不再把 `*` 当作普通字符查询；维护脚本新增 `--force-summary`，并保持项目逐个处理。
+
+### Validation
+
+- 回归覆盖存储枚举与路径过滤、摘要关键符号、普通缓存命中、强制刷新、MCP/Web 参数透传，以及普通与强制后台任务去重隔离。
+- 12 个低分或失败摘要使用强制模式修复，23 个缺失摘要顺序生成，35/35 均首轮成功；共生成 150 个模块、1381 个关键符号，0 failure marker。统一复评分中 35 个目标全部为 A（95.2-100）。
+
 ## [4.10.9] - 2026-08-27
 
 ### Summary-assisted project routing

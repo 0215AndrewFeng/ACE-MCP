@@ -44,4 +44,9 @@ export interface SummaryGenerationResult {
   /** v4.2.5: Number of modules regenerated (vs cached) */
   regeneratedModules?: number;
   cachedModules?: number;
+  forced?: boolean;
+}
+
+export interface SummaryGenerationOptions {
+  force?: boolean;
 }
