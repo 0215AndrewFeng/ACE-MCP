@@ -13,8 +13,8 @@ Make project summary key-symbol collection use a real indexed-symbol enumeration
 - [x] Update all version carriers and release documentation to v4.10.10.
 - [x] Sequentially force-refresh 12 low-score/failed summaries and generate 23 missing summaries, then rescore all targets.
 - [x] Run focused tests, full tests, build, package, security, benchmark, and diff checks.
-- [ ] Commit with the configured author, create annotated tag `v4.10.10`, and push branch/tag to Gitee and GitHub.
-- [ ] Publish matching Gitee and GitHub Releases with the verified tgz only, then upgrade and verify the local CLI/LaunchAgent.
+- [x] Commit with the configured author, create annotated tag `v4.10.10`, and push branch/tag to Gitee and GitHub.
+- [x] Publish matching Gitee and GitHub Releases with the verified tgz only, then upgrade and verify the local CLI/LaunchAgent.
 
 ## Validation Plan
 
@@ -35,6 +35,9 @@ Make project summary key-symbol collection use a real indexed-symbol enumeration
 - 2026-08-28: Sequential processing completed 35/35 on the first attempt: 12 forced refreshes followed by 23 missing summaries, 150 modules and 1381 key symbols total, minimum 10 symbols per project, and zero failure markers. Rescoring reports all 35 targets as grade A (95.2-100); the full 51-project audit is A 35 / B 13 / missing 3, where the three missing entries are the explicitly skipped aggregate parent, stale temporary path, and zero-file directory.
 - 2026-08-28: A live `/api/projects/resolve` query for generated key symbol `DotnetMethodScope` returned `.ace-mcp/summaries/project-summary.json` with `source: summary`, alongside symbol and lexical evidence, proving the refreshed summary route catalog is active.
 - 2026-08-28: Release gates passed: focused 42/42, full `npm test` 399/399, built worker 34/34, TypeScript build, tgz pack/content, secret scan, installer syntax, doctor 9 ok / 1 expected port warning / 0 errors, and `git diff --check`. The 8/16/32 benchmark passed idle search p95 941/46/74ms and during-index p95 36/53/80ms, with health/resolve below thresholds, zero timeout/error, and stable non-empty results. The verified tgz SHA-256 is `6dc0d8064baf01c459b97c2f52a4ca337a80a8c2ea79d29d6de29aaf1526f3ae`; Windows ZIP remains platform-pending and will not be uploaded.
+- 2026-08-28: Release commit `4889ae808a9095524f28cc9bf0518c270a9f61f5` and annotated tag `v4.10.10` were pushed to Gitee and GitHub; both remote master refs and both peeled tags resolve to the release commit. The tag object is `125a49f999633cc66df8135c7f13f83391c9dcaa`.
+- 2026-08-28: Published matching latest/non-prerelease Releases with normalized-identical body text and only `ace-mcp-4.10.10.tgz`: Gitee Release #925737 / attachment #3108858 and GitHub Release #378226475 / asset #533141802. Both public downloads are 470951 bytes and SHA-256 `6dc0d8064baf01c459b97c2f52a4ca337a80a8c2ea79d29d6de29aaf1526f3ae`; GitHub reports the same server-side asset digest. The Windows ZIP remains intentionally absent.
+- 2026-08-28: Upgraded the existing NVM Node 24 global package and verified the base `/opt/homebrew/bin/ace-mcp` compatibility link reports 4.10.10. After LaunchAgent restart, `/health` reports 4.10.10 on PID 75577 with 51/51 ready, watcher health 8 active + 41 periodic-only, idle maintenance lease, and an empty maintenance queue. A post-restart `DotnetMethodScope` resolve still returned `.ace-mcp/summaries/project-summary.json` as `summary` evidence.
 
 # v4.10.9 Summary-Assisted Project Routing
 

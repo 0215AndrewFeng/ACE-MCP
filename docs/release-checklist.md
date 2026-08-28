@@ -4,12 +4,13 @@
 
 v4.10.10 的 source、annotated tag、Gitee/GitHub 双远端推送和两端 Release 资产状态必须以实际结果为准。Windows ZIP 和 `release:smoke` 仍待 Windows x64 + Node.js 22 环境完成，不得把当前 Darwin 验证记录成跨平台门禁通过。
 
-当前候选状态（2026-08-28）：
+当前已完成状态（2026-08-28）：
 
-- 符号枚举、强制刷新和入口透传的聚焦 RED/GREEN 已通过；全量测试 399/399、built worker 34/34、构建、tgz 打包、安全扫描、installer 语法、doctor、diff check 与 8/16/32 并发门禁均通过。发布 commit/tag、双端 Release 和本机升级仍按本清单继续执行。
+- 符号枚举、强制刷新和入口透传的聚焦 RED/GREEN 已通过；全量测试 399/399、built worker 34/34、构建、tgz 打包、安全扫描、installer 语法、doctor、diff check 与 8/16/32 并发门禁均通过。
 - 12 个低分或失败摘要已使用 `force: true` 修复，随后顺序生成 23 个缺失摘要；35/35 均首轮成功，共 150 个模块、1381 个关键符号、0 failure marker，复评分全部为 A（95.2-100）。
-- 只上传本机完整验证通过的 `ace-mcp-4.10.10.tgz`；Windows ZIP 未通过对应平台门禁时不得上传。
-- 当前 tgz SHA-256 为 `6dc0d8064baf01c459b97c2f52a4ca337a80a8c2ea79d29d6de29aaf1526f3ae`；提交前若任何打包输入变化，必须重新打包并更新该值。
+- Release commit `4889ae808a9095524f28cc9bf0518c270a9f61f5` 和 annotated tag `v4.10.10` 已推送到 Gitee 与 GitHub，两个远端 master 和 peeled tag 均已核对。
+- Gitee Release #925737 / attachment #3108858 与 GitHub Release #378226475 / asset #533141802 均为正式 latest、正文一致、仅含 `ace-mcp-4.10.10.tgz`；两端公开下载均为 470951 字节且 SHA-256 为 `6dc0d8064baf01c459b97c2f52a4ca337a80a8c2ea79d29d6de29aaf1526f3ae`。Windows ZIP 未上传。
+- 本机全局 CLI 已升级到 4.10.10；LaunchAgent PID 75577 的 `/health` 报告 51/51 ready、watcher healthy、maintenance queue idle，重启后的真实 resolve 继续返回刷新后的 summary key-symbol evidence。
 
 Windows 产物补齐后，在 Windows x64 + Node.js 22 主机运行 `npm run release:check` 可串行执行完整组合门禁。该命令包含 `release:win` 和 Windows ZIP smoke，因此 Darwin 主机应按下文分别运行可用门禁，不能把部分通过记录成完整 release check 通过。
 
