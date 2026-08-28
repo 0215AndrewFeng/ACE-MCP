@@ -1,0 +1,21 @@
+tasks/todo.md
+  s_c48ad1f04e58c5::t_c9856531f3d6b6 16-17,38-40
+docs/release-checklist.md
+  s_c48ad1f04e58c5::t_c9856531f3d6b6 7,9,11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "81b6b132d7ff7fe275c41fa6af7feb47876f4bed",
+  "prompts": {},
+  "sessions": {
+    "s_c48ad1f04e58c5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04253-3bb7-7642-a7c8-f810aefabc52",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
