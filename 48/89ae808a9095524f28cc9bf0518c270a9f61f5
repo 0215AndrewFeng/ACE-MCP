@@ -1,0 +1,70 @@
+ROADMAP.md
+  s_c48ad1f04e58c5::t_0982cbf059f60e 128
+tasks/todo.md
+  s_c48ad1f04e58c5::t_9144a3ef225fb4 15,37
+  s_c48ad1f04e58c5::t_d818475cefad2e 1-10,16-33,38
+  s_c48ad1f04e58c5::t_ec0716fb5af752 11-14,34-36
+package.json
+  s_c48ad1f04e58c5::t_0982cbf059f60e 3
+  s_c48ad1f04e58c5::t_d818475cefad2e 36
+src/server/tools/listSymbols.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 22-25
+src/core/storage/sqliteStore.test.ts
+  s_c48ad1f04e58c5::t_d818475cefad2e 47-74
+src/core/summary/summaryGenerator.test.ts
+  s_c48ad1f04e58c5::t_d818475cefad2e 1-53
+src/core/summary/summaryGenerator.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 9-15,40-44,52-53,88,90-91,93-95,162,259
+src/web/routes/summaryRoutes.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 13,21-25,27-35,44-48,50,52,55,59,62
+scripts/reindex-projects.mjs
+  s_c48ad1f04e58c5::t_619eb10005dac2 14,39-41,61-64,85,161,165,225-230
+src/server/tools/summaryTools.test.ts
+  s_c48ad1f04e58c5::t_d818475cefad2e 1-85
+CHANGELOG.md
+  s_c48ad1f04e58c5::t_ec0716fb5af752 5,16
+  s_c48ad1f04e58c5::t_0982cbf059f60e 6-15,17
+scripts/README-WINDOWS.md
+  s_c48ad1f04e58c5::t_0982cbf059f60e 3,5,15-19,56,82
+docs/release-checklist.md
+  s_c48ad1f04e58c5::t_ec0716fb5af752 7,10
+  s_c48ad1f04e58c5::t_4ff80b00c12e4e 3,5,11,44,71,87-99,117-118,120,122,125,130,136,139
+  s_c48ad1f04e58c5::t_9144a3ef225fb4 9,12
+src/config/packageManifest.test.ts
+  s_c48ad1f04e58c5::t_ec0716fb5af752 591
+  s_c48ad1f04e58c5::t_bcf937e7dd95ee 462-463,470,495-496,499-502,505-507,631,684,707
+  s_c48ad1f04e58c5::t_4ff80b00c12e4e 33,36,529,533,540,549,552,565,568,573-578,592-593,606
+src/core/storage/sqliteStore.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 1346-1427
+src/version.ts
+  s_c48ad1f04e58c5::t_0982cbf059f60e 2
+src/core/summary/types.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 47-51
+README.md
+  s_c48ad1f04e58c5::t_0982cbf059f60e 7,62,110,113,120,129,135,165-166,190,204,264,275,308,314,342,345,653,661-668,673
+src/server/tools/generateSummary.ts
+  s_c48ad1f04e58c5::t_619eb10005dac2 14,19,25,29,31,34,36
+src/web/app.test.ts
+  s_c48ad1f04e58c5::t_eb5908af66bb70 1283-1345
+  s_c48ad1f04e58c5::t_d818475cefad2e 1145,1176-1177,1195,1204,1218
+scripts/install-macos.sh
+  s_c48ad1f04e58c5::t_0982cbf059f60e 4
+package-lock.json
+  s_c48ad1f04e58c5::t_692b9d966d9528 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "4889ae808a9095524f28cc9bf0518c270a9f61f5",
+  "prompts": {},
+  "sessions": {
+    "s_c48ad1f04e58c5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04253-3bb7-7642-a7c8-f810aefabc52",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Andrew <1980250960@qq.com>"
+    }
+  }
+}
